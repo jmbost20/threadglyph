@@ -1,0 +1,7 @@
+node_modules/
+main.js
+coverage/
+.DS_Store
+.env*
+# Local sandbox vault content never belongs in the repository.
+sandbox-vault/
