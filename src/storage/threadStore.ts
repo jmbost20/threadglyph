@@ -17,6 +17,8 @@ export type SaveResult =
   /** The record on disk moved on (or vanished) since the caller loaded it. Nothing was written. */
   | { ok: false; reason: 'conflict'; current: ThreadRecord | null };
 
+export type UpdateResult = SaveResult | { ok: false; reason: 'missing'; current: null };
+
 export interface LoadProblem {
   path: string;
   error: string;
@@ -26,6 +28,8 @@ export class ThreadStore {
   private threads = new Map<string, ThreadRecord>();
   private anchors = new Map<string, TextAnchor>();
   private problems = new Map<string, string>();
+  /** Tail of the pending write chain for each thread; writes to one thread never interleave. */
+  private queues = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly fs: FileStore,
@@ -111,9 +115,39 @@ export class ThreadStore {
   /**
    * Writes `next` only if the file on disk is still at `expectedRevision`.
    * On a mismatch nothing is written; the cache takes the on-disk version and
-   * the caller keeps its draft so the user can re-apply it.
+   * the caller keeps its draft so the user can re-apply it. Saves to the same
+   * thread run one at a time, so two saves from one revision cannot both pass.
    */
-  async save(next: ThreadRecord, expectedRevision: number): Promise<SaveResult> {
+  save(next: ThreadRecord, expectedRevision: number): Promise<SaveResult> {
+    return this.serialized(next.id, () => this.saveNow(next, expectedRevision));
+  }
+
+  /**
+   * Applies `change` to the latest cached version, in turn with any other
+   * write to the same thread. Use this for in-app edits: rapid actions build
+   * on each other instead of racing from the same snapshot.
+   */
+  update(id: string, change: (thread: ThreadRecord) => ThreadRecord): Promise<UpdateResult> {
+    return this.serialized(id, async (): Promise<UpdateResult> => {
+      const thread = this.threads.get(id);
+      if (!thread) return { ok: false, reason: 'missing', current: null };
+      const next = change(thread);
+      if (next === thread) return { ok: true, thread };
+      return this.saveNow(next, thread.revision);
+    });
+  }
+
+  private serialized<T>(id: string, work: () => Promise<T>): Promise<T> {
+    const run = (this.queues.get(id) ?? Promise.resolve()).catch(() => undefined).then(work);
+    this.queues.set(id, run);
+    const release = () => {
+      if (this.queues.get(id) === run) this.queues.delete(id);
+    };
+    run.then(release, release);
+    return run;
+  }
+
+  private async saveNow(next: ThreadRecord, expectedRevision: number): Promise<SaveResult> {
     const path = threadPath(next.id);
     const raw = await this.fs.read(path);
     const onDisk = raw === null ? null : parseThread(raw);
@@ -143,7 +177,7 @@ export class ThreadStore {
     for (const thread of [...this.threads.values()]) {
       const target = moved(thread.notePath);
       if (target === null) continue;
-      const result = await this.save(moveThread(thread, target, this.clock), thread.revision);
+      const result = await this.update(thread.id, (latest) => moveThread(latest, target, this.clock));
       if (!result.ok) conflicts.push(thread.id);
       const anchor = this.anchors.get(thread.id);
       if (anchor) await this.writeAnchor({ ...anchor, notePath: target });

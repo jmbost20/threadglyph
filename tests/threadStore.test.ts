@@ -134,3 +134,35 @@ describe('ThreadStore', () => {
     expect(fs.files.get(threadPath(thread.id))).toBe(trackedBefore);
   });
 });
+
+describe('ThreadStore write serialization', () => {
+  it('never lets two saves from the same revision both succeed', async () => {
+    const { fs, clock, store, thread } = await setup();
+    const a = addReply(thread, human, 'A', clock);
+    const b = addReply(thread, human, 'B', clock);
+    const [ra, rb] = await Promise.all([store.save(a, thread.revision), store.save(b, thread.revision)]);
+    expect(ra.ok).toBe(true);
+    expect(rb).toMatchObject({ ok: false, reason: 'conflict', current: { revision: 2 } });
+    expect(JSON.parse(fs.files.get(threadPath(thread.id))!).messages.at(-1).body).toBe('A');
+  });
+
+  it('applies queued updates to the latest version', async () => {
+    const { store, clock, thread } = await setup();
+    const results = await Promise.all(
+      ['one', 'two', 'three'].map((body) => store.update(thread.id, (t) => addReply(t, human, body, clock))),
+    );
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Why this?', 'one', 'two', 'three']);
+  });
+
+  it('keeps the queue usable after a failed update', async () => {
+    const { store, clock, thread } = await setup();
+    await expect(
+      store.update(thread.id, () => {
+        throw new Error('bad change');
+      }),
+    ).rejects.toThrow('bad change');
+    expect((await store.update(thread.id, (t) => addReply(t, human, 'after', clock))).ok).toBe(true);
+    expect(await store.update('missing-thread', (t) => t)).toEqual({ ok: false, reason: 'missing', current: null });
+  });
+});

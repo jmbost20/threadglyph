@@ -129,8 +129,52 @@ describe('ThreadController', () => {
   });
 
   it('propagates unexpected storage failures', async () => {
-    const { store, ctl, thread } = await setup();
-    store.save = () => Promise.reject(new Error('disk full'));
+    const { fs, ctl, thread } = await setup();
+    fs.write = () => Promise.reject(new Error('disk full'));
     await expect(ctl.reply(thread.id, 'x')).rejects.toThrow('disk full');
+  });
+});
+
+describe('ThreadController concurrency (Gitar review on PR #1)', () => {
+  it('applies a reply and a resolve issued together without losing either', async () => {
+    const { fs, store, ctl, thread } = await setup();
+    const [reply, resolve] = await Promise.all([ctl.reply(thread.id, 'Quick reply'), ctl.setResolved(thread.id, true)]);
+    expect(reply).toEqual({ ok: true });
+    expect(resolve).toEqual({ ok: true });
+    const onDisk = JSON.parse(fs.files.get(threadPath(thread.id))!);
+    for (const t of [store.get(thread.id)!, onDisk]) {
+      expect(t.messages.map((m: { body: string }) => m.body)).toEqual(['Is this right?', 'Quick reply']);
+      expect(t.status).toBe('resolved');
+      expect(t.revision).toBe(3);
+    }
+  });
+
+  it('keeps an edit that races with a note rename', async () => {
+    const { fs, store, ctl, thread } = await setup();
+    const id = thread.messages[0].id;
+    ctl.startEdit(thread.id, id);
+    const [edit] = await Promise.all([ctl.saveEdit(thread.id, id, 'Edited'), store.renameNote(note, 'Notes/renamed.md')]);
+    expect(edit).toEqual({ ok: true });
+    const onDisk = JSON.parse(fs.files.get(threadPath(thread.id))!);
+    expect(onDisk.notePath).toBe('Notes/renamed.md');
+    expect(onDisk.messages[0].body).toBe('Edited');
+  });
+
+  it('creates exactly one thread when commit is triggered twice (double-click)', async () => {
+    const { fs, store, ctl } = await setup();
+    ctl.beginThread(note, doc, ...range('More text'));
+    const results = await Promise.all([ctl.commitThread('Once'), ctl.commitThread('Once')]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(store.forNote(note)).toHaveLength(2); // the setup thread + one new thread
+    expect([...fs.files.keys()].filter((p) => p.startsWith('threadglyph/threads/'))).toHaveLength(2);
+  });
+
+  it('restores the pending selection when creating the thread fails', async () => {
+    const { store, ctl } = await setup();
+    ctl.beginThread(note, doc, ...range('More text'));
+    const pending = ctl.pending;
+    store.create = () => Promise.reject(new RangeError('disk refused'));
+    expect(await ctl.commitThread('Try')).toEqual({ ok: false, message: 'disk refused' });
+    expect(ctl.pending).toBe(pending);
   });
 });

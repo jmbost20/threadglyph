@@ -53,14 +53,19 @@ export class ThreadController {
   async commitThread(body: string): Promise<Outcome & { thread?: ThreadRecord }> {
     const pending = this.pending;
     if (!pending) return { ok: false, message: 'There is no selection waiting for a comment.' };
+    // Claim the selection before the first await so a double submit cannot create two threads.
+    this.pending = null;
     let thread: ThreadRecord | undefined;
     const outcome = await this.guard(async () => {
       thread = createThread(pending.notePath, this.author(), body, this.clock);
       await this.store.create(thread, { ...pending.anchor, threadId: thread.id });
-      this.pending = null;
       return OK;
     });
-    return outcome.ok ? { ...outcome, thread } : outcome;
+    if (!outcome.ok) {
+      this.pending ??= pending;
+      return outcome;
+    }
+    return { ...outcome, thread };
   }
 
   async reply(threadId: string, body: string): Promise<Outcome> {
@@ -116,14 +121,12 @@ export class ThreadController {
     });
   }
 
+  /** Applies `change` to the latest version, queued behind any other write to the same thread. */
   private async update(threadId: string, change: (t: ThreadRecord) => ThreadRecord): Promise<Outcome> {
-    const thread = this.store.get(threadId);
-    if (!thread) return { ok: false, message: 'That thread no longer exists.' };
     return this.guard(async () => {
-      const next = change(thread);
-      if (next === thread) return { ok: true };
-      const saved = await this.store.save(next, thread.revision);
-      return saved.ok ? { ok: true } : { ok: false, message: CONFLICT_MESSAGE };
+      const result = await this.store.update(threadId, change);
+      if (result.ok) return OK;
+      return { ok: false, message: result.reason === 'missing' ? 'That thread no longer exists.' : CONFLICT_MESSAGE };
     });
   }
 
