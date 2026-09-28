@@ -178,3 +178,28 @@ describe('ThreadController concurrency (Gitar review on PR #1)', () => {
     expect(ctl.pending).toBe(pending);
   });
 });
+
+describe('ThreadController commit failures (Gitar re-review on PR #1)', () => {
+  it('restores the pending selection when create throws an unexpected error', async () => {
+    const { fs, ctl } = await setup();
+    ctl.beginThread(note, doc, ...range('More text'));
+    const pending = ctl.pending;
+    fs.write = () => Promise.reject(new Error('disk full'));
+    await expect(ctl.commitThread('Try')).rejects.toThrow('disk full');
+    expect(ctl.pending).toBe(pending);
+  });
+
+  it('does not overwrite a newer selection made while the failed create was in flight', async () => {
+    const { fs, ctl } = await setup();
+    ctl.beginThread(note, doc, ...range('More text'));
+    let fail!: (e: Error) => void;
+    fs.write = () => new Promise((_, reject) => (fail = reject));
+    const attempt = ctl.commitThread('Try');
+    await new Promise((r) => setTimeout(r, 0));
+    ctl.beginThread(note, doc, ...range('Some context'));
+    const newer = ctl.pending;
+    fail(new Error('disk full'));
+    await expect(attempt).rejects.toThrow('disk full');
+    expect(ctl.pending).toBe(newer);
+  });
+});

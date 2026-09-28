@@ -56,11 +56,18 @@ export class ThreadController {
     // Claim the selection before the first await so a double submit cannot create two threads.
     this.pending = null;
     let thread: ThreadRecord | undefined;
-    const outcome = await this.guard(async () => {
-      thread = createThread(pending.notePath, this.author(), body, this.clock);
-      await this.store.create(thread, { ...pending.anchor, threadId: thread.id });
-      return OK;
-    });
+    let outcome: Outcome;
+    try {
+      outcome = await this.guard(async () => {
+        thread = createThread(pending.notePath, this.author(), body, this.clock);
+        await this.store.create(thread, { ...pending.anchor, threadId: thread.id });
+        return OK;
+      });
+    } catch (err) {
+      // Unexpected failures (disk errors) must not lose the selection either.
+      this.pending ??= pending;
+      throw err;
+    }
     if (!outcome.ok) {
       this.pending ??= pending;
       return outcome;

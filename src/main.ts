@@ -159,30 +159,41 @@ export default class ThreadglyphPlugin extends Plugin {
       if (!o.ok) new Notice(o.message);
       return o.ok;
     };
+    // Storage failures (disk errors) surface as a notice; the panel keeps the user's text.
+    const attempt = async (work: () => Promise<Outcome>): Promise<boolean> => {
+      try {
+        return report(await work());
+      } catch (err) {
+        console.error('[threadglyph]', err);
+        new Notice(`Threadglyph could not save: ${(err as Error).message}. Your text is kept.`);
+        return false;
+      }
+    };
     return {
       drafts: c.drafts,
       editing: c.editing,
-      createThread: async (body) => {
-        const result = await c.commitThread(body);
-        if (result.ok && result.thread) this.focusedThreadId = result.thread.id;
-        return report(result);
-      },
+      createThread: (body) =>
+        attempt(async () => {
+          const result = await c.commitThread(body);
+          if (result.ok && result.thread) this.focusedThreadId = result.thread.id;
+          return result;
+        }),
       cancelNewThread: () => {
         c.cancelThread();
         void this.refresh();
       },
-      reply: async (id, body) => report(await c.reply(id, body)),
+      reply: (id, body) => attempt(() => c.reply(id, body)),
       startEdit: (id, messageId) => {
         c.startEdit(id, messageId);
         void this.refresh();
       },
-      saveEdit: async (id, messageId, body) => report(await c.saveEdit(id, messageId, body)),
+      saveEdit: (id, messageId, body) => attempt(() => c.saveEdit(id, messageId, body)),
       cancelEdit: (id, messageId) => {
         c.cancelEdit(id, messageId);
         void this.refresh();
       },
       setResolved: async (id, resolved) => {
-        report(await c.setResolved(id, resolved));
+        await attempt(() => c.setResolved(id, resolved));
         await this.refresh();
       },
       reattach: (id) => this.reattach(id),
