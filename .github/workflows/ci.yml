@@ -60,6 +60,8 @@ jobs:
         run: |
           if [ -z "$SONAR_TOKEN" ]; then
             echo "::warning::SONAR_TOKEN is not configured; Sonar analysis skipped (not a pass)."
+            echo "### SonarQube Cloud: NOT ANALYSED" >> "$GITHUB_STEP_SUMMARY"
+            echo "No SONAR_TOKEN secret, so this job skipped the scan. A green job here is not a quality-gate pass." >> "$GITHUB_STEP_SUMMARY"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
