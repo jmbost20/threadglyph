@@ -296,15 +296,39 @@ describe('ThreadPanel double submit (Gitar review on PR #1)', () => {
     expect(store.forNote(note)).toHaveLength(1);
   });
 
-  it('re-enables the button after a failed submit so the user can retry', async () => {
+  it('re-enables the same button after a failed submit so the user can retry', async () => {
     const thread = await createViaPanel('Question');
+    // Keep the DOM in place so the original button's state is what gets checked.
+    actions.rerender = () => {};
     const failing = vi.spyOn(actions, 'reply').mockResolvedValueOnce(false);
     const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!;
     type(input, 'Keep me');
-    const reply = button('Reply')!;
+    const reply = button('Reply')! as HTMLButtonElement;
     reply.click();
+    expect(reply.disabled).toBe(true);
     await flush();
     expect(failing).toHaveBeenCalledTimes(1);
+    expect(reply.disabled).toBe(false);
+    expect(ctl.drafts.get(draftKey.reply(thread.id))).toBe('Keep me');
+
+    reply.click();
+    await flush();
+    expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Question', 'Keep me']);
+  });
+
+  it('re-enables the button when submit throws', async () => {
+    const thread = await createViaPanel('Question');
+    actions.rerender = () => {};
+    vi.spyOn(actions, 'reply').mockRejectedValueOnce(new Error('disk full'));
+    const onError = vi.fn();
+    process.on('unhandledRejection', onError);
+    type(q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!, 'Keep me');
+    const reply = button('Reply')! as HTMLButtonElement;
+    reply.click();
+    await flush();
+    await flush();
+    process.off('unhandledRejection', onError);
+    expect(reply.disabled).toBe(false);
     expect(ctl.drafts.get(draftKey.reply(thread.id))).toBe('Keep me');
   });
 });
