@@ -3,7 +3,8 @@
 ## Current state
 
 - **Stage:** 1–2 (pipeline + editable text threads), first build.
-- **Branch / PR:** `codex/bootstrap`; PR link added once it's created.
+- **Branch / PR:** `codex/bootstrap` → [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (draft)
+- **CI:** run 36430339217 passed on head `c14aec4` (check job green; Sonar job skipped with a warning because there is no `SONAR_TOKEN` yet, which is not a pass).
 - **Repo:** https://github.com/jmbost20/threadglyph (private)
 - **Local checks (2026-09-28):** typecheck, lint, 90 tests, build all pass. Line coverage is 72.5%: 100% for the domain, storage, controller and panel; 0% for `src/main.ts`, the Obsidian wiring. That file is verified by the manual sandbox check, not unit tests, and is deliberately not excluded from coverage.
 - **Next step:** CI on the PR, then set up SonarQube Cloud and Gitar (needs the owner's login), then the manual sandbox check.
@@ -47,10 +48,11 @@
 - [x] CI workflow (check job + separate Sonar job), PR template, Dependabot
 - [x] Sandbox vault script
 - [x] `npm install` + lockfile, local `npm run check`
-- [ ] Private GitHub repo, bootstrap PR, CI results on the head SHA
+- [x] Private GitHub repo, bootstrap PR, CI results on the head SHA
+- [x] CI actions pinned by commit SHA to current releases (v4 actions were flagged as deprecated)
 - [ ] SonarQube Cloud project + `SONAR_TOKEN` (owner login needed)
 - [ ] Gitar app on this repo (owner consent needed)
-- [ ] Branch protection on `main`: verify what the plan enforces for a private repo
+- [x] Branch protection on `main`: **not available.** The GitHub API returns 403 ("Upgrade to GitHub Pro or make this repository public"). The repo stays private, merges stay manual by the owner, and branch discipline is local practice, **not server-enforced**.
 
 ### Stage 2: editable text threads
 - [x] Thread model: create / reply / edit with retained revisions / resolve / move
