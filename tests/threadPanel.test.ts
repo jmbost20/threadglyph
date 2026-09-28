@@ -268,3 +268,43 @@ describe('ThreadPanel', () => {
     expect(q('.tg-problem')?.textContent).toMatch(/bad\.json \(not valid JSON\)/);
   });
 });
+
+describe('ThreadPanel double submit (Gitar review on PR #1)', () => {
+  it('posts one reply when Reply is clicked twice and Cmd+Enter is pressed during the save', async () => {
+    const thread = await createViaPanel('Question');
+    const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!;
+    type(input, 'Only once');
+    const reply = button('Reply')!;
+    reply.click();
+    expect(reply.hasAttribute('disabled')).toBe(true);
+    reply.click();
+    key(input, 'Enter', true);
+    await flush();
+    await flush();
+    expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Question', 'Only once']);
+  });
+
+  it('creates one thread when Comment is double-clicked', async () => {
+    ctl.beginThread(note, doc, ...range('The passage'));
+    render();
+    type(q<HTMLTextAreaElement>('.tg-card-new textarea')!, 'One thread');
+    const comment = button('Comment')!;
+    comment.click();
+    comment.click();
+    await flush();
+    await flush();
+    expect(store.forNote(note)).toHaveLength(1);
+  });
+
+  it('re-enables the button after a failed submit so the user can retry', async () => {
+    const thread = await createViaPanel('Question');
+    const failing = vi.spyOn(actions, 'reply').mockResolvedValueOnce(false);
+    const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!;
+    type(input, 'Keep me');
+    const reply = button('Reply')!;
+    reply.click();
+    await flush();
+    expect(failing).toHaveBeenCalledTimes(1);
+    expect(ctl.drafts.get(draftKey.reply(thread.id))).toBe('Keep me');
+  });
+});

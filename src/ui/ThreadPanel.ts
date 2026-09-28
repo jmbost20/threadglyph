@@ -293,9 +293,18 @@ export class ThreadPanel extends ItemView {
     input.oninput = () => this.actions.drafts.set(key, input.value);
 
     const buttons = wrap.createDiv({ cls: 'tg-composer-buttons' });
+    // Ignore repeat clicks or Cmd/Ctrl+Enter while a submit is in flight, so one action writes once.
+    let busy = false;
     const doSubmit = async () => {
-      if (!input.value.trim()) return;
-      if (await submit(input.value)) this.actions.drafts.delete(key);
+      if (busy || !input.value.trim()) return;
+      busy = true;
+      submitButton.disabled = true;
+      try {
+        if (await submit(input.value)) this.actions.drafts.delete(key);
+      } finally {
+        busy = false;
+        submitButton.disabled = false;
+      }
       this.actions.rerender();
     };
     const doCancel = cancel
