@@ -20,6 +20,8 @@ export interface PanelState {
   noteName: string;
   views: ThreadView[];
   pendingQuote: string | null;
+  /** Image file of the pending selection, when the new thread is on an image. */
+  pendingImagePath: string | null;
   problems: LoadProblem[];
   focusedThreadId: string | null;
   filter: ThreadFilter;
@@ -39,6 +41,8 @@ export interface PanelActions {
   setResolved(threadId: string, resolved: boolean): Promise<void>;
   reattach(threadId: string): Promise<void>;
   goTo(threadId: string): Promise<void>;
+  /** A displayable URL for a vault image, or null when the file is missing. */
+  imageSrc(path: string): string | null;
   setFilter(filter: ThreadFilter): void;
   rerender(): void;
 }
@@ -59,6 +63,7 @@ export class ThreadPanel extends ItemView {
     noteName: '',
     views: [],
     pendingQuote: null,
+    pendingImagePath: null,
     problems: [],
     focusedThreadId: null,
     filter: 'open',
@@ -237,7 +242,8 @@ export class ThreadPanel extends ItemView {
   private renderNewThread(list: HTMLElement, notePath: string): void {
     const card = list.createDiv({ cls: 'tg-card tg-card-new' });
     card.createDiv({ cls: 'tg-card-label', text: 'New thread' });
-    card.createEl('blockquote', { cls: 'tg-quote', text: previewQuote(this.state.pendingQuote ?? '') });
+    if (this.state.pendingImagePath) this.renderImage(card, this.state.pendingImagePath, null);
+    else card.createEl('blockquote', { cls: 'tg-quote', text: previewQuote(this.state.pendingQuote ?? '') });
     const key = draftKey.newThread(notePath);
     this.composer(card, key, 'Write a comment…', 'Comment', async (body) => this.actions.createThread(body), () =>
       this.actions.cancelNewThread(),
@@ -257,7 +263,9 @@ export class ThreadPanel extends ItemView {
     const quoteRow = card.createDiv({ cls: 'tg-quote-row' });
     const badge = quoteRow.createSpan({ cls: 'tg-badge tg-card-number', text: String(view.number) });
     badge.setAttr('aria-hidden', 'true');
-    if (view.quote !== null && view.anchor.kind === 'found') {
+    if (view.imagePath !== null) {
+      this.renderImage(quoteRow, view.imagePath, view.anchor.kind === 'found' ? () => void this.actions.goTo(thread.id) : null);
+    } else if (view.quote !== null && view.anchor.kind === 'found') {
       const quote = quoteRow.createEl('button', { cls: 'tg-quote tg-quote-link', text: previewQuote(view.quote) });
       quote.setAttr('aria-label', 'Show this passage in the note');
       quote.onclick = () => void this.actions.goTo(thread.id);
@@ -265,7 +273,7 @@ export class ThreadPanel extends ItemView {
       quoteRow.createEl('blockquote', { cls: 'tg-quote tg-quote-stale', text: previewQuote(view.quote) });
     }
 
-    const problem = anchorProblem(view.anchor);
+    const problem = anchorProblem(view.anchor, view.imagePath !== null);
     if (problem) {
       const warn = card.createDiv({ cls: 'tg-anchor-problem' });
       warn.createSpan({ text: problem });
@@ -288,6 +296,28 @@ export class ThreadPanel extends ItemView {
       text: thread.status === 'open' ? 'Resolve' : 'Reopen',
     });
     toggle.onclick = () => void this.actions.setResolved(thread.id, thread.status === 'open');
+  }
+
+  /** Image preview; a missing or unreadable file is named instead of shown. */
+  private renderImage(parent: HTMLElement, path: string, onOpen: (() => void) | null): void {
+    const name = path.split('/').pop() ?? path;
+    const figure = parent.createEl(onOpen ? 'button' : 'div', { cls: 'tg-image' });
+    if (onOpen) {
+      figure.addClass('tg-quote-link');
+      figure.setAttr('aria-label', `Show ${name} in the note`);
+      figure.onclick = onOpen;
+    }
+    const src = this.actions.imageSrc(path);
+    if (src) {
+      const img = figure.createEl('img', { attr: { src, alt: `Image: ${name}`, loading: 'lazy' } });
+      img.onerror = () => {
+        img.remove();
+        figure.createDiv({ cls: 'tg-image-missing', text: `${name} could not be displayed. The file may be damaged.` });
+      };
+    } else {
+      figure.createDiv({ cls: 'tg-image-missing', text: `Image file not found: ${path}` });
+    }
+    figure.createDiv({ cls: 'tg-image-name', text: name });
   }
 
   private renderMessage(parent: HTMLElement, threadId: string, message: Message): void {

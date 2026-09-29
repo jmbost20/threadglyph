@@ -73,6 +73,18 @@ Owner feedback from the first sandbox session: no visible highlight, and a reque
 - [x] Reading view highlights and badges. A quote that spans formatting (half bold, for example) is left unhighlighted rather than guessed.
 - [ ] Owner UI review in the sandbox
 
+### Stage 4: image annotations (`codex/image-threads`, stacked on stage 3)
+- [x] **Anchor.** An image thread anchors to the embed markup (`![[pic.png|300]]`, `![alt](<a b.png>)`) with the usual quote and context. The image's vault path is kept **only in the local anchor file**; the tracked record just says `anchorKind: "image"`, because a file name can be personal too.
+- [x] **Resolution.** If the markup changes (a rename rewrote the link, a size was added), the thread finds the same file through Obsidian's link resolution. Two embeds of that file → ambiguous; none → missing. Neither case guesses.
+- [x] **Renames.** Image file and folder renames update the anchor's image path.
+- [x] **Starting one.** "Comment on selection" (⌘/ in the sandbox) comments on the image when the cursor is on an image embed. In Live Preview, click just after the image. A text selection that merely contains an image stays a text comment. The context menu says "comment on image" in that case.
+- [x] **Formats.** PNG, JPEG and WebP only. HEIC, HEIF, PDF, SVG, GIF, BMP, TIFF and AVIF get a clear "not supported yet" message before any typing. Remote URLs are refused ("does not fetch remote images"), and a missing file is named.
+- [x] **Panel.** Image previews on cards and on the new-thread card. A missing file is named; a damaged file says it could not be displayed.
+- [x] **Reading view.** Badges plus an outline on wiki image embeds (`.internal-embed[src]`). Markdown-style image embeds carry no link in the rendered DOM, so they are not badged there; the editor and the panel still show them.
+- [x] **Vision groundwork.** `prepareImage` checks the extension, reads the real type from the file's first bytes (a PNG named `.jpg` is sent as PNG, garbage is refused), caps size at 5 MB (the strictest common provider limit) and base64-encodes the exact bytes. Tested with synthetic byte fixtures.
+- [x] **Sandbox content.** `Images.md` plus two generated gradient PNGs, a fake `.heic` and a missing-file embed.
+- [ ] Owner UI review in the sandbox
+
 ## Known limitations
 
 - Desktop only. Mobile and sync behavior are untested (stage 6).

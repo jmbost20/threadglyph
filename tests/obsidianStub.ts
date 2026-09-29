@@ -139,6 +139,19 @@ export class FakeVault extends Events {
   async cachedRead(file: TFile) {
     return this.adapter.read(file.path);
   }
+  getResourcePath(file: TFile) {
+    return `app://local/${encodeURI(file.path)}`;
+  }
+}
+
+/** Resolves a link by exact path, then by file name anywhere in the vault (like Obsidian's shortest-path links). */
+export class FakeMetadataCache {
+  constructor(private readonly vault: FakeVault) {}
+  getFirstLinkpathDest(link: string) {
+    const paths = [...this.vault.adapter.files.keys()];
+    const hit = paths.find((p) => p === link) ?? paths.find((p) => p.split('/').pop() === link);
+    return hit ? new TFile(hit) : null;
+  }
 }
 
 /** Offsets double as positions, which keeps selections easy to express. */
@@ -254,6 +267,7 @@ export class FakeWorkspace extends Events {
 export class FakeApp {
   vault = new FakeVault();
   workspace = new FakeWorkspace(this.vault);
+  metadataCache = new FakeMetadataCache(this.vault);
 }
 
 export class Plugin {

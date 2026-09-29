@@ -425,3 +425,58 @@ body {
 .tg-gutter .tg-glyph-resolved {
   border-color: var(--text-faint);
 }
+
+/* ── Image threads ──────────────────────────────────────── */
+
+.tg-image {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  height: auto;
+  margin: 0 0 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+
+.tg-image img {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  object-fit: contain;
+}
+
+.tg-image.tg-quote-link:hover img,
+.tg-image.tg-quote-link:focus-visible img {
+  border-color: var(--tg-accent);
+}
+
+.tg-image-name {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.tg-image-missing {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.markdown-rendered .tg-image-anchor img {
+  outline: 2px solid var(--tg-accent-line);
+  outline-offset: 2px;
+}
+
+.markdown-rendered .tg-image-anchor + .tg-badge {
+  top: 0;
+  vertical-align: top;
+}

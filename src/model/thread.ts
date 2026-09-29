@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION, type Author, type Message, type ThreadRecord } from './types';
+import { SCHEMA_VERSION, type AnchorKind, type Author, type Message, type ThreadRecord } from './types';
 
 export interface Clock {
   now(): string;
@@ -39,13 +39,14 @@ export function createThread(
   author: Author,
   body: string,
   clock: Clock = systemClock,
+  anchorKind: AnchorKind = 'text',
 ): ThreadRecord {
   const first = newMessage(author, body, clock);
   return {
     schema: SCHEMA_VERSION,
     id: clock.newId(),
     notePath,
-    anchorKind: 'text',
+    anchorKind,
     status: 'open',
     createdAt: first.createdAt,
     updatedAt: first.createdAt,

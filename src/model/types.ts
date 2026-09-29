@@ -40,7 +40,7 @@ export interface Message {
 
 export type ThreadStatus = 'open' | 'resolved';
 
-export type AnchorKind = 'text';
+export type AnchorKind = 'text' | 'image';
 
 export interface ThreadRecord {
   schema: typeof SCHEMA_VERSION;
@@ -55,11 +55,18 @@ export interface ThreadRecord {
   messages: Message[];
 }
 
+/**
+ * Where a thread points. For `image` threads the quote is the embed markup
+ * (e.g. `![[diagram.png]]`) and `imagePath` is the embedded file, which lets
+ * the thread follow the image through renames. Both stay in the local-only file.
+ */
 export interface TextAnchor {
   schema: typeof SCHEMA_VERSION;
   threadId: string;
-  kind: 'text';
+  kind: AnchorKind;
   notePath: string;
+  /** Vault path of the embedded image; present exactly when `kind` is `image`. */
+  imagePath?: string;
   quote: string;
   prefix: string;
   suffix: string;

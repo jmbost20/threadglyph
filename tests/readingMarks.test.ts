@@ -66,10 +66,63 @@ describe('Reading view highlights', () => {
   it('builds marks only for anchors that were found', () => {
     const base = { thread: { id: 't1', status: 'open' }, number: 1 } as unknown as ThreadView;
     const views: ThreadView[] = [
-      { ...base, quote: 'echo', anchor: { kind: 'found', from: 5, to: 9 } },
-      { ...base, quote: 'gone', anchor: { kind: 'missing' } },
-      { ...base, quote: null, anchor: { kind: 'no-anchor' } },
+      { ...base, quote: 'echo', imagePath: null, anchor: { kind: 'found', from: 5, to: 9 } },
+      { ...base, quote: 'gone', imagePath: null, anchor: { kind: 'missing' } },
+      { ...base, quote: null, imagePath: null, anchor: { kind: 'no-anchor' } },
     ];
-    expect(readingMarks(views)).toEqual([{ threadId: 't1', quote: 'echo', from: 5, number: 1, resolved: false }]);
+    const text = 'abcd echo efg';
+    expect(readingMarks(views, text)).toEqual([{ threadId: 't1', quote: 'echo', from: 5, number: 1, resolved: false }]);
+  });
+});
+
+describe('Reading view image badges', () => {
+  const src = 'Pics: ![[a.png]] ![[b.png|200]] ![[a.png]]\n';
+  const html = '<p>Pics: <span class="internal-embed image-embed" src="a.png"><img></span> '
+    + '<span class="internal-embed image-embed" src="b.png|200"><img></span> '
+    + '<span class="internal-embed image-embed" src="a.png"><img></span></p>';
+  const imageMark = (quote: string, nth: number, link: string): ReadingMark => {
+    let from = -1;
+    for (let i = 0; i <= nth; i++) from = src.indexOf(quote, from + 1);
+    return { threadId: `img-${nth}-${link}`, quote, from, number: 7, resolved: false, imageLink: link };
+  };
+
+  it('badges the matching embed occurrence and outlines it', () => {
+    const el = section(html);
+    const onOpen = vi.fn();
+    const marked = markRenderedSection(
+      el,
+      src,
+      0,
+      src.length,
+      [imageMark('![[a.png]]', 1, 'a.png'), imageMark('![[b.png|200]]', 0, 'b.png')],
+      onOpen,
+    );
+    expect(marked).toBe(2);
+    const embeds = [...el.querySelectorAll<HTMLElement>('.internal-embed')];
+    expect(embeds.map((e) => e.classList.contains('tg-image-anchor'))).toEqual([false, true, true]);
+    expect(embeds[2].dataset.tgThread).toBe('img-1-a.png');
+    const badge = embeds[2].nextElementSibling as HTMLElement;
+    expect(badge.textContent).toBe('7');
+    badge.click();
+    expect(onOpen).toHaveBeenCalledWith('img-1-a.png');
+  });
+
+  it('skips embeds it cannot find and never badges one twice', () => {
+    const el = section(html);
+    expect(markRenderedSection(el, src, 0, src.length, [imageMark('![[a.png]]', 0, 'zzz.png')], vi.fn())).toBe(0);
+    const twice = [imageMark('![[a.png]]', 0, 'a.png'), imageMark('![[a.png]]', 0, 'a.png')];
+    expect(markRenderedSection(el, src, 0, src.length, twice, vi.fn())).toBe(1);
+  });
+
+  it('builds image marks with the link from the current source', () => {
+    const base = { thread: { id: 't1', status: 'resolved' }, number: 2 } as unknown as ThreadView;
+    const from = src.indexOf('![[b.png|200]]');
+    const views: ThreadView[] = [
+      { ...base, quote: 'old markup', imagePath: 'b.png', anchor: { kind: 'found', from, to: from + '![[b.png|200]]'.length } },
+      { ...base, quote: 'x', imagePath: 'c.png', anchor: { kind: 'found', from: 0, to: 4 } },
+    ];
+    expect(readingMarks(views, src)).toEqual([
+      { threadId: 't1', quote: '![[b.png|200]]', from, number: 2, resolved: true, imageLink: 'b.png' },
+    ]);
   });
 });

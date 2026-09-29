@@ -1,3 +1,4 @@
+import { findImageEmbeds } from '../anchor/imageEmbed';
 import { resolveTextAnchor } from '../anchor/textAnchor';
 import type { Message, TextAnchor, ThreadRecord } from '../model/types';
 
@@ -11,6 +12,8 @@ export type AnchorState =
 export interface ThreadView {
   thread: ThreadRecord;
   quote: string | null;
+  /** Vault path of the image, for image threads. */
+  imagePath: string | null;
   anchor: AnchorState;
   /** 1-based label shared by the panel card and the badge in the note, in reading order. */
   number: number;
@@ -23,10 +26,19 @@ export interface ThreadSource {
   anchorFor(id: string): TextAnchor | undefined;
 }
 
-export function anchorState(doc: string, anchor: TextAnchor | undefined): AnchorState {
+/** Maps a link as written in `fromNote` to a vault path (Obsidian's link resolution), or null. */
+export type LinkResolver = (link: string, fromNote: string) => string | null;
+
+export function anchorState(doc: string, anchor: TextAnchor | undefined, resolveLink?: LinkResolver): AnchorState {
   if (!anchor) return { kind: 'no-anchor' };
   const r = resolveTextAnchor(doc, anchor);
   if (r.status === 'found') return { kind: 'found', from: r.from, to: r.to };
+  if (r.status === 'missing' && anchor.kind === 'image' && resolveLink) {
+    // The embed text changed (a rename rewrote the link, or a size was added): find the same file instead.
+    const hits = findImageEmbeds(doc).filter((e) => resolveLink(e.link, anchor.notePath) === anchor.imagePath);
+    if (hits.length === 1) return { kind: 'found', from: hits[0].from, to: hits[0].to };
+    if (hits.length > 1) return { kind: 'ambiguous', count: hits.length };
+  }
   if (r.status === 'ambiguous') return { kind: 'ambiguous', count: r.candidates.length };
   return { kind: 'missing' };
 }
@@ -36,10 +48,21 @@ export function anchorState(doc: string, anchor: TextAnchor | undefined): Anchor
  * Numbers follow reading order across all threads, so resolving a thread never
  * renumbers the others.
  */
-export function buildThreadViews(source: ThreadSource, notePath: string, doc: string): ThreadView[] {
+export function buildThreadViews(
+  source: ThreadSource,
+  notePath: string,
+  doc: string,
+  resolveLink?: LinkResolver,
+): ThreadView[] {
   const views: ThreadView[] = source.forNote(notePath).map((thread) => {
     const anchor = source.anchorFor(thread.id);
-    return { thread, quote: anchor?.quote ?? null, anchor: anchorState(doc, anchor), number: 0 };
+    return {
+      thread,
+      quote: anchor?.quote ?? null,
+      imagePath: anchor?.imagePath ?? null,
+      anchor: anchorState(doc, anchor, resolveLink),
+      number: 0,
+    };
   });
   const position = (v: ThreadView) => (v.anchor.kind === 'found' ? v.anchor.from : Number.MAX_SAFE_INTEGER);
   const byPosition = (a: ThreadView, b: ThreadView) =>
@@ -62,7 +85,13 @@ export function filterViews(views: ThreadView[], filter: ThreadFilter, query: st
   return views.filter((v) => (filter === 'all' || v.thread.status === filter) && matchesQuery(v, query));
 }
 
-export function anchorProblem(state: AnchorState): string | null {
+export function anchorProblem(state: AnchorState, image = false): string | null {
+  if (image && state.kind === 'ambiguous') {
+    return `This image is embedded ${state.count} times. Put the cursor on the right one and reattach.`;
+  }
+  if (image && state.kind === 'missing') {
+    return 'This image is no longer embedded in the note. Put the cursor on an image and reattach, or keep the thread as is.';
+  }
   switch (state.kind) {
     case 'found':
       return null;

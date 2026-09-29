@@ -458,3 +458,109 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(again.settings.authorName).toBe('Saved Name');
   });
 });
+
+describe('Threadglyph plugin image threads', () => {
+  const TRIP = 'Trips/Coast.md';
+  const TRIP_TEXT = 'Day one.\n![[view.png]]\n![](https://example.com/far.png) ![[scan.heic]] ![[lost.png]]\nEnd.\n';
+  let trip: typeof view;
+
+  beforeEach(() => {
+    app.vault.adapter.files.set(TRIP, TRIP_TEXT);
+    app.vault.adapter.files.set('Attachments/view.png', 'png bytes');
+    app.vault.adapter.files.set('Attachments/scan.heic', 'heic bytes');
+    trip = app.workspace.open(TRIP) as typeof view;
+  });
+
+  const cursorOn = (markup: string, offset = 2) => {
+    const at = TRIP_TEXT.indexOf(markup) + offset;
+    trip.editor.selection = [at, at];
+  };
+  const run = async () => {
+    command('comment-on-selection').editorCheckCallback!(false, trip.editor, trip);
+    await flush();
+  };
+
+  it('comments on the image under the cursor and previews it', async () => {
+    trip.editor.selection = [1, 1];
+    expect(command('comment-on-selection').editorCheckCallback!(true, trip.editor, trip)).toBe(false);
+    cursorOn('![[view.png]]');
+    expect(command('comment-on-selection').editorCheckCallback!(true, trip.editor, trip)).toBe(true);
+    await run();
+    expect(q('.tg-card-new img')?.getAttribute('src')).toBe('app://local/Attachments/view.png');
+
+    const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+    input.value = 'What a view';
+    input.dispatchEvent(new Event('input'));
+    button('Comment')!.click();
+    await flush();
+    const [thread] = threads();
+    expect(thread.anchorKind).toBe('image');
+    expect(JSON.stringify(thread)).not.toContain('view.png');
+    const anchor = JSON.parse(app.vault.adapter.files.get(files(ANCHORS_DIR)[0])!);
+    expect(anchor).toMatchObject({ kind: 'image', imagePath: 'Attachments/view.png', quote: '![[view.png]]' });
+    expect(app.vault.adapter.files.get(TRIP)).toBe(TRIP_TEXT);
+  });
+
+  it('labels the context-menu item for images', () => {
+    const titles: string[] = [];
+    const menu = {
+      addItem: (build: (item: unknown) => void) => {
+        const api = { setTitle: (t: string) => (titles.push(t), api), setIcon: () => api, setSection: () => api, onClick: () => api };
+        build(api);
+      },
+    };
+    cursorOn('![[view.png]]');
+    app.workspace.trigger('editor-menu', menu, trip.editor, trip);
+    expect(titles).toEqual(['Threadglyph: comment on image']);
+  });
+
+  it('comments on text when the selection only contains an image', async () => {
+    trip.editor.selection = [0, TRIP_TEXT.indexOf('![[view.png]]') + 14];
+    await run();
+    expect(q('.tg-card-new .tg-image')).toBeNull();
+    expect(q('.tg-card-new .tg-quote')?.textContent).toContain('Day one.');
+  });
+
+  it('explains remote, unsupported and missing images', async () => {
+    cursorOn('![](https://example.com/far.png)');
+    await run();
+    expect(notices.at(-1)).toMatch(/does not fetch remote images/);
+    cursorOn('![[scan.heic]]');
+    await run();
+    expect(notices.at(-1)).toMatch(/HEIC images are not supported yet/);
+    cursorOn('![[lost.png]]');
+    await run();
+    expect(notices.at(-1)).toBe('Image file not found in this vault: lost.png');
+    expect(q('.tg-card-new')).toBeNull();
+  });
+
+  it('follows the image through a rename and reattaches only to an image', async () => {
+    cursorOn('![[view.png]]');
+    await run();
+    const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+    input.value = 'Keep me';
+    input.dispatchEvent(new Event('input'));
+    button('Comment')!.click();
+    await flush();
+
+    app.vault.adapter.files.set('Attachments/vista.png', 'png bytes');
+    app.vault.adapter.files.delete('Attachments/view.png');
+    app.vault.trigger('rename', new TFile('Attachments/vista.png'), 'Attachments/view.png');
+    await flush();
+    const anchorFile = () => JSON.parse(app.vault.adapter.files.get(files(ANCHORS_DIR)[0])!);
+    expect(anchorFile().imagePath).toBe('Attachments/vista.png');
+
+    trip.editor.selection = [0, 3];
+    await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
+    expect(notices.at(-1)).toMatch(/Put the cursor on the image embed/);
+
+    cursorOn('![[lost.png]]');
+    await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
+    expect(notices.at(-1)).toBe('Image file not found in this vault: lost.png');
+
+    app.vault.adapter.files.set('Attachments/lost.png', 'png bytes');
+    await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
+    expect(anchorFile()).toMatchObject({ imagePath: 'Attachments/lost.png', quote: '![[lost.png]]' });
+    expect(threads()[0].messages[0].body).toBe('Keep me');
+  });
+});

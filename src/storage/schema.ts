@@ -40,7 +40,7 @@ export function parseThread(raw: string): Parsed<ThreadRecord> {
   if (t.schema !== SCHEMA_VERSION) return { ok: false, error: `unsupported schema ${JSON.stringify(t.schema)}` };
   if (!isSafeId(t.id)) return { ok: false, error: 'id is invalid' };
   if (!isStr(t.notePath) || !t.notePath) return { ok: false, error: 'notePath is invalid' };
-  if (t.anchorKind !== 'text') return { ok: false, error: 'anchorKind is invalid' };
+  if (t.anchorKind !== 'text' && t.anchorKind !== 'image') return { ok: false, error: 'anchorKind is invalid' };
   if (t.status !== 'open' && t.status !== 'resolved') return { ok: false, error: 'status is invalid' };
   if (!isStr(t.createdAt) || !isStr(t.updatedAt)) return { ok: false, error: 'timestamps are invalid' };
   if (!isInt(t.revision) || (t.revision as number) < 1) return { ok: false, error: 'revision is invalid' };
@@ -58,7 +58,12 @@ export function parseAnchor(raw: string): Parsed<TextAnchor> {
   const a = json.value;
   if (!isObj(a)) return { ok: false, error: 'anchor is not an object' };
   if (a.schema !== SCHEMA_VERSION) return { ok: false, error: `unsupported schema ${JSON.stringify(a.schema)}` };
-  if (!isSafeId(a.threadId) || a.kind !== 'text') return { ok: false, error: 'anchor identity is invalid' };
+  if (!isSafeId(a.threadId) || (a.kind !== 'text' && a.kind !== 'image')) {
+    return { ok: false, error: 'anchor identity is invalid' };
+  }
+  if (a.kind === 'image' ? !isStr(a.imagePath) || !a.imagePath : a.imagePath !== undefined) {
+    return { ok: false, error: 'anchor imagePath is invalid' };
+  }
   if (!isStr(a.notePath) || !isStr(a.quote) || !isStr(a.prefix) || !isStr(a.suffix) || !isInt(a.lineHint)) {
     return { ok: false, error: 'anchor fields are invalid' };
   }

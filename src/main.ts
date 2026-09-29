@@ -12,6 +12,7 @@ import {
   type Editor,
   type MarkdownPostProcessorContext,
 } from 'obsidian';
+import { embedAtSelection, imageSupport, isRemote, type ImageEmbed } from './anchor/imageEmbed';
 import { ThreadController, type Outcome } from './controller';
 import { THREADS_DIR } from './storage/paths';
 import { AdapterFileStore } from './storage/adapterFileStore';
@@ -58,7 +59,7 @@ export default class ThreadglyphPlugin extends Plugin {
       id: 'comment-on-selection',
       name: 'Comment on selection',
       editorCheckCallback: (checking, editor, ctx) => {
-        if (!editor.somethingSelected() || !ctx.file) return false;
+        if (!ctx.file || (!editor.somethingSelected() && !this.imageAtCursor(editor))) return false;
         if (!checking) void this.beginThread(editor, ctx.file);
         return true;
       },
@@ -94,10 +95,12 @@ export default class ThreadglyphPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('editor-menu', (menu, editor, info) => {
         const file = info.file;
-        if (!editor.somethingSelected() || !file) return;
+        if (!file) return;
+        const onImage = this.imageAtCursor(editor) !== null;
+        if (!editor.somethingSelected() && !onImage) return;
         menu.addItem((item) =>
           item
-            .setTitle('Threadglyph: comment on selection')
+            .setTitle(onImage ? 'Threadglyph: comment on image' : 'Threadglyph: comment on selection')
             .setIcon('message-square-plus')
             .setSection('selection')
             .onClick(() => void this.beginThread(editor, file)),
@@ -201,6 +204,10 @@ export default class ThreadglyphPlugin extends Plugin {
         await this.refresh();
       },
       reattach: (id) => this.reattach(id),
+      imageSrc: (path) => {
+        const file = this.app.vault.getAbstractFileByPath(path);
+        return file instanceof TFile ? this.app.vault.getResourcePath(file) : null;
+      },
       goTo: (id) => this.goTo(id),
       setFilter: (filter) => {
         this.filter = filter;
@@ -259,20 +266,47 @@ export default class ThreadglyphPlugin extends Plugin {
     };
     if (!this.loaded || !note) {
       for (const panel of panels) {
-        panel.update({ ...base, status: this.loaded ? 'no-note' : 'loading', views: [], pendingQuote: null });
+        panel.update({
+          ...base,
+          status: this.loaded ? 'no-note' : 'loading',
+          views: [],
+          pendingQuote: null,
+          pendingImagePath: null,
+        });
       }
       return;
     }
-    const views = buildThreadViews(this.store, note.path, await this.noteText(note));
-    const pending = this.controller.pending;
-    const pendingQuote = pending && pending.notePath === note.path ? pending.anchor.quote : null;
-    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote });
+    const views = buildThreadViews(this.store, note.path, await this.noteText(note), this.resolveLink);
+    const pending = this.controller.pending?.notePath === note.path ? this.controller.pending : null;
+    const pendingQuote = pending?.anchor.quote ?? null;
+    const pendingImagePath = pending?.anchor.imagePath ?? null;
+    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath });
   }
 
   /** Threads of a note with their anchors resolved against `doc`; empty until storage has loaded. */
   private anchoredViews(notePath: string, doc: string): ThreadView[] {
     if (!this.loaded || !this.store.hasThreads(notePath)) return [];
-    return buildThreadViews(this.store, notePath, doc);
+    return buildThreadViews(this.store, notePath, doc, this.resolveLink);
+  }
+
+  /** Obsidian's own link resolution, so embeds resolve exactly as the app shows them. */
+  private readonly resolveLink = (link: string, fromNote: string): string | null =>
+    isRemote(link) ? null : (this.app.metadataCache.getFirstLinkpathDest(link, fromNote)?.path ?? null);
+
+  /** The image embed under the cursor or selection, if any. */
+  private imageAtCursor(editor: Editor): ImageEmbed | null {
+    const from = editor.posToOffset(editor.getCursor('from'));
+    const to = editor.posToOffset(editor.getCursor('to'));
+    const embed = embedAtSelection(editor.getValue(), from, to);
+    // A text selection that merely contains an image stays a text comment.
+    return embed && embed.from <= from && to <= embed.to ? embed : null;
+  }
+
+  /** The vault file an embed shows, or a message saying why it cannot be used. */
+  private imageFile(embed: ImageEmbed, notePath: string): { path: string } | { message: string } {
+    if (isRemote(embed.link)) return { message: (imageSupport(embed.link) as { reason: string }).reason };
+    const path = this.resolveLink(embed.link, notePath);
+    return path ? { path } : { message: `Image file not found in this vault: ${embed.link}` };
   }
 
   /** Recomputes highlights, badges and margin glyphs for every open note. */
@@ -310,7 +344,7 @@ export default class ThreadglyphPlugin extends Plugin {
   /** Reading view is rendered once per section; re-render it only when its threads change. */
   private rerenderReadingIfChanged(view: MarkdownView, views: ThreadView[]): void {
     const path = view.file!.path;
-    const signature = JSON.stringify(readingMarks(views));
+    const signature = JSON.stringify(readingMarks(views, view.editor.getValue()));
     if (this.readingSignatures.get(path) === signature) return;
     this.readingSignatures.set(path, signature);
     if (view.getMode?.() === 'preview') view.previewMode?.rerender(true);
@@ -319,7 +353,7 @@ export default class ThreadglyphPlugin extends Plugin {
   private decorateReading(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
     const info = ctx.getSectionInfo(el);
     if (!info) return;
-    const marks = readingMarks(this.anchoredViews(ctx.sourcePath, info.text));
+    const marks = readingMarks(this.anchoredViews(ctx.sourcePath, info.text), info.text);
     if (!marks.length) return;
     const start = lineOffset(info.text, info.lineStart);
     const end = lineOffset(info.text, info.lineEnd + 1);
@@ -349,10 +383,22 @@ export default class ThreadglyphPlugin extends Plugin {
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
+  /** Starts a thread on the selected text, or on the image embed under the cursor. */
   private async beginThread(editor: Editor, file: TFile): Promise<void> {
-    const from = editor.posToOffset(editor.getCursor('from'));
-    const to = editor.posToOffset(editor.getCursor('to'));
-    const outcome = this.controller.beginThread(file.path, editor.getValue(), from, to);
+    const doc = editor.getValue();
+    const embed = this.imageAtCursor(editor);
+    let outcome: Outcome;
+    if (embed) {
+      const image = this.imageFile(embed, file.path);
+      outcome =
+        'path' in image
+          ? this.controller.beginImageThread(file.path, doc, embed.from, embed.to, image.path)
+          : { ok: false, message: image.message };
+    } else {
+      const from = editor.posToOffset(editor.getCursor('from'));
+      const to = editor.posToOffset(editor.getCursor('to'));
+      outcome = this.controller.beginThread(file.path, doc, from, to);
+    }
     if (!outcome.ok) {
       new Notice(outcome.message);
       return;
@@ -389,6 +435,7 @@ export default class ThreadglyphPlugin extends Plugin {
       { forNote: () => [thread], anchorFor: (id) => this.store.anchorFor(id) },
       file.path,
       view.editor.getValue(),
+      this.resolveLink,
     );
     if (match?.anchor.kind !== 'found') {
       new Notice('This thread’s passage could not be located.');
@@ -407,18 +454,33 @@ export default class ThreadglyphPlugin extends Plugin {
     const thread = this.store.get(threadId);
     const file = thread && this.app.vault.getAbstractFileByPath(thread.notePath);
     const view = file instanceof TFile ? this.markdownViewFor(file) : null;
-    if (!view?.file || !view.editor.somethingSelected()) {
-      new Notice('Select the passage in the note first, then choose Reattach.');
+    const image = thread?.anchorKind === 'image';
+    const embed = view && image ? this.imageAtCursor(view.editor) : null;
+    if (!view?.file || (image ? !embed : !view.editor.somethingSelected())) {
+      new Notice(
+        image
+          ? 'Put the cursor on the image embed in the note first, then choose Reattach.'
+          : 'Select the passage in the note first, then choose Reattach.',
+      );
       return;
     }
     const editor = view.editor;
-    const outcome = await this.controller.reattach(
-      threadId,
-      view.file.path,
-      editor.getValue(),
-      editor.posToOffset(editor.getCursor('from')),
-      editor.posToOffset(editor.getCursor('to')),
-    );
+    let outcome: Outcome;
+    if (embed) {
+      const target = this.imageFile(embed, view.file.path);
+      outcome =
+        'path' in target
+          ? await this.controller.reattach(threadId, view.file.path, editor.getValue(), embed.from, embed.to, target.path)
+          : { ok: false, message: target.message };
+    } else {
+      outcome = await this.controller.reattach(
+        threadId,
+        view.file.path,
+        editor.getValue(),
+        editor.posToOffset(editor.getCursor('from')),
+        editor.posToOffset(editor.getCursor('to')),
+      );
+    }
     if (!outcome.ok) new Notice(outcome.message);
     await this.refresh();
   }

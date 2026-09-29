@@ -1,3 +1,4 @@
+import { findImageEmbeds } from '../anchor/imageEmbed';
 import type { ThreadView } from './viewModel';
 
 /** A found anchor, in source offsets of the whole note. */
@@ -7,14 +8,28 @@ export interface ReadingMark {
   from: number;
   number: number;
   resolved: boolean;
+  /** For image threads: the embed's link as written, which Reading view keeps in the embed's `src`. */
+  imageLink?: string;
 }
 
-export function readingMarks(views: ThreadView[]): ReadingMark[] {
-  return views.flatMap((v) =>
-    v.anchor.kind === 'found' && v.quote !== null
-      ? [{ threadId: v.thread.id, quote: v.quote, from: v.anchor.from, number: v.number, resolved: v.thread.status === 'resolved' }]
-      : [],
-  );
+/** Marks for the found anchors of a note whose current source is `doc`. */
+export function readingMarks(views: ThreadView[], doc: string): ReadingMark[] {
+  return views.flatMap((v): ReadingMark[] => {
+    if (v.anchor.kind !== 'found' || v.quote === null) return [];
+    const mark: ReadingMark = {
+      threadId: v.thread.id,
+      quote: doc.slice(v.anchor.from, v.anchor.to),
+      from: v.anchor.from,
+      number: v.number,
+      resolved: v.thread.status === 'resolved',
+    };
+    if (v.imagePath !== null) {
+      const [embed] = findImageEmbeds(mark.quote);
+      if (!embed) return [];
+      mark.imageLink = embed.link;
+    }
+    return [mark];
+  });
 }
 
 /** Offset of the first character of `line` (0-based) in `text`. */
@@ -59,10 +74,34 @@ export function markRenderedSection(
   const section = source.slice(sectionStart, sectionEnd);
   for (const mark of marks) {
     if (mark.from < sectionStart || mark.from >= sectionEnd) continue;
+    if (mark.imageLink !== undefined) {
+      if (markImage(el, section, mark, sectionStart, onOpen)) marked++;
+      continue;
+    }
     const occurrence = countBefore(section, mark.quote, mark.from - sectionStart);
     if (wrapOccurrence(el, mark, occurrence, onOpen)) marked++;
   }
   return marked;
+}
+
+/**
+ * Wiki embeds render as `.internal-embed[src="<link>"]`; the anchor's embed is
+ * the same-numbered one with that link in this section. Markdown-style image
+ * embeds keep no link in the DOM, so they are not badged in Reading view.
+ */
+function markImage(el: HTMLElement, section: string, mark: ReadingMark, sectionStart: number, onOpen: (id: string) => void): boolean {
+  const occurrence = findImageEmbeds(section).filter(
+    (e) => e.link === mark.imageLink && e.from < mark.from - sectionStart,
+  ).length;
+  const matches = [...el.querySelectorAll<HTMLElement>('.internal-embed[src]')].filter(
+    (e) => e.getAttribute('src')!.split('|')[0].split('#')[0].trim() === mark.imageLink,
+  );
+  const target = matches[occurrence];
+  if (!target || target.classList.contains('tg-image-anchor')) return false;
+  target.classList.add('tg-image-anchor');
+  target.setAttribute('data-tg-thread', mark.threadId);
+  target.after(badge(mark, onOpen));
+  return true;
 }
 
 /** Text nodes in document order, skipping ones already inside a Threadglyph mark. */
@@ -99,21 +138,25 @@ function wrap(node: Text, at: number, mark: ReadingMark, onOpen: (id: string) =>
   target.replaceWith(span);
   span.appendChild(target);
 
-  const badge = document.createElement('span');
-  badge.className = mark.resolved ? 'tg-badge tg-badge-resolved' : 'tg-badge';
-  badge.textContent = String(mark.number);
-  badge.setAttribute('role', 'button');
-  badge.setAttribute('tabindex', '0');
-  badge.setAttribute('aria-label', `Open thread ${mark.number}`);
+  span.addEventListener('click', () => onOpen(mark.threadId));
+  rest.parentNode!.insertBefore(badge(mark, onOpen), rest);
+}
+
+function badge(mark: ReadingMark, onOpen: (id: string) => void): HTMLElement {
+  const el = document.createElement('span');
+  el.className = mark.resolved ? 'tg-badge tg-badge-resolved' : 'tg-badge';
+  el.textContent = String(mark.number);
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', `Open thread ${mark.number}`);
   const open = (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
     onOpen(mark.threadId);
   };
-  badge.addEventListener('click', open);
-  badge.addEventListener('keydown', (e) => {
+  el.addEventListener('click', open);
+  el.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') open(e);
   });
-  span.addEventListener('click', () => onOpen(mark.threadId));
-  rest.parentNode!.insertBefore(badge, rest);
+  return el;
 }

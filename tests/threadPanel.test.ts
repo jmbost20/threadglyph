@@ -27,6 +27,7 @@ function state(overrides: Partial<PanelState> = {}): PanelState {
     noteName: 'topic',
     views: buildThreadViews(store, note, doc),
     pendingQuote: pending?.notePath === note ? pending.anchor.quote : null,
+    pendingImagePath: pending?.notePath === note ? (pending.anchor.imagePath ?? null) : null,
     problems: store.loadProblems(),
     focusedThreadId: null,
     filter,
@@ -76,6 +77,7 @@ beforeEach(async () => {
     },
     reattach: vi.fn(async () => {}),
     goTo: vi.fn(async () => {}),
+    imageSrc: (path) => (path.includes('missing') ? null : `app://vault/${path}`),
     setFilter: (f) => {
       filter = f;
       render();
@@ -443,5 +445,55 @@ describe('ThreadPanel review tools', () => {
     key(reply, 'Enter');
     expect(document.activeElement).toBe(reply);
     expect(actions.goTo).not.toHaveBeenCalled();
+  });
+});
+
+describe('ThreadPanel image threads', () => {
+  const imageDoc = 'Look: ![[Photos/view.png]] and ![[gone/missing.png]].\n';
+  const at = (s: string) => [imageDoc.indexOf(s), imageDoc.indexOf(s) + s.length] as const;
+
+  it('previews the pending image and the thread image, which jumps to the embed', async () => {
+    doc = imageDoc;
+    ctl.beginImageThread(note, doc, ...at('![[Photos/view.png]]'), 'Photos/view.png');
+    render();
+    const pendingImg = q<HTMLImageElement>('.tg-card-new .tg-image img')!;
+    expect(pendingImg.getAttribute('src')).toBe('app://vault/Photos/view.png');
+    expect(pendingImg.alt).toBe('Image: view.png');
+    expect(q('.tg-card-new .tg-quote')).toBeNull();
+
+    type(q<HTMLTextAreaElement>('.tg-card-new textarea')!, 'Nice view');
+    button('Comment')!.click();
+    await flush();
+    const figure = q<HTMLButtonElement>('.tg-card .tg-image')!;
+    expect(figure.tagName).toBe('BUTTON');
+    expect(figure.getAttribute('aria-label')).toBe('Show view.png in the note');
+    expect(q('.tg-card .tg-image-name')?.textContent).toBe('view.png');
+    figure.click();
+    expect(actions.goTo).toHaveBeenCalledWith(store.forNote(note)[0].id);
+  });
+
+  it('names a missing or damaged image file instead of showing it', async () => {
+    doc = imageDoc;
+    ctl.beginImageThread(note, doc, ...at('![[gone/missing.png]]'), 'gone/missing.png');
+    await ctl.commitThread('Where did it go?');
+    ctl.beginImageThread(note, doc, ...at('![[Photos/view.png]]'), 'Photos/view.png');
+    await ctl.commitThread('Broken?');
+    render();
+    expect(q('.tg-image-missing')?.textContent).toBe('Image file not found: gone/missing.png');
+
+    const img = q<HTMLImageElement>('.tg-image img')!;
+    img.dispatchEvent(new Event('error'));
+    expect(q('.tg-image img')).toBeNull();
+    expect(qa('.tg-image-missing').map((e) => e.textContent)).toContain('view.png could not be displayed. The file may be damaged.');
+  });
+
+  it('shows an unanchored image without a jump link and with image wording', async () => {
+    doc = imageDoc;
+    ctl.beginImageThread(note, doc, ...at('![[Photos/view.png]]'), 'Photos/view.png');
+    await ctl.commitThread('Lost soon');
+    doc = 'The image was removed.';
+    render();
+    expect(q('.tg-image')?.tagName).toBe('DIV');
+    expect(q('.tg-anchor-problem')?.textContent).toMatch(/no longer embedded/);
   });
 });
