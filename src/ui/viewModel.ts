@@ -12,7 +12,11 @@ export interface ThreadView {
   thread: ThreadRecord;
   quote: string | null;
   anchor: AnchorState;
+  /** 1-based label shared by the panel card and the badge in the note, in reading order. */
+  number: number;
 }
+
+export type ThreadFilter = 'open' | 'resolved' | 'all';
 
 export interface ThreadSource {
   forNote(notePath: string): ThreadRecord[];
@@ -27,19 +31,35 @@ export function anchorState(doc: string, anchor: TextAnchor | undefined): Anchor
   return { kind: 'missing' };
 }
 
-/** Open threads first (in document order when anchored), then resolved ones. */
+/**
+ * Open threads first (in document order when anchored), then resolved ones.
+ * Numbers follow reading order across all threads, so resolving a thread never
+ * renumbers the others.
+ */
 export function buildThreadViews(source: ThreadSource, notePath: string, doc: string): ThreadView[] {
-  const views = source.forNote(notePath).map((thread) => {
+  const views: ThreadView[] = source.forNote(notePath).map((thread) => {
     const anchor = source.anchorFor(thread.id);
-    return { thread, quote: anchor?.quote ?? null, anchor: anchorState(doc, anchor) };
+    return { thread, quote: anchor?.quote ?? null, anchor: anchorState(doc, anchor), number: 0 };
   });
   const position = (v: ThreadView) => (v.anchor.kind === 'found' ? v.anchor.from : Number.MAX_SAFE_INTEGER);
+  const byPosition = (a: ThreadView, b: ThreadView) =>
+    position(a) - position(b) || a.thread.createdAt.localeCompare(b.thread.createdAt);
+  [...views].sort(byPosition).forEach((v, i) => (v.number = i + 1));
   return views.sort(
-    (a, b) =>
-      Number(a.thread.status === 'resolved') - Number(b.thread.status === 'resolved') ||
-      position(a) - position(b) ||
-      a.thread.createdAt.localeCompare(b.thread.createdAt),
+    (a, b) => Number(a.thread.status === 'resolved') - Number(b.thread.status === 'resolved') || byPosition(a, b),
   );
+}
+
+/** Case-insensitive match against the quote, message bodies and author names. */
+export function matchesQuery(view: ThreadView, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return true;
+  const haystack = [view.quote ?? '', ...view.thread.messages.flatMap((m) => [m.body, m.author.name])];
+  return haystack.some((text) => text.toLocaleLowerCase().includes(needle));
+}
+
+export function filterViews(views: ThreadView[], filter: ThreadFilter, query: string): ThreadView[] {
+  return views.filter((v) => (filter === 'all' || v.thread.status === filter) && matchesQuery(v, query));
 }
 
 export function anchorProblem(state: AnchorState): string | null {

@@ -2,12 +2,10 @@
 
 ## Current state
 
-- **Stage:** 1–2 (pipeline + editable text threads), first build.
-- **Branch / PR:** `codex/bootstrap` → [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (ready for owner review; merge is the owner's decision)
-- **CI / reviews:** see PR #1 checks for the current head. Gitar findings (3) closed; SonarQube Cloud connected. First analysis failed the gate on coverage (79.4% < 80%) plus 7 minor issues, both addressed (see `docs/sonar-experiments.md`).
+- **Stage:** 3–5 in progress on stacked branches, at the owner's request (2026-09-29) to push core code ahead and not wait on Sonar or Gitar rounds for each stage. CI still runs on every push; Sonar results get reviewed in one pass afterwards.
+- **Merged:** stages 1–2 via [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (`a4182ff`). First Sonar main analysis ran on `a4182ff`. Its gate shows "not computed" because a first baseline has no new code to compare against.
 - **Repo:** https://github.com/jmbost20/threadglyph (private)
-- **Local checks (2026-09-29):** typecheck, lint, 122 tests and build all pass; line coverage 99.8%. `src/main.ts` is covered by integration tests against a fake Obsidian runtime (`tests/plugin.test.ts`).
-- **Next step:** owner review and merge decision; manual check in the sandbox vault; after merge, verify the Sonar main-branch baseline.
+- **Where to test:** the sandbox vault only (`~/Developer/threadglyph-sandbox-vault`). The owner chose to stay there before any install into the main vault.
 
 ## Decisions (stage 0)
 
@@ -64,9 +62,20 @@
 - [ ] Manual check in the sandbox vault, including coexistence with the other comment plugin
 - [ ] Owner UI review
 
+### Stage 3: fresh review UI (`codex/review-ui`)
+Owner feedback from the first sandbox session: no visible highlight, and a request for a number on each commented passage like the old plugin's.
+- [x] Highlight fix. The CSS used `--color-accent-rgb`, which Obsidian does not define, so the colour was invalid and nothing drew. Tints are now `color-mix()` from `--color-accent`.
+- [x] Numbered badges after each passage, in reading order, with matching numbers on the panel cards. Resolving a thread keeps every number.
+- [x] The pending selection stays highlighted (dashed) while its first comment is written.
+- [x] Clicking highlighted text shows its card without taking focus from the note. Clicking a badge or glyph also puts the caret in the reply box.
+- [x] Panel: search (quote, messages, authors), an Open / Resolved / All filter, focusable cards (↑/↓ to move, Enter to jump to the passage), clearer empty states.
+- [x] Commands: Go to next / previous thread (wraps around) and Reply to thread at cursor. No default hotkeys. The sandbox script binds ⌘/, ⌥⌘/, ⌥⌘] and ⌥⌘[ in the sandbox only.
+- [x] Reading view highlights and badges. A quote that spans formatting (half bold, for example) is left unhighlighted rather than guessed.
+- [ ] Owner UI review in the sandbox
+
 ## Known limitations
 
 - Desktop only. Mobile and sync behavior are untested (stage 6).
 - Anchors are exact-text: if the quoted text itself is edited, the thread becomes "missing" and needs a reattach. Fuzzy matching is a possible later improvement.
-- Reading view shows no highlights yet (stage 3).
+- Reading view cannot highlight a quote that crosses a formatting boundary; the editor and the panel still show it.
 - Changes to local anchor files from outside the app are not watched: Obsidian doesn't index dot-folders, so they are only picked up on reload.

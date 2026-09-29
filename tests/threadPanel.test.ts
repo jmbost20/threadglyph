@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadController } from '../src/controller';
 import { ThreadStore } from '../src/storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type PanelActions, type PanelState } from '../src/ui/ThreadPanel';
-import { buildThreadViews, draftKey } from '../src/ui/viewModel';
+import { buildThreadViews, draftKey, type ThreadFilter } from '../src/ui/viewModel';
 import { MemoryFs, ai, fakeClock, human } from './helpers';
 import { addReply } from '../src/model/thread';
 
@@ -16,7 +16,7 @@ const range = (s: string) => [doc.indexOf(s), doc.indexOf(s) + s.length] as cons
 let store: ThreadStore;
 let ctl: ThreadController;
 let panel: ThreadPanel;
-let showResolved: boolean;
+let filter: ThreadFilter;
 let actions: PanelActions;
 
 function state(overrides: Partial<PanelState> = {}): PanelState {
@@ -29,7 +29,7 @@ function state(overrides: Partial<PanelState> = {}): PanelState {
     pendingQuote: pending?.notePath === note ? pending.anchor.quote : null,
     problems: store.loadProblems(),
     focusedThreadId: null,
-    showResolved,
+    filter,
     ...overrides,
   };
 }
@@ -48,7 +48,7 @@ const key = (el: HTMLElement, k: string, mod = false) =>
 
 beforeEach(async () => {
   doc = 'Intro. The passage under review. Outro.\n';
-  showResolved = false;
+  filter = 'open';
   const clock = fakeClock();
   store = new ThreadStore(new MemoryFs(), clock);
   ctl = new ThreadController(store, () => human, clock);
@@ -76,8 +76,8 @@ beforeEach(async () => {
     },
     reattach: vi.fn(async () => {}),
     goTo: vi.fn(async () => {}),
-    toggleShowResolved: () => {
-      showResolved = !showResolved;
+    setFilter: (f) => {
+      filter = f;
       render();
     },
     rerender: render,
@@ -115,7 +115,7 @@ describe('ThreadPanel', () => {
 
   it('shows an empty state for a note without threads', () => {
     render();
-    expect(q('.tg-empty')?.textContent).toMatch(/No open threads/);
+    expect(q('.tg-empty')?.textContent).toMatch(/No threads yet/);
     expect(q('.tg-header-meta')?.textContent).toBe('0 open');
   });
 
@@ -215,15 +215,16 @@ describe('ThreadPanel', () => {
     expect(q('.tg-origin')?.textContent).toBe('AI');
   });
 
-  it('resolves, hides behind a toggle, and reopens', async () => {
+  it('resolves, hides behind the Open filter, and reopens', async () => {
     const thread = await createViaPanel('Done soon');
     button('Resolve')!.click();
     await flush();
     expect(store.get(thread.id)!.status).toBe('resolved');
     expect(q('.tg-card')).toBeNull();
-    const toggle = button('Show resolved (1)')!;
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    toggle.click();
+    expect(q('.tg-empty')?.textContent).toMatch(/No open threads/);
+    expect(button('Open')!.getAttribute('aria-pressed')).toBe('true');
+    button('Resolved')!.click();
+    expect(button('Resolved')!.getAttribute('aria-pressed')).toBe('true');
     expect(q('.tg-card-resolved')).not.toBeNull();
     expect(q('.tg-card-resolved textarea')).toBeNull();
     button('Reopen')!.click();
@@ -254,6 +255,14 @@ describe('ThreadPanel', () => {
     panel.scrollToThread(thread.id);
     expect(scroll).toHaveBeenCalled();
     expect(document.activeElement?.tagName).toBe('TEXTAREA');
+  });
+
+  it('can bring a thread into view without moving focus', async () => {
+    const thread = await createViaPanel('Stay put');
+    q<HTMLElement>('.tg-card')!.scrollIntoView = vi.fn();
+    (document.activeElement as HTMLElement | null)?.blur();
+    panel.scrollToThread(thread.id, false);
+    expect(document.activeElement?.tagName).not.toBe('TEXTAREA');
   });
 
   it('focuses the new-thread composer', () => {
@@ -330,5 +339,109 @@ describe('ThreadPanel double submit (Gitar review on PR #1)', () => {
     process.off('unhandledRejection', onError);
     expect(reply.disabled).toBe(false);
     expect(ctl.drafts.get(draftKey.reply(thread.id))).toBe('Keep me');
+  });
+});
+
+describe('ThreadPanel review tools', () => {
+  async function threeThreads() {
+    doc = 'Alpha point. Beta point. Gamma point.\n';
+    for (const [text, body] of [
+      ['Gamma point', 'third'],
+      ['Alpha point', 'first about apples'],
+      ['Beta point', 'second'],
+    ] as const) {
+      ctl.beginThread(note, doc, ...range(text));
+      await ctl.commitThread(body);
+    }
+    render();
+  }
+  const numbers = () => qa('.tg-card-number').map((b) => b.textContent);
+  const search = () => q<HTMLInputElement>('.tg-search')!;
+
+  it('numbers cards in reading order, matching the badges in the note', async () => {
+    await threeThreads();
+    expect(numbers()).toEqual(['1', '2', '3']);
+    expect(qa('.tg-quote-link').map((b) => b.textContent)).toEqual(['Alpha point', 'Beta point', 'Gamma point']);
+    expect(qa('.tg-card')[0].getAttribute('aria-label')).toBe('Thread 1');
+  });
+
+  it('keeps numbers stable when a thread is resolved', async () => {
+    await threeThreads();
+    const beta = store.forNote(note).find((t) => t.messages[0].body === 'second')!;
+    await ctl.setResolved(beta.id, true);
+    render();
+    expect(numbers()).toEqual(['1', '3']);
+    filter = 'all';
+    render();
+    expect(numbers()).toEqual(['1', '3', '2']);
+    expect(qa('.tg-card')[2].getAttribute('aria-label')).toBe('Thread 2, resolved');
+  });
+
+  it('searches quotes, messages and authors, keeping focus in the search box', async () => {
+    await threeThreads();
+    const box = search();
+    box.focus();
+    box.value = 'APPLES';
+    box.dispatchEvent(new Event('input'));
+    expect(numbers()).toEqual(['1']);
+    expect(document.activeElement).toBe(search());
+
+    search().value = 'gamma';
+    search().dispatchEvent(new Event('input'));
+    expect(numbers()).toEqual(['3']);
+
+    search().value = human.name;
+    search().dispatchEvent(new Event('input'));
+    expect(numbers()).toEqual(['1', '2', '3']);
+
+    search().value = 'nothing like this';
+    search().dispatchEvent(new Event('input'));
+    expect(q('.tg-empty')?.textContent).toBe('No threads match “nothing like this”.');
+
+    key(search(), 'Escape');
+    expect(search().value).toBe('');
+    expect(numbers()).toEqual(['1', '2', '3']);
+  });
+
+  it('clears a search that hides the thread being opened', async () => {
+    await threeThreads();
+    search().value = 'apples';
+    search().dispatchEvent(new Event('input'));
+    const gamma = store.forNote(note).find((t) => t.messages[0].body === 'third')!;
+    panel.scrollToThread(gamma.id, false);
+    expect(search().value).toBe('');
+    expect(q(`[data-thread-id="${gamma.id}"]`)).not.toBeNull();
+  });
+
+  it('explains an empty Resolved filter', async () => {
+    await threeThreads();
+    button('Resolved')!.click();
+    expect(q('.tg-empty')?.textContent).toBe('No resolved threads.');
+    button('All')!.click();
+    expect(numbers()).toEqual(['1', '2', '3']);
+  });
+
+  it('moves between cards with the arrow keys and opens the passage with Enter', async () => {
+    await threeThreads();
+    const cards = qa('.tg-card');
+    cards[0].focus();
+    key(cards[0], 'ArrowDown');
+    expect(document.activeElement).toBe(cards[1]);
+    key(cards[1], 'ArrowUp');
+    expect(document.activeElement).toBe(cards[0]);
+    key(cards[0], 'ArrowUp');
+    expect(document.activeElement).toBe(cards[0]);
+    key(cards[0], 'Enter');
+    expect(actions.goTo).toHaveBeenCalledWith(cards[0].dataset.threadId);
+  });
+
+  it('leaves arrow keys alone while typing in a reply', async () => {
+    await threeThreads();
+    const reply = q<HTMLTextAreaElement>('.tg-card textarea')!;
+    reply.focus();
+    key(reply, 'ArrowDown');
+    key(reply, 'Enter');
+    expect(document.activeElement).toBe(reply);
+    expect(actions.goTo).not.toHaveBeenCalled();
   });
 });

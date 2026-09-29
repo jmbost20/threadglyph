@@ -5,7 +5,7 @@
  *
  *   npm run build && npm run sandbox [-- <vault-path>]
  */
-import { existsSync, mkdirSync, symlinkSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +49,20 @@ for (const file of ['main.js', 'manifest.json', 'styles.css']) {
 
 const communityPlugins = join(vault, '.obsidian', 'community-plugins.json');
 if (!existsSync(communityPlugins)) writeFileSync(communityPlugins, JSON.stringify(['threadglyph'], null, 2));
+
+// Sandbox-only shortcuts mirroring the main vault's comment key (Cmd/Ctrl+/). The plugin
+// itself ships without default hotkeys so it never collides with Agent Comments.
+// Existing bindings in the sandbox are kept.
+const hotkeysPath = join(vault, '.obsidian', 'hotkeys.json');
+const hotkeys = existsSync(hotkeysPath) ? JSON.parse(readFileSync(hotkeysPath, 'utf8')) : {};
+const defaults = {
+  'threadglyph:comment-on-selection': [{ modifiers: ['Mod'], key: '/' }],
+  'threadglyph:reply-at-cursor': [{ modifiers: ['Mod', 'Alt'], key: '/' }],
+  'threadglyph:next-thread': [{ modifiers: ['Mod', 'Alt'], key: ']' }],
+  'threadglyph:previous-thread': [{ modifiers: ['Mod', 'Alt'], key: '[' }],
+};
+for (const [command, keys] of Object.entries(defaults)) hotkeys[command] ??= keys;
+writeFileSync(hotkeysPath, JSON.stringify(hotkeys, null, 2));
 
 console.log(`Sandbox vault ready at ${vault}`);
 console.log('Open it in Obsidian (Open another vault → Open folder as vault), then enable community plugins.');

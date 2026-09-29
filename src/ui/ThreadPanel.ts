@@ -4,9 +4,11 @@ import type { LoadProblem } from '../storage/threadStore';
 import {
   anchorProblem,
   draftKey,
+  filterViews,
   formatTimestamp,
   originLabel,
   previewQuote,
+  type ThreadFilter,
   type ThreadView,
 } from './viewModel';
 
@@ -20,7 +22,7 @@ export interface PanelState {
   pendingQuote: string | null;
   problems: LoadProblem[];
   focusedThreadId: string | null;
-  showResolved: boolean;
+  filter: ThreadFilter;
 }
 
 /** What the panel may ask the plugin to do. All persistence lives behind this boundary. */
@@ -37,11 +39,18 @@ export interface PanelActions {
   setResolved(threadId: string, resolved: boolean): Promise<void>;
   reattach(threadId: string): Promise<void>;
   goTo(threadId: string): Promise<void>;
-  toggleShowResolved(): void;
+  setFilter(filter: ThreadFilter): void;
   rerender(): void;
 }
 
 const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.metaKey || e.ctrlKey);
+
+const SEARCH_KEY = 'search';
+const FILTERS: { value: ThreadFilter; label: string }[] = [
+  { value: 'open', label: 'Open' },
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'all', label: 'All' },
+];
 
 export class ThreadPanel extends ItemView {
   private state: PanelState = {
@@ -52,8 +61,10 @@ export class ThreadPanel extends ItemView {
     pendingQuote: null,
     problems: [],
     focusedThreadId: null,
-    showResolved: false,
+    filter: 'open',
   };
+  /** Search text is local to the panel; typing never touches storage. */
+  private query = '';
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -88,10 +99,19 @@ export class ThreadPanel extends ItemView {
     this.render();
   }
 
-  scrollToThread(threadId: string): void {
-    const card = this.contentEl.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(threadId)}"]`);
+  /**
+   * Brings a thread's card into view. A search that hides the card is cleared.
+   * Focus moves into the card's composer only when the user asked to reply.
+   */
+  scrollToThread(threadId: string, focusComposer = true): void {
+    const find = () => this.contentEl.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(threadId)}"]`);
+    if (!find() && this.query) {
+      this.query = '';
+      this.render();
+    }
+    const card = find();
     card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    card?.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+    if (focusComposer) card?.querySelector<HTMLTextAreaElement>('textarea')?.focus();
   }
 
   focusNewThread(): void {
@@ -102,7 +122,7 @@ export class ThreadPanel extends ItemView {
 
   /** Re-renders while keeping focus and caret in whichever draft the user was typing. */
   private render(): void {
-    const active = document.activeElement as HTMLTextAreaElement | null;
+    const active = document.activeElement as HTMLTextAreaElement | HTMLInputElement | null;
     const focusKey = active?.closest('.tg-panel') ? active.dataset.draftKey : undefined;
     const caret = focusKey ? [active!.selectionStart, active!.selectionEnd] : null;
 
@@ -119,7 +139,7 @@ export class ThreadPanel extends ItemView {
     }
 
     if (focusKey) {
-      const el = root.querySelector<HTMLTextAreaElement>(`textarea[data-draft-key="${CSS.escape(focusKey)}"]`);
+      const el = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(`[data-draft-key="${CSS.escape(focusKey)}"]`);
       if (el) {
         el.focus();
         if (caret) el.setSelectionRange(caret[0], caret[1]);
@@ -140,6 +160,7 @@ export class ThreadPanel extends ItemView {
       const counts = resolved ? `${open} open · ${resolved} resolved` : `${open} open`;
       header.createDiv({ cls: 'tg-header-meta', text: counts });
     }
+    if (this.state.status === 'ready') this.renderToolbar(header);
     if (this.state.problems.length) {
       const warn = header.createDiv({ cls: 'tg-problem' });
       warn.setText(
@@ -149,29 +170,67 @@ export class ThreadPanel extends ItemView {
     }
   }
 
+  private renderToolbar(header: HTMLElement): void {
+    const bar = header.createDiv({ cls: 'tg-toolbar' });
+    const search = bar.createEl('input', {
+      cls: 'tg-search',
+      attr: { type: 'search', placeholder: 'Search threads', 'aria-label': 'Search threads' },
+    });
+    search.dataset.draftKey = SEARCH_KEY;
+    search.value = this.query;
+    search.oninput = () => {
+      this.query = search.value;
+      this.render();
+    };
+    search.onkeydown = (e) => {
+      if (e.key === 'Escape' && search.value) {
+        e.preventDefault();
+        this.query = '';
+        this.render();
+      }
+    };
+
+    const group = bar.createDiv({ cls: 'tg-filter', attr: { role: 'group', 'aria-label': 'Show threads' } });
+    for (const { value, label } of FILTERS) {
+      const b = group.createEl('button', { cls: 'tg-filter-option', text: label });
+      const selected = this.state.filter === value;
+      b.setAttr('aria-pressed', String(selected));
+      if (selected) b.addClass('is-active');
+      b.onclick = () => this.actions.setFilter(value);
+    }
+  }
+
   private renderBody(root: HTMLElement): void {
     const list = root.createDiv({ cls: 'tg-list' });
     if (this.state.pendingQuote !== null && this.state.notePath) this.renderNewThread(list, this.state.notePath);
 
-    const open = this.state.views.filter((v) => v.thread.status === 'open');
-    const resolved = this.state.views.filter((v) => v.thread.status === 'resolved');
+    const shown = filterViews(this.state.views, this.state.filter, this.query);
+    if (!shown.length && this.state.pendingQuote === null) list.createDiv({ cls: 'tg-empty', text: this.emptyText() });
+    for (const view of shown) this.renderThread(list, view);
+  }
 
-    if (!open.length && this.state.pendingQuote === null) {
-      list.createDiv({
-        cls: 'tg-empty',
-        text: 'No open threads. Select text in the note, then run “Threadglyph: Comment on selection”.',
-      });
+  private emptyText(): string {
+    if (this.query.trim()) return `No threads match “${this.query.trim()}”.`;
+    if (!this.state.views.length) {
+      return 'No threads yet. Select text in the note, then run “Threadglyph: Comment on selection”.';
     }
-    for (const view of open) this.renderThread(list, view);
+    if (this.state.filter === 'open') return 'No open threads. Choose Resolved or All to see the rest.';
+    return 'No resolved threads.';
+  }
 
-    if (resolved.length) {
-      const toggle = list.createEl('button', {
-        cls: 'tg-link tg-resolved-toggle',
-        text: this.state.showResolved ? `Hide resolved (${resolved.length})` : `Show resolved (${resolved.length})`,
-      });
-      toggle.setAttr('aria-expanded', String(this.state.showResolved));
-      toggle.onclick = () => this.actions.toggleShowResolved();
-      if (this.state.showResolved) for (const view of resolved) this.renderThread(list, view);
+  /** Arrow keys move between cards and Enter jumps to the passage, only when the card itself has focus. */
+  private onCardKey(e: KeyboardEvent, card: HTMLElement, threadId: string): void {
+    if (e.target !== card) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void this.actions.goTo(threadId);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const cards = [...this.contentEl.querySelectorAll<HTMLElement>('.tg-card[data-thread-id]')];
+      const next = cards[cards.indexOf(card) + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (next) {
+        e.preventDefault();
+        next.focus();
+      }
     }
   }
 
@@ -189,10 +248,15 @@ export class ThreadPanel extends ItemView {
     const { thread } = view;
     const card = list.createDiv({ cls: 'tg-card' });
     card.dataset.threadId = thread.id;
+    card.setAttr('tabindex', '0');
+    card.setAttr('aria-label', `Thread ${view.number}${thread.status === 'resolved' ? ', resolved' : ''}`);
+    card.onkeydown = (e) => this.onCardKey(e, card, thread.id);
     if (thread.status === 'resolved') card.addClass('tg-card-resolved');
     if (thread.id === this.state.focusedThreadId) card.addClass('tg-card-focused');
 
     const quoteRow = card.createDiv({ cls: 'tg-quote-row' });
+    const badge = quoteRow.createSpan({ cls: 'tg-badge tg-card-number', text: String(view.number) });
+    badge.setAttr('aria-hidden', 'true');
     if (view.quote !== null && view.anchor.kind === 'found') {
       const quote = quoteRow.createEl('button', { cls: 'tg-quote tg-quote-link', text: previewQuote(view.quote) });
       quote.setAttr('aria-label', 'Show this passage in the note');

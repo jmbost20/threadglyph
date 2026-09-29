@@ -1,8 +1,18 @@
 /* Threadglyph — all selectors are namespaced with `tg-` so they never touch other plugins. */
 
-.tg-panel {
+/*
+ * Obsidian exposes the accent as --color-accent (and HSL parts), not as an RGB
+ * triple, so tints are mixed from it. Declared on body so the editor, Reading
+ * view and panel share them, and they follow the theme's light/dark accent.
+ */
+body {
   --tg-accent: var(--color-accent);
-  --tg-accent-soft: rgba(var(--color-accent-rgb), 0.14);
+  --tg-accent-soft: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --tg-accent-mid: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  --tg-accent-line: color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+
+.tg-panel {
   --tg-radius: 10px;
   padding: 12px 14px 24px;
   font-size: var(--font-ui-small);
@@ -49,7 +59,7 @@
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(var(--color-orange-rgb), 0.12);
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
@@ -262,15 +272,134 @@
   text-decoration: underline;
 }
 
-.tg-resolved-toggle {
-  align-self: flex-start;
+/* ── Toolbar ────────────────────────────────────────────── */
+
+.tg-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-/* ── Editor ─────────────────────────────────────────────── */
+.tg-search {
+  width: 100%;
+  font-size: var(--font-ui-small);
+}
+
+.tg-filter {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--background-modifier-hover);
+}
+
+.tg-filter-option {
+  flex: 1;
+  height: auto;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-filter-option.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+/* ── Badges (note and panel share the number) ───────────── */
+
+.tg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  height: 1.35em;
+  padding: 0 0.3em;
+  border-radius: 999px;
+  background: var(--tg-accent);
+  color: var(--text-on-accent);
+  font-family: var(--font-interface);
+  font-size: 0.66em;
+  font-style: normal;
+  font-weight: var(--font-bold);
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* In the note the badge sits raised at the end of the passage, like a footnote marker. */
+.cm-content .tg-badge,
+.markdown-rendered .tg-badge {
+  position: relative;
+  top: -0.75em;
+  margin-left: 2px;
+}
+
+.tg-badge-resolved {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.tg-badge-focused {
+  outline: 2px solid var(--tg-accent-mid);
+  outline-offset: 1px;
+}
+
+.tg-badge:focus-visible {
+  outline: 2px solid var(--tg-accent);
+  outline-offset: 2px;
+}
+
+.tg-quote-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tg-quote-row .tg-quote {
+  flex: 1;
+  min-width: 0;
+}
+
+.tg-card-number {
+  flex: none;
+  margin-top: 4px;
+  cursor: default;
+}
+
+.tg-card-resolved .tg-card-number {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.tg-card:focus-visible {
+  outline: none;
+  border-color: var(--tg-accent);
+  box-shadow: 0 0 0 2px var(--tg-accent-mid);
+}
+
+/* ── Highlights ─────────────────────────────────────────── */
 
 .tg-anchor {
-  background: var(--tg-accent-soft, rgba(var(--color-accent-rgb), 0.14));
-  border-bottom: 1px solid rgba(var(--color-accent-rgb), 0.5);
+  background: var(--tg-accent-soft);
+  border-bottom: 2px solid var(--tg-accent-line);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tg-anchor-focused {
+  background: var(--tg-accent-mid);
+}
+
+.tg-anchor-pending {
+  background: var(--tg-accent-soft);
+  border-bottom: 2px dashed var(--tg-accent-line);
+  cursor: text;
 }
 
 .tg-anchor-resolved {

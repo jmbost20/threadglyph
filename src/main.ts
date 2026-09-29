@@ -10,6 +10,7 @@ import {
   debounce,
   type App,
   type Editor,
+  type MarkdownPostProcessorContext,
 } from 'obsidian';
 import { ThreadController, type Outcome } from './controller';
 import { THREADS_DIR } from './storage/paths';
@@ -17,7 +18,8 @@ import { AdapterFileStore } from './storage/adapterFileStore';
 import { ThreadStore } from './storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type PanelActions } from './ui/ThreadPanel';
 import { setThreadMarks, threadMarksExtension, type ThreadMark } from './ui/editorMarks';
-import { buildThreadViews } from './ui/viewModel';
+import { lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks';
+import { buildThreadViews, type ThreadFilter, type ThreadView } from './ui/viewModel';
 
 interface ThreadglyphSettings {
   authorName: string;
@@ -34,7 +36,9 @@ export default class ThreadglyphPlugin extends Plugin {
   private store!: ThreadStore;
   private controller!: ThreadController;
   private loaded = false;
-  private showResolved = false;
+  private filter: ThreadFilter = 'open';
+  /** Last Reading-view marks per note, so previews re-render only when threads change. */
+  private readonly readingSignatures = new Map<string, string>();
   private focusedThreadId: string | null = null;
   /** The note the panel is showing; kept when focus moves into the panel itself. */
   private currentFile: TFile | null = null;
@@ -47,7 +51,8 @@ export default class ThreadglyphPlugin extends Plugin {
     this.controller = new ThreadController(this.store, () => ({ kind: 'human', name: this.settings.authorName }));
 
     this.registerView(VIEW_TYPE_THREADGLYPH, (leaf) => new ThreadPanel(leaf, this.panelActions()));
-    this.registerEditorExtension(threadMarksExtension((id) => void this.focusThread(id)));
+    this.registerEditorExtension(threadMarksExtension((id, source) => void this.focusThread(id, source !== 'text')));
+    this.registerMarkdownPostProcessor((el, ctx) => this.decorateReading(el, ctx));
 
     this.addCommand({
       id: 'comment-on-selection',
@@ -55,6 +60,29 @@ export default class ThreadglyphPlugin extends Plugin {
       editorCheckCallback: (checking, editor, ctx) => {
         if (!editor.somethingSelected() || !ctx.file) return false;
         if (!checking) void this.beginThread(editor, ctx.file);
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'next-thread',
+      name: 'Go to next thread',
+      editorCheckCallback: (checking, editor, ctx) => this.stepThread(checking, editor, ctx.file, 1),
+    });
+    this.addCommand({
+      id: 'previous-thread',
+      name: 'Go to previous thread',
+      editorCheckCallback: (checking, editor, ctx) => this.stepThread(checking, editor, ctx.file, -1),
+    });
+    this.addCommand({
+      id: 'reply-at-cursor',
+      name: 'Reply to thread at cursor',
+      editorCheckCallback: (checking, editor, ctx) => {
+        const offset = editor.posToOffset(editor.getCursor('from'));
+        const hit = ctx.file && this.anchoredViews(ctx.file.path, editor.getValue()).find(
+          (v) => v.anchor.kind === 'found' && v.anchor.from <= offset && offset <= v.anchor.to,
+        );
+        if (!hit) return false;
+        if (!checking) void this.focusThread(hit.thread.id, true);
         return true;
       },
     });
@@ -174,8 +202,8 @@ export default class ThreadglyphPlugin extends Plugin {
       },
       reattach: (id) => this.reattach(id),
       goTo: (id) => this.goTo(id),
-      toggleShowResolved: () => {
-        this.showResolved = !this.showResolved;
+      setFilter: (filter) => {
+        this.filter = filter;
         void this.refresh();
       },
       rerender: () => void this.refresh(),
@@ -227,7 +255,7 @@ export default class ThreadglyphPlugin extends Plugin {
       noteName: note?.basename ?? '',
       problems: this.store.loadProblems(),
       focusedThreadId: this.focusedThreadId,
-      showResolved: this.showResolved,
+      filter: this.filter,
     };
     if (!this.loaded || !note) {
       for (const panel of panels) {
@@ -241,23 +269,82 @@ export default class ThreadglyphPlugin extends Plugin {
     for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote });
   }
 
-  /** Recomputes highlights and margin glyphs for every open note that has threads. */
+  /** Threads of a note with their anchors resolved against `doc`; empty until storage has loaded. */
+  private anchoredViews(notePath: string, doc: string): ThreadView[] {
+    if (!this.loaded || !this.store.hasThreads(notePath)) return [];
+    return buildThreadViews(this.store, notePath, doc);
+  }
+
+  /** Recomputes highlights, badges and margin glyphs for every open note. */
   private async updateEditorMarks(): Promise<void> {
     for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
       const view = leaf.view;
       if (!(view instanceof MarkdownView) || !view.file) continue;
+      const doc = view.editor.getValue();
+      const views = this.anchoredViews(view.file.path, doc);
+      this.rerenderReadingIfChanged(view, views);
       const cm = cmView(view);
       if (!cm) continue;
       const marks: ThreadMark[] = [];
-      if (this.loaded && this.store.hasThreads(view.file.path)) {
-        for (const v of buildThreadViews(this.store, view.file.path, view.editor.getValue())) {
-          if (v.anchor.kind === 'found') {
-            marks.push({ threadId: v.thread.id, from: v.anchor.from, to: v.anchor.to, resolved: v.thread.status === 'resolved' });
-          }
-        }
+      for (const v of views) {
+        if (v.anchor.kind !== 'found') continue;
+        marks.push({
+          threadId: v.thread.id,
+          from: v.anchor.from,
+          to: v.anchor.to,
+          resolved: v.thread.status === 'resolved',
+          number: v.number,
+          focused: v.thread.id === this.focusedThreadId,
+        });
+      }
+      const pending = this.controller.pending;
+      if (pending?.notePath === view.file.path) {
+        const at = doc.indexOf(pending.anchor.prefix + pending.anchor.quote);
+        const from = at === -1 ? -1 : at + pending.anchor.prefix.length;
+        if (from >= 0) marks.push({ threadId: '', from, to: from + pending.anchor.quote.length, resolved: false, pending: true });
       }
       cm.dispatch({ effects: setThreadMarks.of(marks) });
     }
+  }
+
+  /** Reading view is rendered once per section; re-render it only when its threads change. */
+  private rerenderReadingIfChanged(view: MarkdownView, views: ThreadView[]): void {
+    const path = view.file!.path;
+    const signature = JSON.stringify(readingMarks(views));
+    if (this.readingSignatures.get(path) === signature) return;
+    this.readingSignatures.set(path, signature);
+    if (view.getMode?.() === 'preview') view.previewMode?.rerender(true);
+  }
+
+  private decorateReading(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
+    const info = ctx.getSectionInfo(el);
+    if (!info) return;
+    const marks = readingMarks(this.anchoredViews(ctx.sourcePath, info.text));
+    if (!marks.length) return;
+    const start = lineOffset(info.text, info.lineStart);
+    const end = lineOffset(info.text, info.lineEnd + 1);
+    markRenderedSection(el, info.text, start, end, marks, (id) => void this.focusThread(id, false));
+  }
+
+  /** Moves the selection to the next or previous anchored passage, wrapping around the note. */
+  private stepThread(checking: boolean, editor: Editor, file: TFile | null, direction: 1 | -1): boolean {
+    if (!file) return false;
+    const found = this.anchoredViews(file.path, editor.getValue())
+      .flatMap((v) => (v.anchor.kind === 'found' ? [{ id: v.thread.id, from: v.anchor.from, to: v.anchor.to }] : []))
+      .sort((a, b) => a.from - b.from);
+    if (!found.length) return false;
+    if (checking) return true;
+    const cursor = editor.posToOffset(editor.getCursor('from'));
+    const target =
+      direction === 1
+        ? (found.find((a) => a.from > cursor) ?? found[0])
+        : ([...found].reverse().find((a) => a.from < cursor) ?? found[found.length - 1]);
+    const from = editor.offsetToPos(target.from);
+    const to = editor.offsetToPos(target.to);
+    editor.setSelection(from, to);
+    editor.scrollIntoView({ from, to }, true);
+    void this.focusThread(target.id, false);
+    return true;
   }
 
   // ── Actions ─────────────────────────────────────────────────────────────────
@@ -275,12 +362,13 @@ export default class ThreadglyphPlugin extends Plugin {
     panel?.focusNewThread();
   }
 
-  private async focusThread(threadId: string): Promise<void> {
+  /** Shows a thread's card; `focusComposer` moves the caret into its reply box. */
+  private async focusThread(threadId: string, focusComposer = true): Promise<void> {
     this.focusedThreadId = threadId;
     const thread = this.store.get(threadId);
-    if (thread?.status === 'resolved') this.showResolved = true;
+    if (thread && this.filter !== 'all' && thread.status !== this.filter) this.filter = 'all';
     const panel = await this.activatePanel();
-    panel?.scrollToThread(threadId);
+    panel?.scrollToThread(threadId, focusComposer);
   }
 
   private async goTo(threadId: string): Promise<void> {
@@ -312,6 +400,7 @@ export default class ThreadglyphPlugin extends Plugin {
     view.editor.setSelection(from, to);
     view.editor.scrollIntoView({ from, to }, true);
     this.focusedThreadId = threadId;
+    await this.refresh();
   }
 
   private async reattach(threadId: string): Promise<void> {

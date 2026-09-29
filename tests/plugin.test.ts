@@ -313,11 +313,111 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
 
     button('Resolve')!.click();
     await flush();
-    button('Show resolved (1)')!.click();
+    button('Resolved')!.click();
     await flush();
     button('Reopen')!.click();
     await flush();
     expect(threads()[0].status).toBe('open');
+  });
+
+  it('numbers highlights with badges and marks the pending selection', async () => {
+    select('Evening');
+    command('comment-on-selection').editorCheckCallback!(false, view.editor, view);
+    await flush();
+    expect(view.editor.cm!.dom.querySelector('.tg-anchor-pending')?.textContent).toBe('Evening');
+    button('Cancel')!.click();
+    await flush();
+    expect(view.editor.cm!.dom.querySelector('.tg-anchor-pending')).toBeNull();
+
+    await commentOn('Evening', 'Second in reading order');
+    await commentOn('worth a comment', 'First in reading order');
+    const badges = [...view.editor.cm!.dom.querySelectorAll<HTMLElement>('.tg-badge')];
+    expect(badges.map((b) => b.textContent)).toEqual(['1', '2']);
+    expect([...panelEl().querySelectorAll('.tg-card-number')].map((b) => b.textContent)).toEqual(['1', '2']);
+  });
+
+  it('opens a thread from its badge (focusing the reply) and from its text (keeping focus in the note)', async () => {
+    await commentOn('worth a comment', 'Badge me');
+    const { ThreadPanel } = await import('../src/ui/ThreadPanel');
+    const scroll = vi.spyOn(ThreadPanel.prototype, 'scrollToThread');
+    const cm = view.editor.cm!;
+    const id = threads()[0].id;
+
+    cm.dom.querySelector<HTMLElement>('.tg-anchor')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(scroll).toHaveBeenLastCalledWith(id, false);
+    expect(q('.tg-card-focused')).not.toBeNull();
+    expect(cm.dom.querySelector('.tg-anchor-focused')).not.toBeNull();
+
+    cm.dom.querySelector<HTMLElement>('.tg-badge')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(scroll).toHaveBeenLastCalledWith(id, true);
+  });
+
+  it('steps through threads in the note, wrapping at either end', async () => {
+    const next = command('next-thread').editorCheckCallback!;
+    const previous = command('previous-thread').editorCheckCallback!;
+    expect(next(true, view.editor, view)).toBe(false);
+    await commentOn('Morning', 'one');
+    await commentOn('Evening', 'two');
+    expect(next(true, view.editor, view)).toBe(true);
+    expect(next(true, view.editor, { file: null })).toBe(false);
+
+    const at = (s: string) => [NOTE_TEXT.indexOf(s), NOTE_TEXT.indexOf(s) + s.length];
+    view.editor.selection = [0, 0];
+    next(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Evening'));
+    next(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Morning'));
+    previous(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Evening'));
+    previous(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Morning'));
+    await flush();
+    expect(q('.tg-card-focused .tg-quote-link')?.textContent).toBe('Morning');
+  });
+
+  it('replies to the thread under the cursor', async () => {
+    const reply = command('reply-at-cursor').editorCheckCallback!;
+    await commentOn('worth a comment', 'Under the cursor');
+    const { ThreadPanel } = await import('../src/ui/ThreadPanel');
+    const scroll = vi.spyOn(ThreadPanel.prototype, 'scrollToThread');
+    const inside = NOTE_TEXT.indexOf('a comment');
+    view.editor.selection = [inside, inside];
+    expect(reply(true, view.editor, view)).toBe(true);
+    reply(false, view.editor, view);
+    await flush();
+    expect(scroll).toHaveBeenLastCalledWith(threads()[0].id, true);
+
+    view.editor.selection = [0, 0];
+    expect(reply(true, view.editor, view)).toBe(false);
+    expect(reply(true, view.editor, { file: null })).toBeFalsy();
+  });
+
+  it('highlights passages in Reading view and re-renders it only when threads change', async () => {
+    const processor = (plugin as unknown as { postProcessors: ((el: HTMLElement, ctx: unknown) => void)[] }).postProcessors[0];
+    const render = (sectionInfo: unknown) => {
+      const el = document.createElement('div');
+      el.innerHTML = '<p>A sentence worth a comment.</p>';
+      processor(el, { sourcePath: NOTE, getSectionInfo: () => sectionInfo });
+      return el;
+    };
+    const info = { text: NOTE_TEXT, lineStart: 1, lineEnd: 1 };
+    expect(render(info).querySelector('.tg-anchor')).toBeNull();
+
+    view.mode = 'preview';
+    await commentOn('worth a comment', 'In reading view');
+    const rerenders = view.previewMode.rerenders;
+    expect(rerenders).toBeGreaterThan(0);
+    const el = render(info);
+    expect(el.querySelector('.tg-anchor')?.textContent).toBe('worth a comment');
+    expect(el.querySelector('.tg-badge')?.textContent).toBe('1');
+    expect(render(null).querySelector('.tg-anchor')).toBeNull();
+
+    el.querySelector<HTMLElement>('.tg-badge')!.click();
+    await flush();
+    expect(q('.tg-card-focused')).not.toBeNull();
+    expect(view.previewMode.rerenders).toBe(rerenders);
   });
 
   it('shows loading-free empty states and the open-panel command', async () => {

@@ -187,6 +187,16 @@ export class WorkspaceLeafImpl extends WorkspaceLeaf {
 
 export class MarkdownView {
   editor: FakeEditor;
+  mode: 'source' | 'preview' = 'source';
+  previewMode = {
+    rerenders: 0,
+    rerender(this: { rerenders: number }) {
+      this.rerenders++;
+    },
+  };
+  getMode() {
+    return this.mode;
+  }
   constructor(
     public leaf: WorkspaceLeafImpl,
     public file: TFile | null,
@@ -249,6 +259,7 @@ export class FakeApp {
 export class Plugin {
   commands: { id: string; editorCheckCallback?: Listener; callback?: Listener }[] = [];
   extensions: unknown[] = [];
+  postProcessors: Listener[] = [];
   settingTabs: PluginSettingTab[] = [];
   ribbon: Listener[] = [];
   data: unknown = null;
@@ -258,6 +269,9 @@ export class Plugin {
   }
   registerEditorExtension(ext: unknown) {
     this.extensions.push(ext);
+  }
+  registerMarkdownPostProcessor(processor: Listener) {
+    this.postProcessors.push(processor);
   }
   addCommand(cmd: { id: string }) {
     this.commands.push(cmd);
