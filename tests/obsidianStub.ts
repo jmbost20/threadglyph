@@ -139,6 +139,25 @@ export class FakeVault extends Events {
   async cachedRead(file: TFile) {
     return this.adapter.read(file.path);
   }
+  /** Binary contents for image files; text files fall back to their UTF-8 bytes. */
+  binaries = new Map<string, Uint8Array>();
+  async readBinary(file: TFile): Promise<ArrayBuffer> {
+    const bytes = this.binaries.get(file.path) ?? new TextEncoder().encode(await this.adapter.read(file.path));
+    return bytes.slice().buffer;
+  }
+  getResourcePath(file: TFile) {
+    return `app://local/${encodeURI(file.path)}`;
+  }
+}
+
+/** Resolves a link by exact path, then by file name anywhere in the vault (like Obsidian's shortest-path links). */
+export class FakeMetadataCache {
+  constructor(private readonly vault: FakeVault) {}
+  getFirstLinkpathDest(link: string) {
+    const paths = [...this.vault.adapter.files.keys()];
+    const hit = paths.find((p) => p === link) ?? paths.find((p) => p.split('/').pop() === link);
+    return hit ? new TFile(hit) : null;
+  }
 }
 
 /** Offsets double as positions, which keeps selections easy to express. */
@@ -187,6 +206,16 @@ export class WorkspaceLeafImpl extends WorkspaceLeaf {
 
 export class MarkdownView {
   editor: FakeEditor;
+  mode: 'source' | 'preview' = 'source';
+  previewMode = {
+    rerenders: 0,
+    rerender(this: { rerenders: number }) {
+      this.rerenders++;
+    },
+  };
+  getMode() {
+    return this.mode;
+  }
   constructor(
     public leaf: WorkspaceLeafImpl,
     public file: TFile | null,
@@ -244,11 +273,13 @@ export class FakeWorkspace extends Events {
 export class FakeApp {
   vault = new FakeVault();
   workspace = new FakeWorkspace(this.vault);
+  metadataCache = new FakeMetadataCache(this.vault);
 }
 
 export class Plugin {
   commands: { id: string; editorCheckCallback?: Listener; callback?: Listener }[] = [];
   extensions: unknown[] = [];
+  postProcessors: Listener[] = [];
   settingTabs: PluginSettingTab[] = [];
   ribbon: Listener[] = [];
   data: unknown = null;
@@ -258,6 +289,9 @@ export class Plugin {
   }
   registerEditorExtension(ext: unknown) {
     this.extensions.push(ext);
+  }
+  registerMarkdownPostProcessor(processor: Listener) {
+    this.postProcessors.push(processor);
   }
   addCommand(cmd: { id: string }) {
     this.commands.push(cmd);
@@ -292,6 +326,18 @@ export class Setting {
     return this;
   }
   setDesc() {
+    return this;
+  }
+  setHeading() {
+    return this;
+  }
+  addToggle(build: (t: { setValue(v: boolean): unknown; onChange(cb: (v: boolean) => unknown): unknown }) => unknown) {
+    const input = this.el.createEl('input', { attr: { type: 'checkbox' } });
+    const api = {
+      setValue: (v: boolean) => ((input.checked = v), api),
+      onChange: (cb: (v: boolean) => unknown) => ((input.onchange = () => void cb(input.checked)), api),
+    };
+    build(api);
     return this;
   }
   addText(build: (t: { setValue(v: string): unknown; onChange(cb: (v: string) => unknown): unknown }) => unknown) {

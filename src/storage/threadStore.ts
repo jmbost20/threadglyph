@@ -191,6 +191,13 @@ export class ThreadStore {
       const anchor = this.anchors.get(id);
       if (anchor) await this.writeAnchor({ ...anchor, notePath: target });
     }
+    // Image threads follow their image file (or a renamed folder containing it).
+    const imageMoves: TextAnchor[] = [];
+    for (const anchor of this.anchors.values()) {
+      const image = anchor.imagePath === undefined ? null : renamedPath(anchor.imagePath, oldPath, newPath);
+      if (image !== null) imageMoves.push({ ...anchor, imagePath: image });
+    }
+    for (const anchor of imageMoves) await this.writeAnchor(anchor);
     return conflicts;
   }
 }

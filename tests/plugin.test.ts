@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ThreadglyphPlugin from '../src/main';
 import { addReply } from '../src/model/thread';
 import type { ThreadRecord } from '../src/model/types';
+import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { ANCHORS_DIR, THREADS_DIR } from '../src/storage/paths';
 
 type Fake = InstanceType<typeof FakeApp>;
@@ -313,11 +314,132 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
 
     button('Resolve')!.click();
     await flush();
-    button('Show resolved (1)')!.click();
+    button('Resolved')!.click();
     await flush();
     button('Reopen')!.click();
     await flush();
     expect(threads()[0].status).toBe('open');
+  });
+
+  it('numbers highlights with badges and marks the pending selection', async () => {
+    select('Evening');
+    command('comment-on-selection').editorCheckCallback!(false, view.editor, view);
+    await flush();
+    expect(view.editor.cm!.dom.querySelector('.tg-anchor-pending')?.textContent).toBe('Evening');
+    button('Cancel')!.click();
+    await flush();
+    expect(view.editor.cm!.dom.querySelector('.tg-anchor-pending')).toBeNull();
+
+    await commentOn('Evening', 'Second in reading order');
+    await commentOn('worth a comment', 'First in reading order');
+    const badges = [...view.editor.cm!.dom.querySelectorAll<HTMLElement>('.tg-badge')];
+    expect(badges.map((b) => b.textContent)).toEqual(['1', '2']);
+    expect([...panelEl().querySelectorAll('.tg-card-number')].map((b) => b.textContent)).toEqual(['1', '2']);
+  });
+
+  it('opens a thread from its badge (focusing the reply) and from its text (keeping focus in the note)', async () => {
+    await commentOn('worth a comment', 'Badge me');
+    const { ThreadPanel } = await import('../src/ui/ThreadPanel');
+    const scroll = vi.spyOn(ThreadPanel.prototype, 'scrollToThread');
+    const cm = view.editor.cm!;
+    const id = threads()[0].id;
+
+    cm.dom.querySelector<HTMLElement>('.tg-anchor')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(scroll).toHaveBeenLastCalledWith(id, false);
+    expect(q('.tg-card-focused')).not.toBeNull();
+    expect(cm.dom.querySelector('.tg-anchor-focused')).not.toBeNull();
+
+    cm.dom.querySelector<HTMLElement>('.tg-badge')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(scroll).toHaveBeenLastCalledWith(id, true);
+  });
+
+  it('steps through threads in the note, wrapping at either end', async () => {
+    const next = command('next-thread').editorCheckCallback!;
+    const previous = command('previous-thread').editorCheckCallback!;
+    expect(next(true, view.editor, view)).toBe(false);
+    await commentOn('Morning', 'one');
+    await commentOn('Evening', 'two');
+    expect(next(true, view.editor, view)).toBe(true);
+    expect(next(true, view.editor, { file: null })).toBe(false);
+
+    const at = (s: string) => [NOTE_TEXT.indexOf(s), NOTE_TEXT.indexOf(s) + s.length];
+    view.editor.selection = [0, 0];
+    next(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Evening'));
+    next(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Morning'));
+    previous(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Evening'));
+    previous(false, view.editor, view);
+    expect(view.editor.selection).toEqual(at('Morning'));
+    await flush();
+    expect(q('.tg-card-focused .tg-quote-link')?.textContent).toBe('Morning');
+  });
+
+  it('replies to the thread under the cursor', async () => {
+    const reply = command('reply-at-cursor').editorCheckCallback!;
+    await commentOn('worth a comment', 'Under the cursor');
+    const { ThreadPanel } = await import('../src/ui/ThreadPanel');
+    const scroll = vi.spyOn(ThreadPanel.prototype, 'scrollToThread');
+    const inside = NOTE_TEXT.indexOf('a comment');
+    view.editor.selection = [inside, inside];
+    expect(reply(true, view.editor, view)).toBe(true);
+    reply(false, view.editor, view);
+    await flush();
+    expect(scroll).toHaveBeenLastCalledWith(threads()[0].id, true);
+
+    view.editor.selection = [0, 0];
+    expect(reply(true, view.editor, view)).toBe(false);
+    expect(reply(true, view.editor, { file: null })).toBeFalsy();
+  });
+
+  it('highlights passages in Reading view and re-renders it only when threads change', async () => {
+    const processor = (plugin as unknown as { postProcessors: ((el: HTMLElement, ctx: unknown) => void)[] }).postProcessors[0];
+    const render = (sectionInfo: unknown) => {
+      const el = document.createElement('div');
+      el.innerHTML = '<p>A sentence worth a comment.</p>';
+      processor(el, { sourcePath: NOTE, getSectionInfo: () => sectionInfo });
+      return el;
+    };
+    const info = { text: NOTE_TEXT, lineStart: 1, lineEnd: 1 };
+    expect(render(info).querySelector('.tg-anchor')).toBeNull();
+
+    view.mode = 'preview';
+    await commentOn('worth a comment', 'In reading view');
+    const rerenders = view.previewMode.rerenders;
+    expect(rerenders).toBeGreaterThan(0);
+    const el = render(info);
+    expect(el.querySelector('.tg-anchor')?.textContent).toBe('worth a comment');
+    expect(el.querySelector('.tg-badge')?.textContent).toBe('1');
+    expect(render(null).querySelector('.tg-anchor')).toBeNull();
+
+    el.querySelector<HTMLElement>('.tg-badge')!.click();
+    await flush();
+    expect(q('.tg-card-focused')).not.toBeNull();
+    expect(view.previewMode.rerenders).toBe(rerenders);
+  });
+
+  it('re-renders a Reading pane of a note that is also open in an editor (Gitar review on PR #3)', async () => {
+    // The editor pane comes first in the leaf list, as in the reported case.
+    const reading = app.workspace.open(NOTE) as typeof view;
+    reading.mode = 'preview';
+    await commentOn('worth a comment', 'Two panes');
+    const afterCreate = reading.previewMode.rerenders;
+    expect(afterCreate).toBeGreaterThan(0);
+    expect(view.previewMode.rerenders).toBe(0);
+
+    // Resolving changes the marks, so the Reading pane re-renders again; the source pane never does.
+    button('Resolve')!.click();
+    await flush();
+    expect(reading.previewMode.rerenders).toBeGreaterThan(afterCreate);
+    expect(view.previewMode.rerenders).toBe(0);
+
+    // A pane switched to Reading later gets its own first render with the current marks.
+    view.mode = 'preview';
+    await plugin.refresh();
+    expect(view.previewMode.rerenders).toBe(1);
   });
 
   it('shows loading-free empty states and the open-panel command', async () => {
@@ -341,7 +463,13 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     input.dispatchEvent(new Event('input'));
     await flush();
     expect(plugin.settings.authorName).toBe('Jonah');
-    expect((plugin as unknown as { data: unknown }).data).toEqual({ authorName: 'Jonah' });
+    expect((plugin as unknown as { data: unknown }).data).toEqual({
+      authorName: 'Jonah',
+      aiEnabled: false,
+      claudePath: '',
+      aiModel: '',
+      aiTimeoutSeconds: 120,
+    });
     input.value = '   ';
     input.dispatchEvent(new Event('input'));
     await flush();
@@ -356,5 +484,402 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     (again as unknown as { data: unknown }).data = { authorName: 'Saved Name' };
     await again.loadSettings();
     expect(again.settings.authorName).toBe('Saved Name');
+  });
+});
+
+describe('Threadglyph plugin image threads', () => {
+  const TRIP = 'Trips/Coast.md';
+  const TRIP_TEXT = 'Day one.\n![[view.png]]\n![](https://example.com/far.png) ![[scan.heic]] ![[lost.png]]\nEnd.\n';
+  let trip: typeof view;
+
+  beforeEach(() => {
+    app.vault.adapter.files.set(TRIP, TRIP_TEXT);
+    app.vault.adapter.files.set('Attachments/view.png', 'png bytes');
+    app.vault.adapter.files.set('Attachments/scan.heic', 'heic bytes');
+    trip = app.workspace.open(TRIP) as typeof view;
+  });
+
+  const cursorOn = (markup: string, offset = 2) => {
+    const at = TRIP_TEXT.indexOf(markup) + offset;
+    trip.editor.selection = [at, at];
+  };
+  const run = async () => {
+    command('comment-on-selection').editorCheckCallback!(false, trip.editor, trip);
+    await flush();
+  };
+
+  it('comments on the image under the cursor and previews it', async () => {
+    trip.editor.selection = [1, 1];
+    expect(command('comment-on-selection').editorCheckCallback!(true, trip.editor, trip)).toBe(false);
+    cursorOn('![[view.png]]');
+    expect(command('comment-on-selection').editorCheckCallback!(true, trip.editor, trip)).toBe(true);
+    await run();
+    expect(q('.tg-card-new img')?.getAttribute('src')).toBe('app://local/Attachments/view.png');
+
+    const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+    input.value = 'What a view';
+    input.dispatchEvent(new Event('input'));
+    button('Comment')!.click();
+    await flush();
+    const [thread] = threads();
+    expect(thread.anchorKind).toBe('image');
+    expect(JSON.stringify(thread)).not.toContain('view.png');
+    const anchor = JSON.parse(app.vault.adapter.files.get(files(ANCHORS_DIR)[0])!);
+    expect(anchor).toMatchObject({ kind: 'image', imagePath: 'Attachments/view.png', quote: '![[view.png]]' });
+    expect(app.vault.adapter.files.get(TRIP)).toBe(TRIP_TEXT);
+  });
+
+  it('labels the context-menu item for images', () => {
+    const titles: string[] = [];
+    const menu = {
+      addItem: (build: (item: unknown) => void) => {
+        const api = { setTitle: (t: string) => (titles.push(t), api), setIcon: () => api, setSection: () => api, onClick: () => api };
+        build(api);
+      },
+    };
+    cursorOn('![[view.png]]');
+    app.workspace.trigger('editor-menu', menu, trip.editor, trip);
+    expect(titles).toEqual(['Threadglyph: comment on image']);
+  });
+
+  it('comments on text when the selection only contains an image', async () => {
+    trip.editor.selection = [0, TRIP_TEXT.indexOf('![[view.png]]') + 14];
+    await run();
+    expect(q('.tg-card-new .tg-image')).toBeNull();
+    expect(q('.tg-card-new .tg-quote')?.textContent).toContain('Day one.');
+  });
+
+  it('explains remote, unsupported and missing images', async () => {
+    cursorOn('![](https://example.com/far.png)');
+    await run();
+    expect(notices.at(-1)).toMatch(/does not fetch remote images/);
+    cursorOn('![[scan.heic]]');
+    await run();
+    expect(notices.at(-1)).toMatch(/HEIC images are not supported yet/);
+    cursorOn('![[lost.png]]');
+    await run();
+    expect(notices.at(-1)).toBe('Image file not found in this vault: lost.png');
+    expect(q('.tg-card-new')).toBeNull();
+  });
+
+  it('follows the image through a rename and reattaches only to an image', async () => {
+    cursorOn('![[view.png]]');
+    await run();
+    const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+    input.value = 'Keep me';
+    input.dispatchEvent(new Event('input'));
+    button('Comment')!.click();
+    await flush();
+
+    app.vault.adapter.files.set('Attachments/vista.png', 'png bytes');
+    app.vault.adapter.files.delete('Attachments/view.png');
+    app.vault.trigger('rename', new TFile('Attachments/vista.png'), 'Attachments/view.png');
+    await flush();
+    const anchorFile = () => JSON.parse(app.vault.adapter.files.get(files(ANCHORS_DIR)[0])!);
+    expect(anchorFile().imagePath).toBe('Attachments/vista.png');
+
+    trip.editor.selection = [0, 3];
+    await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
+    expect(notices.at(-1)).toMatch(/Put the cursor on the image embed/);
+
+    cursorOn('![[lost.png]]');
+    await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
+    expect(notices.at(-1)).toBe('Image file not found in this vault: lost.png');
+
+    app.vault.adapter.files.set('Attachments/lost.png', 'png bytes');
+    await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
+    expect(anchorFile()).toMatchObject({ imagePath: 'Attachments/lost.png', quote: '![[lost.png]]' });
+    expect(threads()[0].messages[0].body).toBe('Keep me');
+  });
+});
+
+describe('Threadglyph plugin AI', () => {
+  let requests: AiRequest[];
+  let answers: AiResult[];
+
+  beforeEach(() => {
+    requests = [];
+    answers = [];
+    const adapter: AiAdapter = {
+      id: 'fake',
+      name: 'Claude',
+      capabilities: { text: true, images: true },
+      ask: async (request) => {
+        requests.push(request);
+        return answers.shift() ?? { ok: true, text: 'A synthetic reply.' };
+      },
+    };
+    plugin.adapterFactory = (settings) => (settings.aiEnabled ? adapter : null);
+  });
+
+  const enable = async () => {
+    plugin.settings.aiEnabled = true;
+    await plugin.refresh();
+  };
+
+  it('shows no AI controls until enabled, and @Claude does nothing while off', async () => {
+    await commentOn('worth a comment', 'Hey @Claude');
+    expect(button('Ask Claude')).toBeUndefined();
+    expect(q('.tg-ai')).toBeNull();
+    await enable();
+    expect(button('Ask Claude')).toBeDefined();
+  });
+
+  it('opens a preview when a new comment mentions @Claude, and sends only after Send', async () => {
+    await enable();
+    await commentOn('worth a comment', 'What do you think, @claude?');
+    expect(q('.tg-ai-title')?.textContent).toBe('Ask Claude');
+    expect([...panelEl().querySelectorAll('.tg-ai-items li')].map((li) => li.textContent)).toEqual([
+      'The passage (15 characters)',
+      '1 message in this thread',
+    ]);
+    expect(requests).toHaveLength(0);
+
+    const radios = [...panelEl().querySelectorAll<HTMLInputElement>('.tg-ai-scope input')];
+    radios[2].dispatchEvent(new Event('change'));
+    await flush();
+    button('Send')!.click();
+    await flush();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      noteName: '2026-09-28',
+      quote: 'worth a comment',
+      image: null,
+      context: { label: 'The whole note', text: NOTE_TEXT.trimEnd() },
+      messages: [{ author: 'Me', origin: 'human', body: 'What do you think, @claude?' }],
+    });
+    expect(q<HTMLTextAreaElement>('.tg-ai textarea')?.value).toBe('A synthetic reply.');
+    expect(threads()[0].messages).toHaveLength(1);
+
+    button('Add to thread')!.click();
+    await flush();
+    expect(threads()[0].messages[1]).toMatchObject({ author: { kind: 'ai', name: 'Claude' }, origin: 'ai', body: 'A synthetic reply.' });
+    expect(q('.tg-ai')).toBeNull();
+    expect(panelEl().querySelector('.tg-origin')?.textContent).toBe('AI');
+  });
+
+  it('marks a draft the user edited as AI edited, and opens from a reply mention', async () => {
+    await enable();
+    await commentOn('worth a comment', 'First');
+    const reply = q<HTMLTextAreaElement>('textarea[data-draft-key^="reply:"]')!;
+    reply.value = '@Claude please weigh in';
+    reply.dispatchEvent(new Event('input'));
+    button('Reply')!.click();
+    await flush();
+    button('Send')!.click();
+    await flush();
+    const draft = q<HTMLTextAreaElement>('.tg-ai textarea')!;
+    draft.value = 'A synthetic reply, edited by me.';
+    draft.dispatchEvent(new Event('input'));
+    button('Add to thread')!.click();
+    await flush();
+    expect(threads()[0].messages.at(-1)).toMatchObject({ origin: 'ai-edited', author: { kind: 'ai' } });
+    expect([...panelEl().querySelectorAll('.tg-origin')].at(-1)?.textContent).toBe('AI · edited by you');
+  });
+
+  it('shows provider errors and retries without duplicating replies', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Try');
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: false, kind: 'quota', message: 'Claude is at a usage or rate limit.' });
+    button('Send')!.click();
+    await flush();
+    expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Claude is at a usage or rate limit.');
+    button('Retry')!.click();
+    await flush();
+    button('Add to thread')!.click();
+    await flush();
+    expect(requests).toHaveLength(2);
+    expect(threads()[0].messages.filter((m) => m.origin === 'ai')).toHaveLength(1);
+  });
+
+  it('cancel and close leave the thread untouched', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Hmm');
+    button('Ask Claude')!.click();
+    await flush();
+    button('Cancel')!.click();
+    await flush();
+    expect(q('.tg-ai')).toBeNull();
+    const actions = (plugin as unknown as { panelActions(): { aiCancel(id: string): void; aiAdopt(id: string, b: string): Promise<boolean> } }).panelActions();
+    actions.aiCancel(threads()[0].id);
+    expect(await actions.aiAdopt(threads()[0].id, 'no draft')).toBe(false);
+    expect(threads()[0].messages).toHaveLength(1);
+  });
+
+  describe('with an image thread', () => {
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3]);
+    const TRIP = 'Trip.md';
+    const TRIP_TEXT = 'Look:\n![[sky.png]]\n';
+
+    async function imageThread() {
+      app.vault.adapter.files.set(TRIP, TRIP_TEXT);
+      app.vault.adapter.files.set('Pics/sky.png', 'placeholder');
+      app.vault.binaries.set('Pics/sky.png', PNG);
+      const trip = app.workspace.open(TRIP) as typeof view;
+      const at = TRIP_TEXT.indexOf('![[sky.png]]') + 3;
+      trip.editor.selection = [at, at];
+      await enable();
+      command('comment-on-selection').editorCheckCallback!(false, trip.editor, trip);
+      await flush();
+      const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+      input.value = 'What is in this picture, @Claude?';
+      input.dispatchEvent(new Event('input'));
+      button('Comment')!.click();
+      await flush();
+    }
+
+    it('sends the image file’s real bytes, not a caption', async () => {
+      await imageThread();
+      expect(panelEl().querySelector('.tg-ai-items li')?.textContent).toBe('The image sky.png');
+      button('Send')!.click();
+      await flush();
+      expect(requests[0].quote).toBeNull();
+      expect(requests[0].image).toEqual({
+        path: 'Pics/sky.png',
+        mediaType: 'image/png',
+        data: Buffer.from(PNG).toString('base64'),
+        bytes: PNG.length,
+      });
+    });
+
+    it('refuses a damaged or missing image before calling the model', async () => {
+      await imageThread();
+      app.vault.binaries.set('Pics/sky.png', new TextEncoder().encode('not an image'));
+      button('Send')!.click();
+      await flush();
+      expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Pics/sky.png does not contain valid PNG, JPEG or WebP data.');
+      app.vault.adapter.files.delete('Pics/sky.png');
+      button('Retry')!.click();
+      await flush();
+      expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Image file not found: Pics/sky.png');
+      expect(requests).toHaveLength(0);
+    });
+  });
+
+  it('reports a thread whose note disappeared', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Gone soon');
+    button('Ask Claude')!.click();
+    await flush();
+    app.vault.adapter.files.delete(NOTE);
+    const actions = (plugin as unknown as { panelActions(): { aiSend(id: string): void } }).panelActions();
+    actions.aiSend(threads()[0].id);
+    await flush();
+    expect(requests).toHaveLength(0);
+  });
+
+  it('shows the new answer after Retry, not an edit of the old one (Gitar review on PR #5)', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Question');
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: true, text: 'First answer.' }, { ok: true, text: 'Second answer.' });
+    button('Send')!.click();
+    await flush();
+    const draft = q<HTMLTextAreaElement>('.tg-ai textarea')!;
+    draft.value = 'First answer, edited.';
+    draft.dispatchEvent(new Event('input'));
+    button('Retry')!.click();
+    await flush();
+    expect(q<HTMLTextAreaElement>('.tg-ai textarea')!.value).toBe('Second answer.');
+    button('Add to thread')!.click();
+    await flush();
+    expect(threads()[0].messages.at(-1)).toMatchObject({ body: 'Second answer.', origin: 'ai' });
+
+    // An edited draft closed from an error does not leak into the next session.
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: true, text: 'Third answer.' }, { ok: false, kind: 'network', message: 'offline' });
+    button('Send')!.click();
+    await flush();
+    const third = q<HTMLTextAreaElement>('.tg-ai textarea')!;
+    third.value = 'Stale edit';
+    third.dispatchEvent(new Event('input'));
+    button('Retry')!.click();
+    await flush();
+    button('Close')!.click();
+    await flush();
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: true, text: 'Fresh answer.' });
+    button('Send')!.click();
+    await flush();
+    expect(q<HTMLTextAreaElement>('.tg-ai textarea')!.value).toBe('Fresh answer.');
+  });
+
+  it('removes AI cards and stops requests when AI is switched off, and shows Ask at once when on (Gitar review on PR #5)', async () => {
+    let finish!: (r: AiResult) => void;
+    let seen: AbortSignal | undefined;
+    plugin.adapterFactory = (settings) =>
+      settings.aiEnabled
+        ? {
+            id: 'slow',
+            name: 'Claude',
+            capabilities: { text: true, images: true },
+            ask: (_req, signal) => {
+              seen = signal;
+              return new Promise<AiResult>((r) => (finish = r));
+            },
+          }
+        : null;
+    await commentOn('worth a comment', 'Toggle me');
+    const tab = (plugin as unknown as { settingTabs: { display(): void; containerEl: HTMLElement }[] }).settingTabs[0];
+    tab.display();
+    const toggle = tab.containerEl.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await flush();
+    expect(button('Ask Claude')).toBeDefined();
+
+    button('Ask Claude')!.click();
+    await flush();
+    button('Send')!.click();
+    await flush();
+    expect(q('.tg-ai-title')?.textContent).toBe('Asking Claude…');
+
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    await flush();
+    expect(seen?.aborted).toBe(true);
+    expect(q('.tg-ai')).toBeNull();
+    expect(button('Ask Claude')).toBeUndefined();
+    finish({ ok: true, text: 'Too late' });
+    await flush();
+    expect(q('.tg-ai')).toBeNull();
+    expect(threads()[0].messages).toHaveLength(1);
+  });
+
+  it('builds the adapter once per settings change, not on every refresh (Gitar review on PR #5)', async () => {
+    const factory = vi.fn(plugin.adapterFactory);
+    plugin.adapterFactory = factory;
+    await enable();
+    await commentOn('worth a comment', 'Count');
+    await plugin.refresh();
+    await plugin.refresh();
+    expect(factory).toHaveBeenCalledTimes(1);
+    plugin.settings.aiModel = 'sonnet';
+    await plugin.refresh();
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves the AI settings', async () => {
+    const tab = (plugin as unknown as { settingTabs: { display(): void; containerEl: HTMLElement }[] }).settingTabs[0];
+    tab.display();
+    const [toggle] = [...tab.containerEl.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    const [, path, model, timeout] = [...tab.containerEl.querySelectorAll<HTMLInputElement>('input:not([type])')];
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    for (const [input, value] of [[path, ' /opt/claude '], [model, ' sonnet '], [timeout, '45']] as const) {
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+    }
+    await flush();
+    expect(plugin.settings).toMatchObject({ aiEnabled: true, claudePath: '/opt/claude', aiModel: 'sonnet', aiTimeoutSeconds: 45 });
+    timeout.value = '3';
+    timeout.dispatchEvent(new Event('input'));
+    await flush();
+    expect(plugin.settings.aiTimeoutSeconds).toBe(120);
   });
 });

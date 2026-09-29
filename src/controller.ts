@@ -1,3 +1,4 @@
+import { imageSupport } from './anchor/imageEmbed';
 import { captureTextAnchor } from './anchor/textAnchor';
 import { addReply, createThread, editMessage, setStatus, type Clock, systemClock, ThreadError } from './model/thread';
 import type { Author, TextAnchor, ThreadRecord } from './model/types';
@@ -45,6 +46,18 @@ export class ThreadController {
     }
   }
 
+  /**
+   * Starts a thread on an image embed at `from`–`to` (the embed markup) whose
+   * file is `imagePath`. Unsupported formats are refused here, before any typing.
+   */
+  beginImageThread(notePath: string, doc: string, from: number, to: number, imagePath: string): Outcome {
+    const support = imageSupport(imagePath);
+    if (!support.ok) return { ok: false, message: support.reason };
+    const outcome = this.beginThread(notePath, doc, from, to);
+    if (outcome.ok && this.pending) this.pending.anchor = { ...this.pending.anchor, kind: 'image', imagePath };
+    return outcome;
+  }
+
   cancelThread(): void {
     if (this.pending) this.drafts.delete(draftKey.newThread(this.pending.notePath));
     this.pending = null;
@@ -59,7 +72,7 @@ export class ThreadController {
     let outcome: Outcome;
     try {
       outcome = await this.guard(async () => {
-        thread = createThread(pending.notePath, this.author(), body, this.clock);
+        thread = createThread(pending.notePath, this.author(), body, this.clock, pending.anchor.kind);
         await this.store.create(thread, { ...pending.anchor, threadId: thread.id });
         return OK;
       });
@@ -77,6 +90,16 @@ export class ThreadController {
 
   async reply(threadId: string, body: string): Promise<Outcome> {
     return this.update(threadId, (t) => addReply(t, this.author(), body, this.clock));
+  }
+
+  /**
+   * Adds an AI draft the user accepted. It stays attributed to the assistant;
+   * if the user changed it first it is marked `ai-edited`, never passed off as
+   * an untouched model reply.
+   */
+  async addAiReply(threadId: string, assistant: string, body: string, edited: boolean): Promise<Outcome> {
+    const author = { kind: 'ai' as const, name: assistant };
+    return this.update(threadId, (t) => addReply(t, author, body, this.clock, edited ? 'ai-edited' : 'ai'));
   }
 
   startEdit(threadId: string, messageId: string): void {
@@ -117,13 +140,30 @@ export class ThreadController {
     return this.update(threadId, (t) => setStatus(t, resolved ? 'resolved' : 'open', this.clock));
   }
 
-  /** Points a thread at a new passage. Only the local anchor changes; messages are untouched. */
-  async reattach(threadId: string, notePath: string, doc: string, from: number, to: number): Promise<Outcome> {
+  /**
+   * Points a thread at a new passage, or for an image thread at an image embed
+   * (`imagePath` is its file). Only the local anchor changes; messages are untouched.
+   */
+  async reattach(
+    threadId: string,
+    notePath: string,
+    doc: string,
+    from: number,
+    to: number,
+    imagePath?: string,
+  ): Promise<Outcome> {
     const thread = this.store.get(threadId);
     if (!thread) return { ok: false, message: 'That thread no longer exists.' };
     if (thread.notePath !== notePath) return { ok: false, message: 'Select the new passage in the thread’s own note.' };
+    const image = thread.anchorKind === 'image';
+    if (image && !imagePath) return { ok: false, message: 'Put the cursor on an image embed, then reattach.' };
+    if (image) {
+      const support = imageSupport(imagePath!);
+      if (!support.ok) return { ok: false, message: support.reason };
+    }
     return this.guard(async () => {
-      await this.store.writeAnchor(captureTextAnchor(threadId, notePath, doc, from, to));
+      const anchor = captureTextAnchor(threadId, notePath, doc, from, to);
+      await this.store.writeAnchor(image ? { ...anchor, kind: 'image', imagePath } : anchor);
       return { ok: true };
     });
   }

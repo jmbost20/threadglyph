@@ -7,7 +7,9 @@ import {
   anchorState,
   buildThreadViews,
   draftKey,
+  filterViews,
   formatTimestamp,
+  matchesQuery,
   originLabel,
   previewQuote,
 } from '../src/ui/viewModel';
@@ -42,6 +44,29 @@ describe('view model', () => {
     expect(views.map((v) => v.thread.id)).toEqual([early.id, late.id, orphan.id, done.id]);
     expect(views[0]).toMatchObject({ quote: 'First', anchor: { kind: 'found', from: 0, to: 5 } });
     expect(views[2]).toMatchObject({ quote: null, anchor: { kind: 'no-anchor' } });
+  });
+
+  it('numbers threads in reading order, independent of status, and filters and searches them', () => {
+    const clock = fakeClock();
+    const first = setStatus(createThread('n.md', human, 'about the opening', clock), 'resolved', clock);
+    const second = addReply(createThread('n.md', human, 'middle', clock), ai, 'A model reply', clock);
+    const anchor = (t: ThreadRecord, s: string) =>
+      captureTextAnchor(t.id, 'n.md', doc, doc.indexOf(s), doc.indexOf(s) + s.length);
+    const views = buildThreadViews(source([second, first], [anchor(first, 'First'), anchor(second, 'Second')]), 'n.md', doc);
+
+    expect(views.map((v) => [v.thread.id, v.number])).toEqual([
+      [second.id, 2],
+      [first.id, 1],
+    ]);
+    expect(filterViews(views, 'open', '').map((v) => v.number)).toEqual([2]);
+    expect(filterViews(views, 'resolved', '').map((v) => v.number)).toEqual([1]);
+    expect(filterViews(views, 'all', '  ').map((v) => v.number)).toEqual([2, 1]);
+    expect(filterViews(views, 'all', 'opening').map((v) => v.number)).toEqual([1]);
+    expect(matchesQuery(views[0], 'second PASSAGE')).toBe(false);
+    expect(matchesQuery(views[0], 'second')).toBe(true);
+    expect(matchesQuery(views[0], 'model reply')).toBe(true);
+    expect(matchesQuery(views[0], ai.name)).toBe(true);
+    expect(matchesQuery({ ...views[0], quote: null }, 'second')).toBe(false);
   });
 
   it('describes anchor problems', () => {

@@ -1,8 +1,18 @@
 /* Threadglyph — all selectors are namespaced with `tg-` so they never touch other plugins. */
 
-.tg-panel {
+/*
+ * Obsidian exposes the accent as --color-accent (and HSL parts), not as an RGB
+ * triple, so tints are mixed from it. Declared on body so the editor, Reading
+ * view and panel share them, and they follow the theme's light/dark accent.
+ */
+body {
   --tg-accent: var(--color-accent);
-  --tg-accent-soft: rgba(var(--color-accent-rgb), 0.14);
+  --tg-accent-soft: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  --tg-accent-mid: color-mix(in srgb, var(--color-accent) 30%, transparent);
+  --tg-accent-line: color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+
+.tg-panel {
   --tg-radius: 10px;
   padding: 12px 14px 24px;
   font-size: var(--font-ui-small);
@@ -49,7 +59,7 @@
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(var(--color-orange-rgb), 0.12);
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
@@ -262,15 +272,134 @@
   text-decoration: underline;
 }
 
-.tg-resolved-toggle {
-  align-self: flex-start;
+/* ── Toolbar ────────────────────────────────────────────── */
+
+.tg-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-/* ── Editor ─────────────────────────────────────────────── */
+.tg-search {
+  width: 100%;
+  font-size: var(--font-ui-small);
+}
+
+.tg-filter {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--background-modifier-hover);
+}
+
+.tg-filter-option {
+  flex: 1;
+  height: auto;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: none;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-filter-option.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.15));
+}
+
+/* ── Badges (note and panel share the number) ───────────── */
+
+.tg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  height: 1.35em;
+  padding: 0 0.3em;
+  border-radius: 999px;
+  background: var(--tg-accent);
+  color: var(--text-on-accent);
+  font-family: var(--font-interface);
+  font-size: 0.66em;
+  font-style: normal;
+  font-weight: var(--font-bold);
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* In the note the badge sits raised at the end of the passage, like a footnote marker. */
+.cm-content .tg-badge,
+.markdown-rendered .tg-badge {
+  position: relative;
+  top: -0.75em;
+  margin-left: 2px;
+}
+
+.tg-badge-resolved {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.tg-badge-focused {
+  outline: 2px solid var(--tg-accent-mid);
+  outline-offset: 1px;
+}
+
+.tg-badge:focus-visible {
+  outline: 2px solid var(--tg-accent);
+  outline-offset: 2px;
+}
+
+.tg-quote-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tg-quote-row .tg-quote {
+  flex: 1;
+  min-width: 0;
+}
+
+.tg-card-number {
+  flex: none;
+  margin-top: 4px;
+  cursor: default;
+}
+
+.tg-card-resolved .tg-card-number {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.tg-card:focus-visible {
+  outline: none;
+  border-color: var(--tg-accent);
+  box-shadow: 0 0 0 2px var(--tg-accent-mid);
+}
+
+/* ── Highlights ─────────────────────────────────────────── */
 
 .tg-anchor {
-  background: var(--tg-accent-soft, rgba(var(--color-accent-rgb), 0.14));
-  border-bottom: 1px solid rgba(var(--color-accent-rgb), 0.5);
+  background: var(--tg-accent-soft);
+  border-bottom: 2px solid var(--tg-accent-line);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tg-anchor-focused {
+  background: var(--tg-accent-mid);
+}
+
+.tg-anchor-pending {
+  background: var(--tg-accent-soft);
+  border-bottom: 2px dashed var(--tg-accent-line);
+  cursor: text;
 }
 
 .tg-anchor-resolved {
@@ -295,4 +424,185 @@
 
 .tg-gutter .tg-glyph-resolved {
   border-color: var(--text-faint);
+}
+
+/* ── Image threads ──────────────────────────────────────── */
+
+.tg-image {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  height: auto;
+  margin: 0 0 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+
+.tg-image img {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  object-fit: contain;
+}
+
+.tg-image.tg-quote-link:hover img,
+.tg-image.tg-quote-link:focus-visible img {
+  border-color: var(--tg-accent);
+}
+
+.tg-image-name {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.tg-image-missing {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.markdown-rendered .tg-image-anchor img {
+  outline: 2px solid var(--tg-accent-line);
+  outline-offset: 2px;
+}
+
+.markdown-rendered .tg-image-anchor + .tg-badge {
+  top: 0;
+  vertical-align: top;
+}
+
+/* ── Ask AI ─────────────────────────────────────────────── */
+
+.tg-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--tg-accent-mid);
+  background: var(--tg-accent-soft);
+}
+
+.tg-ai-title {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.tg-ai-phase-running .tg-ai-title::after {
+  content: '';
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-left: 6px;
+  border: 2px solid var(--tg-accent-line);
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: tg-spin 0.9s linear infinite;
+}
+
+@keyframes tg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-ai-phase-running .tg-ai-title::after {
+    animation: none;
+  }
+}
+
+.tg-ai-note,
+.tg-ai-items {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-ai-items {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.tg-ai-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-ai-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.tg-ai-exact summary {
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.tg-ai-exact pre {
+  max-height: 200px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tg-ai-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.tg-card-footer {
+  gap: 12px;
+}
+
+/* ── @ mentions ─────────────────────────────────────────── */
+
+.tg-composer {
+  position: relative;
+}
+
+.tg-mention-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% - 34px);
+  left: 8px;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s, 0 2px 8px rgba(0, 0, 0, 0.2));
+}
+
+.tg-mention-option {
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tg-mention-option.is-selected,
+.tg-mention-option:hover {
+  background: var(--tg-accent-soft);
+  color: var(--text-normal);
 }

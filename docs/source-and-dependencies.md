@@ -29,4 +29,8 @@ Exact versions are pinned in `package-lock.json`.
 | @codemirror/state 6.5.0, @codemirror/view 6.38.6 | MIT | Pinned to the versions `obsidian` 1.13 declares as peers; runtime copy comes from Obsidian |
 | @types/node | MIT | Types for build scripts |
 
+## Optional AI runtime (stage 5)
+
+"Ask Claude" runs the owner's locally installed **Claude Code CLI** (proprietary, Anthropic) as a child process, using its existing sign-in. No npm package or API key is added. The plugin passes fixed arguments with no shell: every built-in tool is disabled, MCP servers and settings files are skipped, the working directory is the OS temp folder and sessions are not persisted. Only the previewed request goes over stdin. The CLI is outside this repository's source and outside Sonar's analysis.
+
 Sonar analysis covers this repository's source. It is not an audit of Obsidian or of these dependencies.
