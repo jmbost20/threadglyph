@@ -47,6 +47,18 @@ describe('Reading view highlights', () => {
     expect(onOpen).toHaveBeenCalledWith('thread-4-1');
   });
 
+  it('marks both threads on a repeated quote, whatever order they arrive in (Gitar review on PR #3)', () => {
+    for (const order of [[0, 1], [1, 0]]) {
+      const el = section('<p>Say it once: echo. Say it twice: echo.</p>');
+      const marks = order.map((nth) => mark('echo', nth));
+      expect(markRenderedSection(el, source, ...para(2), marks, vi.fn())).toBe(2);
+      expect([...el.querySelectorAll<HTMLElement>('.tg-anchor')].map((a) => a.dataset.tgThread)).toEqual([
+        'thread-4-0',
+        'thread-4-1',
+      ]);
+    }
+  });
+
   it('marks text inside formatting and styles resolved threads', () => {
     const el = section('<p>A <strong>bold claim</strong> and <em>mixed claim here</em>.</p>');
     const marked = markRenderedSection(el, source, ...para(4), [mark('bold claim', 0, { resolved: true })], vi.fn());
