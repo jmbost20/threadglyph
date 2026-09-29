@@ -2,10 +2,11 @@
 
 ## Current state
 
-- **Stage:** 3–5 in progress on stacked branches, at the owner's request (2026-09-29) to push core code ahead and not wait on Sonar or Gitar rounds for each stage. CI still runs on every push; Sonar results get reviewed in one pass afterwards.
-- **Merged:** stages 1–2 via [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (`a4182ff`). First Sonar main analysis ran on `a4182ff`. Its gate shows "not computed" because a first baseline has no new code to compare against.
+- **Stage:** 6–7 plus follow-ups to stages 3–5, on one end-to-end branch (`codex/local-gemini-pilot`) with one PR, at the owner's request (2026-09-29). See "Round 2026-09-29" below.
+- **Merged:** stages 1–2 via [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (`a4182ff`); stages 3–5 via PRs [#3](https://github.com/jmbost20/threadglyph/pull/3), [#4](https://github.com/jmbost20/threadglyph/pull/4) and [#5](https://github.com/jmbost20/threadglyph/pull/5) (`2823ab3`).
 - **Repo:** https://github.com/jmbost20/threadglyph (private)
-- **Where to test:** the sandbox vault only (`~/Developer/threadglyph-sandbox-vault`). The owner chose to stay there before any install into the main vault.
+- **Where to test:** the sandbox vault only (`~/Developer/threadglyph-sandbox-vault`). Installing into the live vault is the owner's step; see `docs/pilot.md`.
+- **PR modes (owner, 2026-09-29):** *end-to-end* (one branch, one ready-for-review PR for a large batch; the current mode) or *incremental* (several smaller ready-for-review PRs). Drafts only for a strong reason.
 
 ## Decisions (stage 0)
 
@@ -96,11 +97,38 @@ Owner feedback from the first sandbox session: no visible highlight, and a reque
 - [x] **Images.** The request carries the file's real bytes (type checked from content, 5 MB cap). A damaged or missing image is refused before any call.
 - [x] **Untrusted data.** Note text and earlier messages are fenced as data, and closing tags inside them are neutralised. The model has no tools and cannot touch the note.
 - [x] **Real-provider check (2026-09-29).** One manual request with a synthetic gradient PNG through the same flags returned "Blue gradient, dark to light." The CLI's init line showed `tools: []` and `mcp_servers: []`. CI never calls a real provider; every automated test uses a fake adapter or a Node subprocess.
-- [ ] Owner UI review in the sandbox (enable it under Settings → Threadglyph → Enable Ask Claude)
+- [ ] Owner UI review in the sandbox (now Settings → Threadglyph → Enable Ask AI)
+
+### Round 2026-09-29: owner feedback, stages 6–7 (`codex/local-gemini-pilot`, one PR)
+Owner feedback from the first UAT pass: Local and Gemini should come before Claude; ⌘F in the panel should open search; images need a title to comment on, like the old plugin's image captions. Plus: do stages 6 and 7, and fix earlier stages.
+- [x] **Assistants: Local, then Gemini, then Claude.** Adapters are behind one provider-neutral interface, and each declares its egress.
+  - **Local:** Ollama HTTP (`/api/chat`, `think: false`). Before sending an image, it checks `/api/show` for vision and refuses with the fix for a text-only model. `:cloud` models are labelled as leaving the machine.
+  - **Gemini:** Gemini CLI, read-only `plan` mode, extensions off, every built-in tool excluded in its own folder, request on stdin (never on the command line), image staged in a private temp folder and deleted afterwards. Overload (503), quota, auth (exit 41), ineligible account, old Node and network each get their own message.
+  - **Claude:** unchanged.
+  - Command-line tools get a PATH that includes the usual install folders, because Obsidian launched from the Dock does not have one.
+- [x] **Choosing.** "Ask AI" opens a preview with an assistant picker (model plus "Stays on this computer" / "Sent to Google" / "Sent to Anthropic"). The preferred assistant is a setting, Local by default. `@Local`, `@Gemini` and `@Claude` each preselect their assistant. Errors offer the other assistants as one-click alternatives. Each assistant can be switched off on its own. The old single `aiModel` setting migrates to `claudeModel`.
+- [x] **⌘F in the panel** focuses thread search via a panel-scoped hotkey, so it does not steal ⌘F from notes. There is also a *Search threads* command.
+- [x] **Image titles.** A title pill (alias or alt text, else the file name) with a **Comment** button sits after every supported image, in Live Preview and Reading view. It is drawn by the plugin only, never written into the note. The old plugin wrote a caption line into the note instead.
+- [x] **Stage 6: compatibility.** Measured long-note costs, external-change handling, coexistence, and mobile and sync assessments are in `docs/compatibility.md`.
+- [x] **Stage 6: Agent Comments import.** *Import Agent Comments from this note* parses `{==…==}{>>…<<}` and shows a preview. On confirm it creates threads anchored inside the markup and never edits the note.
+  - Opinion tags, reactions and resolve markers are not carried over as messages; a trailing `resolve` sets the thread resolved.
+  - Suggestions keep their wording.
+  - Re-running recognises what was already imported.
+- [x] **Stage 7: pilot.** `npm run package` builds `dist/threadglyph-0.2.0/` with checksums and the source commit. There are *Back up all threads* and *Restore threads from a backup* commands; backups are validated, go to the local-only folder, and a restore only adds what is missing. `docs/pilot.md` covers install and rollback, the owner test script and the walkthrough evidence.
+- [x] **Sandbox.**
+  - New notes: `Image titles.md` and `Agent Comments sample.md` (synthetic).
+  - Ask AI starts on in the sandbox. When `~/.ilc/gemini/.env` exists, the sandbox borrows that Gemini folder read-only.
+  - The owner's request to copy real commented notes from the live vault was **not** carried out: the privacy guard blocked scanning the live vault, and owner guidance says daily-note content must not leave it. Synthetic examples in the same markup stand in until the owner supplies copies.
+- [x] **Live checks, synthetic content only.**
+  - Local `qwen3:8b` answered a follow-up on the imported sample thread in 23.6 s, and refused the image with the fix spelled out.
+  - Gemini `gemini-3.1-flash-lite` answered the same follow-up in 21.7 s, and described the synthetic PNG from its real bytes in 7.3 s.
+  - `gemini-3.5-flash` returned 503 "high demand" throughout.
+  - The borrowed Gemini folder was unchanged afterwards, and no temporary images were left behind.
+- [ ] Owner UAT in the sandbox (script in `docs/pilot.md`)
 
 ## Known limitations
 
-- Desktop only. Mobile and sync behavior are untested (stage 6).
+- Desktop only. Mobile is unsupported, and sync carries messages but not anchors; see `docs/compatibility.md`.
 - Anchors are exact-text: if the quoted text itself is edited, the thread becomes "missing" and needs a reattach. Fuzzy matching is a possible later improvement.
 - Reading view cannot highlight a quote that crosses a formatting boundary; the editor and the panel still show it.
 - Changes to local anchor files from outside the app are not watched: Obsidian doesn't index dot-folders, so they are only picked up on reload.

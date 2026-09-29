@@ -25,7 +25,7 @@ export type ProcessRunner = (
   command: string,
   args: string[],
   input: string,
-  options: { cwd: string; timeoutMs: number; signal: AbortSignal },
+  options: { cwd: string; timeoutMs: number; signal: AbortSignal; env?: Record<string, string> },
 ) => Promise<RunOutcome>;
 
 export interface ClaudeCliOptions {
@@ -35,6 +35,8 @@ export interface ClaudeCliOptions {
   timeoutMs: number;
   /** Empty for the CLI's default model. */
   model: string;
+  /** Extra environment, e.g. a PATH that includes the usual install folders. */
+  env?: Record<string, string>;
   run: ProcessRunner;
 }
 
@@ -104,16 +106,21 @@ function findResult(stdout: string): ResultLine | null {
 }
 
 export class ClaudeCliAdapter implements AiAdapter {
-  readonly id = 'claude-code';
+  readonly id = 'claude';
   readonly name = 'Claude';
+  readonly egress = 'cloud' as const;
   readonly capabilities = { text: true, images: true } as const;
 
   constructor(private readonly options: ClaudeCliOptions) {}
 
+  get detail(): string {
+    return this.options.model.trim() || 'Claude Code';
+  }
+
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
-    const { command, cwd, timeoutMs, model, run } = this.options;
+    const { command, cwd, timeoutMs, model, env, run } = this.options;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
-    const out = await run(command, claudeArgs(model), claudeInput(request), { cwd, timeoutMs, signal });
+    const out = await run(command, claudeArgs(model), claudeInput(request), { cwd, timeoutMs, signal, env });
     if (out.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (out.timedOut) {
       return { ok: false, kind: 'timeout', message: `Claude did not answer within ${Math.round(timeoutMs / 1000)} seconds.` };

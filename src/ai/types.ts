@@ -12,6 +12,9 @@ export interface AiCapabilities {
   images: boolean;
 }
 
+/** Where a request goes: `local` never leaves this computer. Shown in the preview before sending. */
+export type AiEgress = 'local' | 'cloud';
+
 export interface AiContextMessage {
   author: string;
   origin: MessageOrigin;
@@ -30,14 +33,27 @@ export interface AiRequest {
   messages: AiContextMessage[];
 }
 
-export type AiErrorKind = 'auth' | 'quota' | 'network' | 'timeout' | 'cancelled' | 'not-installed' | 'unsupported' | 'failed';
+export type AiErrorKind =
+  | 'auth'
+  | 'quota'
+  | 'busy'
+  | 'network'
+  | 'timeout'
+  | 'cancelled'
+  | 'not-installed'
+  | 'unsupported'
+  | 'failed';
 
 export type AiResult = { ok: true; text: string } | { ok: false; kind: AiErrorKind; message: string };
 
 export interface AiAdapter {
+  /** Stable key, e.g. `local`; used to remember which assistant a request is for. */
   readonly id: string;
   /** Shown to the user, and used as the @mention name. */
   readonly name: string;
+  /** The model or tool behind the name, e.g. `qwen3:8b`. */
+  readonly detail: string;
+  readonly egress: AiEgress;
   readonly capabilities: AiCapabilities;
   ask(request: AiRequest, signal: AbortSignal): Promise<AiResult>;
 }

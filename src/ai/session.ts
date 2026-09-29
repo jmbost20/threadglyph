@@ -6,11 +6,19 @@ export type ContextScope = 'anchor' | 'section' | 'note';
 /** Sends per thread before the user has to start over: one try plus two retries. */
 export const MAX_ATTEMPTS = 3;
 
+/** Fields every phase carries: the chosen scope and assistant, and how many sends were made. */
+interface AiBase {
+  scope: ContextScope;
+  /** Id of the assistant this request is for, e.g. `local`. */
+  assistant: string;
+  attempts: number;
+}
+
 export type AiState =
-  | { phase: 'preview'; scope: ContextScope; attempts: number }
-  | { phase: 'running'; scope: ContextScope; attempts: number }
-  | { phase: 'draft'; scope: ContextScope; attempts: number; text: string }
-  | { phase: 'error'; scope: ContextScope; attempts: number; kind: AiErrorKind; message: string };
+  | (AiBase & { phase: 'preview' })
+  | (AiBase & { phase: 'running' })
+  | (AiBase & { phase: 'draft'; text: string })
+  | (AiBase & { phase: 'error'; kind: AiErrorKind; message: string });
 
 export type BuiltRequest = { ok: true; request: AiRequest } | { ok: false; message: string };
 
@@ -30,8 +38,14 @@ export class AiSessions {
     return this.states.get(threadId);
   }
 
-  open(threadId: string): void {
-    if (!this.states.has(threadId)) this.states.set(threadId, { phase: 'preview', scope: 'anchor', attempts: 0 });
+  /**
+   * Opens the preview for `assistant`. An open preview switches to it; a
+   * running request or an unadopted draft is left alone.
+   */
+  open(threadId: string, assistant: string): void {
+    const state = this.states.get(threadId);
+    if (!state) this.states.set(threadId, { phase: 'preview', scope: 'anchor', assistant, attempts: 0 });
+    else if (state.phase === 'preview') this.states.set(threadId, { ...state, assistant });
     this.onChange();
   }
 
@@ -42,19 +56,35 @@ export class AiSessions {
     this.onChange();
   }
 
+  /** Picks another assistant while previewing, or after an error to try a different one. */
+  setAssistant(threadId: string, assistant: string): void {
+    const state = this.states.get(threadId);
+    if (state?.phase !== 'preview' && state?.phase !== 'error') return;
+    // A different assistant is a fresh request, with its own retries.
+    this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant, attempts: 0 });
+    this.onChange();
+  }
+
   canSend(threadId: string): boolean {
     const state = this.states.get(threadId);
     return !!state && state.phase !== 'running' && state.attempts < MAX_ATTEMPTS;
   }
 
-  /** Sends (or retries) with the scope chosen in the preview. */
-  async send(threadId: string, adapter: AiAdapter, build: (scope: ContextScope) => Promise<BuiltRequest>): Promise<void> {
+  /**
+   * Sends (or retries) with the scope and assistant chosen in the preview.
+   * `find` maps the assistant id to its adapter; null when it has since been switched off.
+   */
+  async send(
+    threadId: string,
+    find: (assistant: string) => AiAdapter | null,
+    build: (scope: ContextScope) => Promise<BuiltRequest>,
+  ): Promise<void> {
     const state = this.states.get(threadId);
     if (!state || !this.canSend(threadId)) return;
-    const attempts = state.attempts + 1;
+    const base = { scope: state.scope, assistant: state.assistant, attempts: state.attempts + 1 };
     const controller = new AbortController();
     this.inFlight.set(threadId, controller);
-    this.states.set(threadId, { phase: 'running', scope: state.scope, attempts });
+    this.states.set(threadId, { ...base, phase: 'running' });
     this.onChange();
 
     const settle = (next: AiState) => {
@@ -73,11 +103,16 @@ export class AiSessions {
       built = { ok: false, message: `Could not prepare the request: ${(err as Error).message}` };
     }
     if (!built.ok) {
-      settle({ phase: 'error', scope: state.scope, attempts, kind: 'unsupported', message: built.message });
+      settle({ ...base, phase: 'error', kind: 'unsupported', message: built.message });
+      return;
+    }
+    const adapter = find(state.assistant);
+    if (!adapter) {
+      settle({ ...base, phase: 'error', kind: 'unsupported', message: 'That assistant is switched off. Choose another one.' });
       return;
     }
     if (built.request.image && !adapter.capabilities.images) {
-      settle({ phase: 'error', scope: state.scope, attempts, kind: 'unsupported', message: `${adapter.name} cannot read images.` });
+      settle({ ...base, phase: 'error', kind: 'unsupported', message: `${adapter.name} cannot read images.` });
       return;
     }
     let result;
@@ -86,9 +121,9 @@ export class AiSessions {
     } catch (err) {
       result = { ok: false as const, kind: 'failed' as const, message: `${adapter.name} failed: ${(err as Error).message}` };
     }
-    if (result.ok) settle({ phase: 'draft', scope: state.scope, attempts, text: result.text });
-    else if (result.kind === 'cancelled') settle({ phase: 'preview', scope: state.scope, attempts });
-    else settle({ phase: 'error', scope: state.scope, attempts, kind: result.kind, message: result.message });
+    if (result.ok) settle({ ...base, phase: 'draft', text: result.text });
+    else if (result.kind === 'cancelled') settle({ ...base, phase: 'preview' });
+    else settle({ ...base, phase: 'error', kind: result.kind, message: result.message });
   }
 
   /** Stops a running request and returns to the preview. */
@@ -96,7 +131,7 @@ export class AiSessions {
     const state = this.states.get(threadId);
     this.inFlight.get(threadId)?.abort();
     this.inFlight.delete(threadId);
-    if (state) this.states.set(threadId, { phase: 'preview', scope: state.scope, attempts: state.attempts });
+    if (state) this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant: state.assistant, attempts: state.attempts });
     this.onChange();
   }
 

@@ -15,6 +15,8 @@ export interface ImageEmbed {
   link: string;
   /** `![[…]]` rather than `![…](…)`; only wiki embeds keep their link in Reading view's DOM. */
   wiki: boolean;
+  /** A readable name: the wiki alias or Markdown alt text when it is words, else the file name without extension. */
+  title: string;
 }
 
 export type ImageSupport =
@@ -50,7 +52,19 @@ const UNSUPPORTED: Record<string, string> = {
   avif: 'AVIF',
 };
 
-const EMBED = /!\[\[([^\]\n]+?)\]\]|!\[[^\]\n]*\]\(\s*(<[^>\n]+>|[^)\s]+)(?:\s+"[^"\n]*")?\s*\)/g;
+const EMBED = /!\[\[([^\]\n]+?)\]\]|!\[([^\]\n]*)\]\(\s*(<[^>\n]+>|[^)\s]+)(?:\s+"[^"\n]*")?\s*\)/g;
+
+/** `|300` or `|300x200` sets a size, not a caption. */
+const SIZE = /^\d+(?:x\d+)?$/;
+
+/** The alias or alt text when it reads as words, otherwise the file name without its extension. */
+export function imageTitle(label: string, link: string): string {
+  const words = label.split('|')[0].replace(/\s+/g, ' ').trim();
+  if (words && !SIZE.test(words)) return words;
+  const name = link.split('/').pop() ?? link;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
 
 export function extensionOf(path: string): string {
   const name = path.split('/').pop() ?? '';
@@ -81,10 +95,11 @@ export function findImageEmbeds(doc: string): ImageEmbed[] {
   const found: ImageEmbed[] = [];
   for (const m of doc.matchAll(EMBED)) {
     const wiki = m[1] !== undefined;
-    const link = cleanLink(wiki ? m[1] : m[2], wiki);
+    const link = cleanLink(wiki ? m[1] : m[3], wiki);
     const ext = extensionOf(link);
     if (!(ext in SUPPORTED) && !(ext in UNSUPPORTED)) continue;
-    found.push({ from: m.index, to: m.index + m[0].length, link, wiki });
+    const label = wiki ? m[1].split('|').slice(1).join('|') : m[2];
+    found.push({ from: m.index, to: m.index + m[0].length, link, wiki, title: imageTitle(label, link) });
   }
   return found;
 }

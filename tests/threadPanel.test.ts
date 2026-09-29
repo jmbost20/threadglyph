@@ -31,7 +31,7 @@ function state(overrides: Partial<PanelState> = {}): PanelState {
     problems: store.loadProblems(),
     focusedThreadId: null,
     filter,
-    assistant: null,
+    assistants: [],
     ai: {},
     ...overrides,
   };
@@ -82,6 +82,7 @@ beforeEach(async () => {
     imageSrc: (path) => (path.includes('missing') ? null : `app://vault/${path}`),
     aiOpen: vi.fn(),
     aiScope: vi.fn(),
+    aiAssistant: vi.fn(),
     aiSend: vi.fn(),
     aiCancel: vi.fn(),
     aiClose: vi.fn(),
@@ -506,9 +507,16 @@ describe('ThreadPanel image threads', () => {
   });
 });
 
+const CLAUDE = [{ id: 'claude', name: 'Claude', detail: 'default', destination: 'Sent to Anthropic' }];
+const THREE = [
+  { id: 'local', name: 'Local', detail: 'qwen3:8b', destination: 'Stays on this computer' },
+  { id: 'gemini', name: 'Gemini', detail: 'gemini-3.5-flash', destination: 'Sent to Google' },
+  ...CLAUDE,
+];
+
 describe('ThreadPanel AI', () => {
   const preview = (over: Partial<AiCardView> = {}): AiCardView => ({
-    state: { phase: 'preview', scope: 'anchor', attempts: 0 },
+    state: { phase: 'preview', scope: 'anchor', assistant: 'claude', attempts: 0 },
     items: ['The passage (11 characters)', '1 message in this thread'],
     scopes: [
       { scope: 'anchor', label: 'Just the passage and the thread' },
@@ -518,26 +526,28 @@ describe('ThreadPanel AI', () => {
     canSend: true,
     ...over,
   });
-  async function withAi(card: AiCardView | null, assistant: string | null = 'Claude') {
+  async function withAi(card: AiCardView | null, assistants: PanelState['assistants'] = CLAUDE) {
     const thread = await createViaPanel('Question');
-    actions.rerender = () => panel.update(state({ assistant, ai: card ? { [thread.id]: card } : {} }));
+    actions.rerender = () => panel.update(state({ assistants, ai: card ? { [thread.id]: card } : {} }));
     actions.rerender();
     return thread;
   }
 
   it('offers Ask only when an assistant is enabled and no session is open', async () => {
     const thread = await withAi(null);
-    button('Ask Claude')!.click();
+    button('Ask AI')!.click();
     expect(actions.aiOpen).toHaveBeenCalledWith(thread.id);
-    panel.update(state({ assistant: null }));
-    expect(button('Ask Claude')).toBeUndefined();
-    panel.update(state({ assistant: 'Claude', ai: { [thread.id]: preview() } }));
-    expect(button('Ask Claude')).toBeUndefined();
+    panel.update(state({ assistants: [] }));
+    expect(button('Ask AI')).toBeUndefined();
+    panel.update(state({ assistants: CLAUDE, ai: { [thread.id]: preview() } }));
+    expect(button('Ask AI')).toBeUndefined();
   });
 
   it('shows exactly what will be sent, with scope choice, before sending', async () => {
     const thread = await withAi(preview());
-    expect(q('.tg-ai-title')?.textContent).toBe('Ask Claude');
+    expect(q('.tg-ai-title')?.textContent).toBe('Ask AI');
+    expect(q('.tg-ai-note')?.textContent).toBe('Claude will receive the items below. Sent to Anthropic.');
+    expect(q('.tg-ai-assistants')).toBeNull();
     expect(qa('.tg-ai-items li').map((li) => li.textContent)).toEqual(['The passage (11 characters)', '1 message in this thread']);
     expect(q('.tg-ai-exact pre')?.textContent).toBe('Note: topic <b>not html</b>');
     expect(q('.tg-ai-exact b')).toBeNull();
@@ -557,14 +567,14 @@ describe('ThreadPanel AI', () => {
   });
 
   it('can cancel a running request', async () => {
-    const thread = await withAi(preview({ state: { phase: 'running', scope: 'anchor', attempts: 1 } }));
+    const thread = await withAi(preview({ state: { phase: 'running', scope: 'anchor', assistant: 'claude', attempts: 1 } }));
     expect(q('.tg-ai-title')?.textContent).toBe('Asking Claude…');
     button('Cancel')!.click();
     expect(actions.aiCancel).toHaveBeenCalledWith(thread.id);
   });
 
   it('lets the user edit, add, retry or discard a draft', async () => {
-    const draft = preview({ state: { phase: 'draft', scope: 'anchor', attempts: 1, text: 'Model draft' } });
+    const draft = preview({ state: { phase: 'draft', scope: 'anchor', assistant: 'claude', attempts: 1, text: 'Model draft' } });
     const thread = await withAi(draft);
     expect(q('.tg-ai-title')?.textContent).toBe('Claude · draft, not in the thread yet');
     const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="ai:${thread.id}"]`)!;
@@ -584,7 +594,7 @@ describe('ThreadPanel AI', () => {
   });
 
   it('keeps an edited draft when adding fails, and asks before discarding edits', async () => {
-    const thread = await withAi(preview({ state: { phase: 'draft', scope: 'anchor', attempts: 1, text: 'Model draft' } }));
+    const thread = await withAi(preview({ state: { phase: 'draft', scope: 'anchor', assistant: 'claude', attempts: 1, text: 'Model draft' } }));
     vi.mocked(actions.aiAdopt).mockResolvedValueOnce(false);
     const input = q<HTMLTextAreaElement>('.tg-ai textarea')!;
     type(input, 'Edited');
@@ -605,7 +615,7 @@ describe('ThreadPanel AI', () => {
   });
 
   it('discards an untouched draft without asking and hides Retry when attempts are used up', async () => {
-    const thread = await withAi(preview({ state: { phase: 'draft', scope: 'anchor', attempts: 3, text: 'Draft' }, canSend: false }));
+    const thread = await withAi(preview({ state: { phase: 'draft', scope: 'anchor', assistant: 'claude', attempts: 3, text: 'Draft' }, canSend: false }));
     const confirm = vi.spyOn(window, 'confirm');
     expect(button('Retry')).toBeUndefined();
     button('Discard')!.click();
@@ -614,14 +624,14 @@ describe('ThreadPanel AI', () => {
   });
 
   it('explains errors and offers a bounded retry', async () => {
-    const thread = await withAi(preview({ state: { phase: 'error', scope: 'anchor', attempts: 1, kind: 'auth', message: 'Claude Code is not signed in.' } }));
+    const thread = await withAi(preview({ state: { phase: 'error', scope: 'anchor', assistant: 'claude', attempts: 1, kind: 'auth', message: 'Claude Code is not signed in.' } }));
     expect(q('.tg-ai-error')?.textContent).toBe('Claude Code is not signed in.');
     button('Retry')!.click();
     expect(actions.aiSend).toHaveBeenCalledWith(thread.id);
     button('Close')!.click();
     expect(actions.aiClose).toHaveBeenCalledWith(thread.id);
 
-    panel.update(state({ assistant: 'Claude', ai: { [thread.id]: preview({ state: { phase: 'error', scope: 'anchor', attempts: 3, kind: 'quota', message: 'Limit' } , canSend: false }) } }));
+    panel.update(state({ assistants: CLAUDE, ai: { [thread.id]: preview({ state: { phase: 'error', scope: 'anchor', assistant: 'claude', attempts: 3, kind: 'quota', message: 'Limit' } , canSend: false }) } }));
     expect(button('Retry')).toBeUndefined();
     expect(q('.tg-ai-note')?.textContent).toMatch(/No retries left/);
   });
@@ -630,7 +640,7 @@ describe('ThreadPanel AI', () => {
 describe('ThreadPanel @ mentions', () => {
   async function replyBox() {
     const thread = await createViaPanel('Question');
-    panel.update(state({ assistant: 'Claude' }));
+    panel.update(state({ assistants: CLAUDE }));
     return { thread, input: q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)! };
   }
   const typeAtEnd = (input: HTMLTextAreaElement, value: string) => {
@@ -642,7 +652,8 @@ describe('ThreadPanel @ mentions', () => {
   it('suggests the assistant after @ and inserts it with Enter', async () => {
     const { thread, input } = await replyBox();
     typeAtEnd(input, 'Thoughts @cl');
-    expect(qa('.tg-mention-option').map((o) => o.textContent)).toEqual(['@Claude']);
+    expect(qa('.tg-mention-option').map((o) => o.firstChild?.textContent)).toEqual(['@Claude']);
+    expect(q('.tg-mention-detail')?.textContent).toBe('default');
     expect(q('.tg-mention-option')?.getAttribute('aria-selected')).toBe('true');
     key(input, 'ArrowDown');
     key(input, 'ArrowUp');
@@ -692,5 +703,77 @@ describe('ThreadPanel @ mentions', () => {
     const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!;
     typeAtEnd(input, '@');
     expect(q('.tg-mention-menu')).toBeNull();
+  });
+});
+
+describe('ThreadPanel with several assistants', () => {
+  const card = (phase: 'preview' | 'error', assistant = 'local'): AiCardView => ({
+    state:
+      phase === 'preview'
+        ? { phase, scope: 'anchor', assistant, attempts: 0 }
+        : { phase, scope: 'anchor', assistant, attempts: 1, kind: 'network', message: 'Ollama is not reachable.' },
+    items: ['The passage (11 characters)'],
+    scopes: [{ scope: 'anchor', label: 'Just the passage and the thread' }],
+    exactText: 'x',
+    canSend: true,
+  });
+
+  it('lets the user pick the assistant, showing each model and where it sends', async () => {
+    const thread = await createViaPanel('Question');
+    panel.update(state({ assistants: THREE, ai: { [thread.id]: card('preview') } }));
+    const options = qa('.tg-ai-assistant');
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Localqwen3:8b · Stays on this computer',
+      'Geminigemini-3.5-flash · Sent to Google',
+      'Claudedefault · Sent to Anthropic',
+    ]);
+    expect((qa('.tg-ai-assistant input') as HTMLInputElement[]).map((r) => r.checked)).toEqual([true, false, false]);
+    expect(q('.tg-ai-note')?.textContent).toBe('Local will receive the items below. Stays on this computer.');
+    (qa('.tg-ai-assistant input')[1] as HTMLInputElement).dispatchEvent(new Event('change'));
+    expect(actions.aiAssistant).toHaveBeenCalledWith(thread.id, 'gemini');
+  });
+
+  it('offers the other assistants when one fails', async () => {
+    const thread = await createViaPanel('Question');
+    panel.update(state({ assistants: THREE, ai: { [thread.id]: card('error') } }));
+    expect(q('.tg-ai-title')?.textContent).toBe('Local could not answer');
+    expect(button('Ask Local')).toBeUndefined();
+    button('Ask Gemini')!.click();
+    expect(actions.aiAssistant).toHaveBeenCalledWith(thread.id, 'gemini');
+    button('Ask Claude')!.click();
+    expect(actions.aiAssistant).toHaveBeenCalledWith(thread.id, 'claude');
+  });
+
+  it('names an assistant that was switched off generically', async () => {
+    const thread = await createViaPanel('Question');
+    panel.update(state({ assistants: CLAUDE, ai: { [thread.id]: card('error', 'gone') } }));
+    expect(q('.tg-ai-title')?.textContent).toBe('AI could not answer');
+  });
+
+  it('suggests every enabled assistant after @', async () => {
+    const thread = await createViaPanel('Question');
+    panel.update(state({ assistants: THREE }));
+    const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!;
+    input.value = '@';
+    input.setSelectionRange(1, 1);
+    input.dispatchEvent(new Event('input'));
+    expect(qa('.tg-mention-option').map((o) => o.firstChild?.textContent)).toEqual(['@Local', '@Gemini', '@Claude']);
+    input.value = '@g';
+    input.setSelectionRange(2, 2);
+    input.dispatchEvent(new Event('input'));
+    key(input, 'Enter');
+    expect(input.value).toBe('@Gemini ');
+  });
+});
+
+describe('ThreadPanel search shortcut', () => {
+  it('Cmd/Ctrl+F in the panel focuses the search box and selects its text', async () => {
+    await createViaPanel('Question');
+    const search = q<HTMLInputElement>('.tg-search')!;
+    search.value = 'old';
+    const scope = (panel as unknown as { scope: { press(m: string[], k: string): unknown } }).scope;
+    expect(scope.press(['Mod'], 'f')).toBe(false);
+    expect(document.activeElement).toBe(search);
+    expect([search.selectionStart, search.selectionEnd]).toEqual([0, 3]);
   });
 });

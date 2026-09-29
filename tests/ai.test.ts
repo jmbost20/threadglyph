@@ -9,7 +9,7 @@ import {
   type RunOutcome,
 } from '../src/ai/claudeCli';
 import { MAX_CONTEXT_CHARS, sectionAround, wholeNote } from '../src/ai/context';
-import { defaultAdapter, findClaude } from '../src/ai/defaultAdapter';
+import { findClaude } from '../src/ai/assistants';
 import { nodeRunner } from '../src/ai/nodeRunner';
 import { SYSTEM_PROMPT, buildPromptText } from '../src/ai/prompt';
 import { aiPreview, buildAiRequest, type RequestInputs } from '../src/ai/request';
@@ -148,10 +148,8 @@ describe('Claude Code adapter', () => {
   it('knows where Claude Code is usually installed', () => {
     expect(claudeCandidates('/Users/me')[0]).toBe('/Users/me/.local/bin/claude');
     expect(findClaude(' /custom/claude ')).toBe('/custom/claude');
-    expect(findClaude('', (p) => p === '/opt/homebrew/bin/claude')).toBe('/opt/homebrew/bin/claude');
+    expect(findClaude('', (p: string) => p === '/opt/homebrew/bin/claude')).toBe('/opt/homebrew/bin/claude');
     expect(findClaude('', () => false)).toBe('claude');
-    expect(defaultAdapter({ aiEnabled: false, claudePath: '', aiModel: '', aiTimeoutSeconds: 60 })).toBeNull();
-    expect(defaultAdapter({ aiEnabled: true, claudePath: '/x', aiModel: '', aiTimeoutSeconds: 1 })?.name).toBe('Claude');
   });
 });
 
@@ -276,6 +274,8 @@ describe('AI sessions', () => {
     const adapter: AiAdapter = {
       id: 'fake',
       name: 'Fake',
+      detail: 'fake-1',
+      egress: 'local',
       capabilities: { text: true, images },
       ask: vi.fn(async (_req, signal) => {
         calls.push(signal);
@@ -289,17 +289,17 @@ describe('AI sessions', () => {
     const onChange = vi.fn();
     const sessions = new AiSessions(onChange);
     const { adapter } = fakeAdapter([{ ok: true, text: 'Draft' }]);
-    sessions.open('t1');
-    sessions.open('t1');
-    expect(sessions.get('t1')).toEqual({ phase: 'preview', scope: 'anchor', attempts: 0 });
+    sessions.open('t1', 'fake');
+    sessions.open('t1', 'fake');
+    expect(sessions.get('t1')).toEqual({ phase: 'preview', scope: 'anchor', assistant: 'fake', attempts: 0 });
     sessions.setScope('t1', 'note');
     const build = vi.fn(async () => built);
-    const sending = sessions.send('t1', adapter, build);
+    const sending = sessions.send('t1', () => adapter, build);
     expect(sessions.get('t1')?.phase).toBe('running');
     sessions.setScope('t1', 'anchor');
     await sending;
     expect(build).toHaveBeenCalledWith('note');
-    expect(sessions.get('t1')).toEqual({ phase: 'draft', scope: 'note', attempts: 1, text: 'Draft' });
+    expect(sessions.get('t1')).toEqual({ phase: 'draft', scope: 'note', assistant: 'fake', attempts: 1, text: 'Draft' });
     expect(onChange).toHaveBeenCalled();
     sessions.setScope('missing', 'note');
     sessions.close('t1');
@@ -310,13 +310,13 @@ describe('AI sessions', () => {
     const sessions = new AiSessions(() => {});
     const failure: AiResult = { ok: false, kind: 'network', message: 'offline' };
     const { adapter } = fakeAdapter([failure, failure, failure, failure]);
-    sessions.open('t1');
-    for (let i = 0; i < MAX_ATTEMPTS + 1; i++) await sessions.send('t1', adapter, async () => built);
+    sessions.open('t1', 'fake');
+    for (let i = 0; i < MAX_ATTEMPTS + 1; i++) await sessions.send('t1', () => adapter, async () => built);
     expect(adapter.ask).toHaveBeenCalledTimes(MAX_ATTEMPTS);
     expect(sessions.get('t1')).toMatchObject({ phase: 'error', kind: 'network', attempts: MAX_ATTEMPTS });
     expect(sessions.canSend('t1')).toBe(false);
     expect(sessions.canSend('nope')).toBe(false);
-    await sessions.send('nope', adapter, async () => built);
+    await sessions.send('nope', () => adapter, async () => built);
   });
 
   it('drops the late answer of a cancelled request so a retry cannot duplicate it', async () => {
@@ -324,14 +324,14 @@ describe('AI sessions', () => {
     let finishFirst!: (r: AiResult) => void;
     const first = new Promise<AiResult>((r) => (finishFirst = r));
     const { adapter, calls } = fakeAdapter([first, { ok: true, text: 'Second' }]);
-    sessions.open('t1');
-    const sending = sessions.send('t1', adapter, async () => built);
+    sessions.open('t1', 'fake');
+    const sending = sessions.send('t1', () => adapter, async () => built);
     await Promise.resolve();
     await Promise.resolve();
     sessions.cancel('t1');
     expect(calls[0].aborted).toBe(true);
     expect(sessions.get('t1')).toMatchObject({ phase: 'preview', attempts: 1 });
-    await sessions.send('t1', adapter, async () => built);
+    await sessions.send('t1', () => adapter, async () => built);
     finishFirst({ ok: true, text: 'First (late)' });
     await sending;
     expect(sessions.get('t1')).toMatchObject({ phase: 'draft', text: 'Second', attempts: 2 });
@@ -341,15 +341,15 @@ describe('AI sessions', () => {
     const sessions = new AiSessions(() => {});
     let finish!: (r: AiResult) => void;
     const { adapter } = fakeAdapter([new Promise<AiResult>((r) => (finish = r))]);
-    sessions.open('t1');
-    const sending = sessions.send('t1', adapter, async () => built);
+    sessions.open('t1', 'fake');
+    const sending = sessions.send('t1', () => adapter, async () => built);
     await Promise.resolve();
     sessions.close('t1');
     finish({ ok: true, text: 'late' });
     await sending;
     expect(sessions.get('t1')).toBeUndefined();
     sessions.cancel('t1');
-    sessions.open('t2');
+    sessions.open('t2', 'fake');
     sessions.closeAll();
     expect(sessions.get('t2')).toBeUndefined();
   });
@@ -357,8 +357,8 @@ describe('AI sessions', () => {
   it('settles into an error when preparing the request throws (Gitar review on PR #5)', async () => {
     const sessions = new AiSessions(() => {});
     const { adapter } = fakeAdapter([]);
-    sessions.open('t1');
-    await sessions.send('t1', adapter, async () => Promise.reject(new Error('EACCES: permission denied')));
+    sessions.open('t1', 'fake');
+    await sessions.send('t1', () => adapter, async () => Promise.reject(new Error('EACCES: permission denied')));
     expect(sessions.get('t1')).toMatchObject({
       phase: 'error',
       message: 'Could not prepare the request: EACCES: permission denied',
@@ -370,22 +370,22 @@ describe('AI sessions', () => {
   it('reports unbuildable, unsupported, cancelled and thrown requests', async () => {
     const sessions = new AiSessions(() => {});
     const noImages = fakeAdapter([], false).adapter;
-    sessions.open('a');
-    await sessions.send('a', noImages, async () => ({ ok: false, message: 'Image file not found' }));
+    sessions.open('a', 'fake');
+    await sessions.send('a', () => noImages, async () => ({ ok: false, message: 'Image file not found' }));
     expect(sessions.get('a')).toMatchObject({ phase: 'error', kind: 'unsupported', message: 'Image file not found' });
 
-    sessions.open('b');
-    await sessions.send('b', noImages, async () => ({ ok: true, request: request({ image: PNG }) }));
+    sessions.open('b', 'fake');
+    await sessions.send('b', () => noImages, async () => ({ ok: true, request: request({ image: PNG }) }));
     expect(sessions.get('b')).toMatchObject({ kind: 'unsupported', message: 'Fake cannot read images.' });
     expect(noImages.ask).not.toHaveBeenCalled();
 
-    sessions.open('c');
-    await sessions.send('c', fakeAdapter([{ ok: false, kind: 'cancelled', message: 'Cancelled.' }]).adapter, async () => built);
+    sessions.open('c', 'fake');
+    await sessions.send('c', () => fakeAdapter([{ ok: false, kind: 'cancelled', message: 'Cancelled.' }]).adapter, async () => built);
     expect(sessions.get('c')).toMatchObject({ phase: 'preview', attempts: 1 });
 
     const throwing: AiAdapter = { ...fakeAdapter([]).adapter, ask: async () => Promise.reject(new Error('boom')) };
-    sessions.open('d');
-    await sessions.send('d', throwing, async () => built);
+    sessions.open('d', 'fake');
+    await sessions.send('d', () => throwing, async () => built);
     expect(sessions.get('d')).toMatchObject({ phase: 'error', kind: 'failed', message: 'Fake failed: boom' });
   });
 });

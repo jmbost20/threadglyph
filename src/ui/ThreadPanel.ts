@@ -1,4 +1,4 @@
-import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, Scope, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
@@ -37,9 +37,19 @@ export interface PanelState {
   problems: LoadProblem[];
   focusedThreadId: string | null;
   filter: ThreadFilter;
-  /** The assistant's name when AI is enabled, else null (no AI controls are shown). */
-  assistant: string | null;
+  /** Enabled assistants in preference order; empty when AI is off (no AI controls are shown). */
+  assistants: AssistantInfo[];
   ai: Record<string, AiCardView>;
+}
+
+/** An assistant as the panel shows it. */
+export interface AssistantInfo {
+  id: string;
+  name: string;
+  /** The model or tool, e.g. `qwen3:8b`. */
+  detail: string;
+  /** Where a request goes, e.g. "Stays on this computer" or "Sent to Google". */
+  destination: string;
 }
 
 /** What the panel may ask the plugin to do. All persistence lives behind this boundary. */
@@ -58,8 +68,10 @@ export interface PanelActions {
   goTo(threadId: string): Promise<void>;
   /** A displayable URL for a vault image, or null when the file is missing. */
   imageSrc(path: string): string | null;
-  aiOpen(threadId: string): void;
+  /** Opens the Ask AI preview, with `assistant` chosen (default: the preferred one). */
+  aiOpen(threadId: string, assistant?: string): void;
   aiScope(threadId: string, scope: ContextScope): void;
+  aiAssistant(threadId: string, assistant: string): void;
   aiSend(threadId: string): void;
   aiCancel(threadId: string): void;
   aiClose(threadId: string): void;
@@ -89,7 +101,7 @@ export class ThreadPanel extends ItemView {
     problems: [],
     focusedThreadId: null,
     filter: 'open',
-    assistant: null,
+    assistants: [],
     ai: {},
   };
   /** Search text is local to the panel; typing never touches storage. */
@@ -116,7 +128,20 @@ export class ThreadPanel extends ItemView {
 
   async onOpen(): Promise<void> {
     this.contentEl.addClass('tg-panel');
+    // While the panel has focus, Cmd/Ctrl+F searches threads instead of the note.
+    this.scope = new Scope(this.app.scope);
+    this.scope.register(['Mod'], 'f', () => {
+      this.focusSearch();
+      return false;
+    });
     this.render();
+  }
+
+  /** Puts the caret in the search box, selecting any existing query. */
+  focusSearch(): void {
+    const search = this.contentEl.querySelector<HTMLInputElement>('.tg-search');
+    search?.focus();
+    search?.select();
   }
 
   async onClose(): Promise<void> {
@@ -318,8 +343,8 @@ export class ThreadPanel extends ItemView {
     if (ai) this.renderAi(card, thread.id, ai);
 
     const footer = card.createDiv({ cls: 'tg-card-footer' });
-    if (this.state.assistant && thread.status === 'open' && !ai) {
-      const ask = footer.createEl('button', { cls: 'tg-link tg-ask', text: `Ask ${this.state.assistant}` });
+    if (this.state.assistants.length && thread.status === 'open' && !ai) {
+      const ask = footer.createEl('button', { cls: 'tg-link tg-ask', text: 'Ask AI' });
       ask.onclick = () => this.actions.aiOpen(thread.id);
     }
     const toggle = footer.createEl('button', {
@@ -329,8 +354,22 @@ export class ThreadPanel extends ItemView {
     toggle.onclick = () => void this.actions.setResolved(thread.id, thread.status === 'open');
   }
 
+  /** Radio buttons for choosing the assistant, each with its model and where the request goes. */
+  private renderAssistantPicker(box: HTMLElement, threadId: string, current: string): void {
+    const group = box.createDiv({ cls: 'tg-ai-assistants', attr: { role: 'radiogroup', 'aria-label': 'Assistant' } });
+    for (const a of this.state.assistants) {
+      const label = group.createEl('label', { cls: 'tg-ai-assistant' });
+      const radio = label.createEl('input', { attr: { type: 'radio', name: `tg-assistant-${threadId}`, value: a.id } });
+      radio.checked = a.id === current;
+      radio.onchange = () => this.actions.aiAssistant(threadId, a.id);
+      label.createSpan({ cls: 'tg-ai-assistant-name', text: a.name });
+      label.createSpan({ cls: 'tg-ai-assistant-detail', text: `${a.detail} · ${a.destination}` });
+    }
+  }
+
   private renderAi(card: HTMLElement, threadId: string, ai: AiCardView): void {
-    const name = this.state.assistant ?? 'AI';
+    const assistant = this.state.assistants.find((a) => a.id === ai.state.assistant);
+    const name = assistant?.name ?? 'AI';
     const box = card.createDiv({ cls: `tg-ai tg-ai-phase-${ai.state.phase}` });
     box.setAttr('aria-live', 'polite');
     const buttons = (parent: HTMLElement) => parent.createDiv({ cls: 'tg-composer-buttons' });
@@ -345,8 +384,10 @@ export class ThreadPanel extends ItemView {
 
     switch (ai.state.phase) {
       case 'preview': {
-        box.createDiv({ cls: 'tg-ai-title', text: `Ask ${name}` });
-        box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive:` });
+        box.createDiv({ cls: 'tg-ai-title', text: 'Ask AI' });
+        if (this.state.assistants.length > 1) this.renderAssistantPicker(box, threadId, ai.state.assistant);
+        const where = assistant ? ` ${assistant.destination}.` : '';
+        box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
         const list = box.createEl('ul', { cls: 'tg-ai-items' });
         for (const item of ai.items) list.createEl('li', { text: item });
         const scopes = box.createDiv({ cls: 'tg-ai-scopes', attr: { role: 'radiogroup', 'aria-label': 'How much of the note to include' } });
@@ -415,6 +456,10 @@ export class ThreadPanel extends ItemView {
         if (!ai.canSend) box.createDiv({ cls: 'tg-ai-note', text: 'No retries left for this request. Close it and ask again later.' });
         const row = buttons(box);
         button(row, 'Close', () => this.actions.aiClose(threadId));
+        // A failure is often specific to one provider, so offer the others directly.
+        for (const other of this.state.assistants) {
+          if (other.id !== ai.state.assistant) button(row, `Ask ${other.name}`, () => this.actions.aiAssistant(threadId, other.id));
+        }
         retry(row);
         break;
       }
@@ -426,9 +471,8 @@ export class ThreadPanel extends ItemView {
    * consults first, so arrows/Enter/Escape drive the menu only while it is open.
    */
   private attachMentions(input: HTMLTextAreaElement, wrap: HTMLElement): (e: KeyboardEvent) => boolean {
-    const assistant = this.state.assistant;
-    if (!assistant) return () => false;
-    const names = [assistant];
+    const names = this.state.assistants.map((a) => a.name);
+    if (!names.length) return () => false;
     let menu: HTMLElement | null = null;
     let items: string[] = [];
     let index = 0;
@@ -455,6 +499,8 @@ export class ThreadPanel extends ItemView {
       menu.empty();
       items.forEach((name, i) => {
         const option = menu!.createDiv({ cls: 'tg-mention-option', text: `@${name}` });
+        const info = this.state.assistants.find((a) => a.name === name);
+        if (info) option.createSpan({ cls: 'tg-mention-detail', text: info.detail });
         option.setAttr('role', 'option');
         option.setAttr('aria-selected', String(i === index));
         if (i === index) option.addClass('is-selected');

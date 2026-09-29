@@ -606,3 +606,118 @@ body {
   background: var(--tg-accent-soft);
   color: var(--text-normal);
 }
+
+/* ── Assistant picker ─────────────────────────────────────────────────────── */
+
+.tg-ai-assistants {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+
+.tg-ai-assistant {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tg-ai-assistant:has(input:checked) {
+  border-color: var(--tg-accent);
+  background: var(--tg-accent-soft);
+}
+
+.tg-ai-assistant input {
+  grid-row: span 2;
+  margin: 0;
+}
+
+.tg-ai-assistant-name {
+  font-weight: var(--font-semibold);
+}
+
+.tg-ai-assistant-detail,
+.tg-mention-detail {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-mention-detail {
+  margin-left: 8px;
+}
+
+/* ── Image titles (drawn by Threadglyph, never written into the note) ───────── */
+
+.tg-image-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 2px 6px;
+  padding: 1px 4px 1px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  vertical-align: middle;
+  user-select: none;
+}
+
+.tg-image-title-text::before {
+  content: '▣ ';
+  color: var(--tg-accent);
+}
+
+.tg-image-comment {
+  padding: 0 8px;
+  height: auto;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.tg-image-comment:hover,
+.tg-image-comment:focus-visible {
+  background: var(--tg-accent-soft);
+  color: var(--text-normal);
+}
+
+/* ── Import and restore dialogs ───────────────────────────────────────────── */
+
+.tg-modal .tg-import-list {
+  max-height: 50vh;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+
+.tg-import-item {
+  margin-bottom: 10px;
+}
+
+.tg-import-already-imported,
+.tg-import-nothing-to-import {
+  opacity: 0.6;
+}
+
+.tg-import-meta {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-restore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tg-restore-file {
+  justify-content: flex-start;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
