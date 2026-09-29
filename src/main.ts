@@ -416,7 +416,7 @@ export default class ThreadglyphPlugin extends Plugin {
   private mentionedAssistant(body: string): AiAdapter | null {
     let first: { adapter: AiAdapter; at: number } | null = null;
     for (const adapter of this.assistants()) {
-      const at = body.search(new RegExp(`(^|\\s)@${escapeRegExp(adapter.name)}\\b`, 'i'));
+      const at = body.search(new RegExp(String.raw`(^|\s)@${escapeRegExp(adapter.name)}\b`, 'i'));
       if (at !== -1 && (!first || at < first.at)) first = { adapter, at };
     }
     return first?.adapter ?? null;

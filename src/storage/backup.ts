@@ -37,7 +37,7 @@ export function parseExport(raw: string): { ok: true; value: ParsedExport } | { 
     return { ok: false, error: `not valid JSON (${(err as Error).message})` };
   }
   const d = data as { format?: unknown; version?: unknown; threads?: unknown; anchors?: unknown } | null;
-  if (!d || d.format !== EXPORT_FORMAT) return { ok: false, error: 'not a Threadglyph backup' };
+  if (d?.format !== EXPORT_FORMAT) return { ok: false, error: 'not a Threadglyph backup' };
   if (d.version !== EXPORT_VERSION) return { ok: false, error: `unsupported backup version ${JSON.stringify(d.version)}` };
   if (!Array.isArray(d.threads) || !Array.isArray(d.anchors)) return { ok: false, error: 'backup is missing its records' };
 

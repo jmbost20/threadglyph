@@ -77,7 +77,8 @@ export class RestoreModal extends Modal {
       text: 'Adds threads from the backup that are missing here. Existing threads are never overwritten.',
     });
     const list = contentEl.createDiv({ cls: 'tg-restore-list' });
-    for (const path of [...this.files].sort().reverse()) {
+    // Newest first: names embed an ISO timestamp.
+    for (const path of [...this.files].sort((a, b) => b.localeCompare(a))) {
       const b = list.createEl('button', { cls: 'tg-button tg-restore-file', text: path.split('/').pop() ?? path });
       b.onclick = async () => {
         await this.onPick(path);

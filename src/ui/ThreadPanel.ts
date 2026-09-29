@@ -367,6 +367,23 @@ export class ThreadPanel extends ItemView {
     }
   }
 
+  /** What the preview will send: the items, the scope choice and the exact text. */
+  private renderAiRequest(box: HTMLElement, threadId: string, ai: AiCardView): void {
+    const list = box.createEl('ul', { cls: 'tg-ai-items' });
+    for (const item of ai.items) list.createEl('li', { text: item });
+    const scopes = box.createDiv({ cls: 'tg-ai-scopes', attr: { role: 'radiogroup', 'aria-label': 'How much of the note to include' } });
+    for (const option of ai.scopes) {
+      const label = scopes.createEl('label', { cls: 'tg-ai-scope' });
+      const radio = label.createEl('input', { attr: { type: 'radio', name: `tg-scope-${threadId}`, value: option.scope } });
+      radio.checked = ai.state.scope === option.scope;
+      radio.onchange = () => this.actions.aiScope(threadId, option.scope);
+      label.createSpan({ text: option.label });
+    }
+    const details = box.createEl('details', { cls: 'tg-ai-exact' });
+    details.createEl('summary', { text: 'Show exact text' });
+    details.createEl('pre', { text: ai.exactText });
+  }
+
   private renderAi(card: HTMLElement, threadId: string, ai: AiCardView): void {
     const assistant = this.state.assistants.find((a) => a.id === ai.state.assistant);
     const name = assistant?.name ?? 'AI';
@@ -388,19 +405,7 @@ export class ThreadPanel extends ItemView {
         if (this.state.assistants.length > 1) this.renderAssistantPicker(box, threadId, ai.state.assistant);
         const where = assistant ? ` ${assistant.destination}.` : '';
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
-        const list = box.createEl('ul', { cls: 'tg-ai-items' });
-        for (const item of ai.items) list.createEl('li', { text: item });
-        const scopes = box.createDiv({ cls: 'tg-ai-scopes', attr: { role: 'radiogroup', 'aria-label': 'How much of the note to include' } });
-        for (const option of ai.scopes) {
-          const label = scopes.createEl('label', { cls: 'tg-ai-scope' });
-          const radio = label.createEl('input', { attr: { type: 'radio', name: `tg-scope-${threadId}`, value: option.scope } });
-          radio.checked = ai.state.scope === option.scope;
-          radio.onchange = () => this.actions.aiScope(threadId, option.scope);
-          label.createSpan({ text: option.label });
-        }
-        const details = box.createEl('details', { cls: 'tg-ai-exact' });
-        details.createEl('summary', { text: 'Show exact text' });
-        details.createEl('pre', { text: ai.exactText });
+        this.renderAiRequest(box, threadId, ai);
         const row = buttons(box);
         button(row, 'Cancel', () => this.actions.aiClose(threadId));
         const send = button(row, 'Send', () => this.actions.aiSend(threadId), true);

@@ -1,7 +1,7 @@
-import { existsSync } from 'fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
-import { homedir, tmpdir } from 'os';
-import { join } from 'path';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ClaudeCliAdapter, claudeCandidates } from './claudeCli';
 import { findTool, toolPath } from './cliEnv';
 import { DEFAULT_GEMINI_MODEL, GeminiCliAdapter, type GeminiFiles } from './geminiCli';

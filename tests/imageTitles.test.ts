@@ -20,6 +20,14 @@ describe('image titles', () => {
     expect(findImageEmbeds(doc).map((e) => e.title)).toEqual(['Evening sky', 'meadow', 'A map', 'plain']);
   });
 
+  it('never reports an embed nested inside another embed’s markup twice', () => {
+    const doc = '![odd](<![[a.png]].png>) then ![[b.png]]';
+    expect(findImageEmbeds(doc).map((e) => [e.from, e.wiki])).toEqual([
+      [0, false],
+      [doc.indexOf('![[b.png]]'), true],
+    ]);
+  });
+
   it('offers Comment only for local images in a supported format', () => {
     const [png, heic, remote] = findImageEmbeds('![[a.png]] ![[b.heic]] ![](https://x.org/c.png)');
     expect([commentable(png), commentable(heic), commentable(remote)]).toEqual([true, false, false]);

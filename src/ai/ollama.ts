@@ -35,7 +35,9 @@ export class OllamaAdapter implements AiAdapter {
   private readonly host: string;
 
   constructor(private readonly options: OllamaOptions) {
-    this.host = (options.host.trim() || DEFAULT_OLLAMA_HOST).replace(/\/+$/, '');
+    let host = options.host.trim() || DEFAULT_OLLAMA_HOST;
+    while (host.endsWith('/')) host = host.slice(0, -1);
+    this.host = host;
   }
 
   get detail(): string {

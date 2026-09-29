@@ -90,7 +90,9 @@ export function classifyGeminiFailure(
   timedOut: boolean,
   timeoutMs: number,
 ): { kind: AiErrorKind; message: string } {
-  const detail = text.replace(/\s+at .*$/gm, '').replace(/\s+/g, ' ').trim().slice(0, 300) || 'no details';
+  // Stack frames ("    at fn (file:1:2)") add length, not meaning.
+  const lines = text.split('\n').filter((line) => !line.trimStart().startsWith('at '));
+  const detail = lines.join(' ').replace(/\s+/g, ' ').trim().slice(0, 300) || 'no details';
   if (BUSY.test(text)) {
     return {
       kind: 'busy',
@@ -146,7 +148,7 @@ export class GeminiCliAdapter implements AiAdapter {
     let staged: { dir: string; file: string } | null = null;
     try {
       if (request.image) {
-        staged = await files.stageImage(Uint8Array.from(atob(request.image.data), (c) => c.charCodeAt(0)), EXTENSIONS[request.image.mediaType]);
+        staged = await files.stageImage(Uint8Array.from(atob(request.image.data), (c) => c.codePointAt(0)!), EXTENSIONS[request.image.mediaType]);
       }
       const args = geminiArgs(model, staged?.file ?? null, staged?.dir ?? null);
       const out = await run(command, args, geminiInput(request), { cwd: folder, timeoutMs, signal, env });

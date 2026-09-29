@@ -64,3 +64,18 @@ Each entry records: **problem → tool feedback → decision → changed behavio
   7. **#5, AI.** The adapter was rebuilt, probing the disk, on every refresh. Fix: cache it per settings key.
 - **Verification:** each finding got a regression test, and each test was run against the unfixed source and failed there (mutation check by stashing `src/`). After the fixes: 233 tests, 99.8% line coverage, CI plus both bots green on all three heads, and no new Gitar comments.
 - **Process note:** the first push of #4 failed CI on lint (`Buffer` undefined in the sandbox script), because PNG generation was added after that stage's local check had run. The fix went onto #4 and was merged forward. Lesson: run `npm run check` after the last edit, not before it.
+
+### 4. SonarQube Cloud on the end-to-end PR #7 (`42c882f`)
+
+- **Tool feedback:** quality gate **failed** on *Reliability Rating D on new code*. It was caused by 2 real bugs: `Array.sort()` without a compare function, in the restore dialog's file list (`modals.ts`) and in the import's date ordering (`agentComments.ts`). There were 21 further maintainability findings: `node:` import prefixes, 4 regular expressions with super-linear backtracking or too much complexity, `replaceAll` / `.at()` / optional-chain / `String.raw` / `codePointAt` preferences, cognitive complexity 16 > 15 in `renderAi`, and two `await` inside a loop.
+- **Decisions:**
+  - Accepted both bugs. The file list now sorts with `localeCompare`, newest first. The import no longer uses `sort().pop()` to keep message times in order; it compares the two ISO strings directly.
+  - Accepted all 4 regex findings:
+    - Legacy entries are parsed by hand, not with backtracking regexes.
+    - The embed pattern was split into separate wiki and Markdown patterns, merged by position, with nested matches skipped (new test).
+    - Stack-frame stripping filters lines instead of using a regex.
+    - Trailing-slash trimming is a loop.
+  - Accepted the style findings, including `node:` imports; esbuild now keeps `node:*` external too, and the bundle's `require` list was checked.
+  - Extracted the preview's request section from `renderAi`.
+  - **Rejected** the two `await`-in-loop warnings (import and restore). The writes are sequential on purpose: they share folder creation, and parallel `mkdir` calls race in Obsidian's adapter.
+- **Verification:** 297 tests, 99.75% line coverage; typecheck, lint and build pass. The gate result for the fix commit is recorded on the PR.

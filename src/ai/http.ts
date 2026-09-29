@@ -1,6 +1,6 @@
-import { request as httpRequest } from 'http';
-import { request as httpsRequest } from 'https';
-import { Buffer } from 'buffer';
+import { Buffer } from 'node:buffer';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 
 /**
  * A small HTTP client for local services such as Ollama. Node's own client is

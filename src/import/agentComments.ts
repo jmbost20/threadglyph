@@ -32,13 +32,25 @@ const FULL = /\{==([\s\S]+?)==\}((?:\{>>[\s\S]+?<<\})+)/g;
 const BLOCK = /\{>>([\s\S]+?)<<\}/g;
 
 /** The old plugin escaped `<<` and `>>` inside bodies. */
-const unescape = (text: string) => text.replace(/‹‹/g, '<<').replace(/››/g, '>>');
+const unescape = (text: string) => text.replaceAll('‹‹', '<<').replaceAll('››', '>>');
 
+/**
+ * `author|date|type: text`, or the older `author|date: text`. Parsed by hand,
+ * not by regex, so a long or malformed entry cannot cause slow backtracking.
+ */
 export function parseEntry(raw: string): LegacyEntry {
-  const full = /^([^|]+)\|([^|]+)\|([^:]+):\s*([\s\S]*)$/.exec(raw);
-  if (full) return { author: full[1].trim(), date: full[2].trim(), type: full[3].trim(), text: unescape(full[4].trim()) };
-  const short = /^([^|]+)\|([^:]+):\s*([\s\S]*)$/.exec(raw);
-  if (short) return { author: short[1].trim(), date: short[2].trim(), type: 'note', text: unescape(short[3].trim()) };
+  const [author = '', date, ...rest] = raw.split('|');
+  if (date !== undefined && author.trim()) {
+    const tail = rest.join('|');
+    const colon = tail.indexOf(':');
+    if (rest.length && date.trim() && colon > 0) {
+      return { author: author.trim(), date: date.trim(), type: tail.slice(0, colon).trim(), text: unescape(tail.slice(colon + 1).trim()) };
+    }
+    const short = date.indexOf(':');
+    if (!rest.length && short > 0) {
+      return { author: author.trim(), date: date.slice(0, short).trim(), type: 'note', text: unescape(date.slice(short + 1).trim()) };
+    }
+  }
   return { author: 'unknown', date: '', type: 'note', text: unescape(raw.trim()) };
 }
 
@@ -53,7 +65,7 @@ export function parseLegacyComments(doc: string): LegacyThread[] {
       to: from + m[1].length,
       entries,
       // The old plugin marks a resolved thread with a trailing `resolve` entry.
-      resolved: entries[entries.length - 1]?.type === 'resolve',
+      resolved: entries.at(-1)?.type === 'resolve',
     });
   }
   return found;
@@ -103,8 +115,9 @@ export function importedThread(
     const message = entryMessage(entry);
     if (!message) continue;
     const author = legacyAuthor(entry.author, people);
-    // Keep order even when dates are missing or out of order.
-    const createdAt = [legacyDate(entry.date) ?? importedAt, last].sort().pop()!;
+    // Keep order even when dates are missing or out of order (ISO strings compare chronologically).
+    const dated = legacyDate(entry.date) ?? importedAt;
+    const createdAt = dated > last ? dated : last;
     last = createdAt;
     messages.push({
       id: clock.newId(),
