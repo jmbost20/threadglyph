@@ -3,11 +3,11 @@
 ## Current state
 
 - **Stage:** 1–2 (pipeline + editable text threads), first build.
-- **Branch / PR:** `codex/bootstrap` → [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (draft)
-- **CI:** run 36430339217 passed on head `c14aec4` (check job green; Sonar job skipped with a warning because there is no `SONAR_TOKEN` yet, which is not a pass).
+- **Branch / PR:** `codex/bootstrap` → [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (ready for owner review; merge is the owner's decision)
+- **CI / reviews:** see PR #1 checks for the current head. Gitar findings (3) closed; SonarQube Cloud connected. First analysis failed the gate on coverage (79.4% < 80%) plus 7 minor issues, both addressed (see `docs/sonar-experiments.md`).
 - **Repo:** https://github.com/jmbost20/threadglyph (private)
-- **Local checks (2026-09-28):** typecheck, lint, 90 tests, build all pass. Line coverage is 72.5%: 100% for the domain, storage, controller and panel; 0% for `src/main.ts`, the Obsidian wiring. That file is verified by the manual sandbox check, not unit tests, and is deliberately not excluded from coverage.
-- **Next step:** CI on the PR, then set up SonarQube Cloud and Gitar (needs the owner's login), then the manual sandbox check.
+- **Local checks (2026-09-29):** typecheck, lint, 122 tests and build all pass; line coverage 99.8%. `src/main.ts` is covered by integration tests against a fake Obsidian runtime (`tests/plugin.test.ts`).
+- **Next step:** owner review and merge decision; manual check in the sandbox vault; after merge, verify the Sonar main-branch baseline.
 
 ## Decisions (stage 0)
 
@@ -51,8 +51,8 @@
 - [x] `npm install` + lockfile, local `npm run check`
 - [x] Private GitHub repo, bootstrap PR, CI results on the head SHA
 - [x] CI actions pinned by commit SHA to current releases (v4 actions were flagged as deprecated)
-- [ ] SonarQube Cloud project + `SONAR_TOKEN` (owner login needed)
-- [ ] Gitar app on this repo (owner consent needed)
+- [x] SonarQube Cloud project + `SONAR_TOKEN` (set up by the owner 2026-09-29)
+- [x] Gitar app on this repo
 - [x] Branch protection on `main`: **not available.** The GitHub API returns 403 ("Upgrade to GitHub Pro or make this repository public"). The repo stays private, merges stay manual by the owner, and branch discipline is local practice, **not server-enforced**.
 
 ### Stage 2: editable text threads
