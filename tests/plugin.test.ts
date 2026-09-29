@@ -770,6 +770,100 @@ describe('Threadglyph plugin AI', () => {
     expect(requests).toHaveLength(0);
   });
 
+  it('shows the new answer after Retry, not an edit of the old one (Gitar review on PR #5)', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Question');
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: true, text: 'First answer.' }, { ok: true, text: 'Second answer.' });
+    button('Send')!.click();
+    await flush();
+    const draft = q<HTMLTextAreaElement>('.tg-ai textarea')!;
+    draft.value = 'First answer, edited.';
+    draft.dispatchEvent(new Event('input'));
+    button('Retry')!.click();
+    await flush();
+    expect(q<HTMLTextAreaElement>('.tg-ai textarea')!.value).toBe('Second answer.');
+    button('Add to thread')!.click();
+    await flush();
+    expect(threads()[0].messages.at(-1)).toMatchObject({ body: 'Second answer.', origin: 'ai' });
+
+    // An edited draft closed from an error does not leak into the next session.
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: true, text: 'Third answer.' }, { ok: false, kind: 'network', message: 'offline' });
+    button('Send')!.click();
+    await flush();
+    const third = q<HTMLTextAreaElement>('.tg-ai textarea')!;
+    third.value = 'Stale edit';
+    third.dispatchEvent(new Event('input'));
+    button('Retry')!.click();
+    await flush();
+    button('Close')!.click();
+    await flush();
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: true, text: 'Fresh answer.' });
+    button('Send')!.click();
+    await flush();
+    expect(q<HTMLTextAreaElement>('.tg-ai textarea')!.value).toBe('Fresh answer.');
+  });
+
+  it('removes AI cards and stops requests when AI is switched off, and shows Ask at once when on (Gitar review on PR #5)', async () => {
+    let finish!: (r: AiResult) => void;
+    let seen: AbortSignal | undefined;
+    plugin.adapterFactory = (settings) =>
+      settings.aiEnabled
+        ? {
+            id: 'slow',
+            name: 'Claude',
+            capabilities: { text: true, images: true },
+            ask: (_req, signal) => {
+              seen = signal;
+              return new Promise<AiResult>((r) => (finish = r));
+            },
+          }
+        : null;
+    await commentOn('worth a comment', 'Toggle me');
+    const tab = (plugin as unknown as { settingTabs: { display(): void; containerEl: HTMLElement }[] }).settingTabs[0];
+    tab.display();
+    const toggle = tab.containerEl.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await flush();
+    expect(button('Ask Claude')).toBeDefined();
+
+    button('Ask Claude')!.click();
+    await flush();
+    button('Send')!.click();
+    await flush();
+    expect(q('.tg-ai-title')?.textContent).toBe('Asking Claude…');
+
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    await flush();
+    expect(seen?.aborted).toBe(true);
+    expect(q('.tg-ai')).toBeNull();
+    expect(button('Ask Claude')).toBeUndefined();
+    finish({ ok: true, text: 'Too late' });
+    await flush();
+    expect(q('.tg-ai')).toBeNull();
+    expect(threads()[0].messages).toHaveLength(1);
+  });
+
+  it('builds the adapter once per settings change, not on every refresh (Gitar review on PR #5)', async () => {
+    const factory = vi.fn(plugin.adapterFactory);
+    plugin.adapterFactory = factory;
+    await enable();
+    await commentOn('worth a comment', 'Count');
+    await plugin.refresh();
+    await plugin.refresh();
+    expect(factory).toHaveBeenCalledTimes(1);
+    plugin.settings.aiModel = 'sonnet';
+    await plugin.refresh();
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
   it('saves the AI settings', async () => {
     const tab = (plugin as unknown as { settingTabs: { display(): void; containerEl: HTMLElement }[] }).settingTabs[0];
     tab.display();

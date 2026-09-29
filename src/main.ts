@@ -39,6 +39,8 @@ const DEFAULT_SETTINGS: ThreadglyphSettings = {
   aiTimeoutSeconds: 120,
 };
 
+const aiDraftKey = (threadId: string) => `ai:${threadId}`;
+
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function cmView(view: MarkdownView): EditorView | null {
@@ -59,6 +61,7 @@ export default class ThreadglyphPlugin extends Plugin {
   private ai!: AiSessions;
   /** Builds the AI adapter from settings; replaceable so tests never start a real process. */
   adapterFactory: (settings: AiSettings) => AiAdapter | null = defaultAdapter;
+  private adapterCache: { key: string; factory: unknown; adapter: AiAdapter | null } | null = null;
 
   private readonly scheduleRefresh = debounce(() => void this.refresh(), 300, true);
 
@@ -234,10 +237,19 @@ export default class ThreadglyphPlugin extends Plugin {
       aiScope: (id, scope) => this.ai.setScope(id, scope),
       aiSend: (id) => {
         const adapter = this.adapter();
-        if (adapter) void this.ai.send(id, adapter, (scope) => this.buildRequest(id, scope));
+        if (!adapter) return;
+        // An edit of the previous answer must not stand in for the new one.
+        c.drafts.delete(aiDraftKey(id));
+        void this.ai.send(id, adapter, (scope) => this.buildRequest(id, scope));
       },
-      aiCancel: (id) => this.ai.cancel(id),
-      aiClose: (id) => this.ai.close(id),
+      aiCancel: (id) => {
+        c.drafts.delete(aiDraftKey(id));
+        this.ai.cancel(id);
+      },
+      aiClose: (id) => {
+        c.drafts.delete(aiDraftKey(id));
+        this.ai.close(id);
+      },
       aiAdopt: async (id, body) => {
         const state = this.ai.get(id);
         const adapter = this.adapter();
@@ -332,8 +344,14 @@ export default class ThreadglyphPlugin extends Plugin {
 
   // ── AI ──────────────────────────────────────────────────────────────────────
 
+  /** The adapter for the current AI settings, built once per settings change (it probes the disk for the CLI). */
   private adapter(): AiAdapter | null {
-    return this.adapterFactory(this.settings);
+    const { aiEnabled, claudePath, aiModel, aiTimeoutSeconds } = this.settings;
+    const key = JSON.stringify([aiEnabled, claudePath, aiModel, aiTimeoutSeconds]);
+    if (this.adapterCache?.key !== key || this.adapterCache.factory !== this.adapterFactory) {
+      this.adapterCache = { key, factory: this.adapterFactory, adapter: this.adapterFactory(this.settings) };
+    }
+    return this.adapterCache.adapter;
   }
 
   /** True when a comment @-mentions the enabled assistant, e.g. "@Claude". */
@@ -356,6 +374,7 @@ export default class ThreadglyphPlugin extends Plugin {
 
   private aiCards(note: TFile, doc: string, views: ThreadView[]): Record<string, AiCardView> {
     const cards: Record<string, AiCardView> = {};
+    if (!this.adapter()) return cards;
     for (const view of views) {
       const state = this.ai.get(view.thread.id);
       if (!state) continue;
@@ -595,6 +614,9 @@ export default class ThreadglyphPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    // Switching AI off stops any running request and removes its cards; either way the panel updates now.
+    if (!this.settings.aiEnabled) this.ai?.closeAll();
+    await this.refresh();
   }
 }
 

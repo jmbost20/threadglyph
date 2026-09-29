@@ -65,7 +65,13 @@ export class AiSessions {
       this.onChange();
     };
 
-    const built = await build(state.scope);
+    let built: BuiltRequest;
+    try {
+      built = await build(state.scope);
+    } catch (err) {
+      // e.g. the note or image became unreadable after the checks; never leave the card spinning.
+      built = { ok: false, message: `Could not prepare the request: ${(err as Error).message}` };
+    }
     if (!built.ok) {
       settle({ phase: 'error', scope: state.scope, attempts, kind: 'unsupported', message: built.message });
       return;

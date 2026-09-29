@@ -354,6 +354,19 @@ describe('AI sessions', () => {
     expect(sessions.get('t2')).toBeUndefined();
   });
 
+  it('settles into an error when preparing the request throws (Gitar review on PR #5)', async () => {
+    const sessions = new AiSessions(() => {});
+    const { adapter } = fakeAdapter([]);
+    sessions.open('t1');
+    await sessions.send('t1', adapter, async () => Promise.reject(new Error('EACCES: permission denied')));
+    expect(sessions.get('t1')).toMatchObject({
+      phase: 'error',
+      message: 'Could not prepare the request: EACCES: permission denied',
+    });
+    expect(sessions.canSend('t1')).toBe(true);
+    expect(adapter.ask).not.toHaveBeenCalled();
+  });
+
   it('reports unbuildable, unsupported, cancelled and thrown requests', async () => {
     const sessions = new AiSessions(() => {});
     const noImages = fakeAdapter([], false).adapter;
