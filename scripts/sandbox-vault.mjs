@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
