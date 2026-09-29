@@ -25,7 +25,8 @@ export function readingMarks(views: ThreadView[], doc: string): ReadingMark[] {
     };
     if (v.imagePath !== null) {
       const [embed] = findImageEmbeds(mark.quote);
-      if (!embed) return [];
+      // Markdown-style embeds render without their link, so they cannot be matched safely.
+      if (!embed?.wiki) return [];
       mark.imageLink = embed.link;
     }
     return [mark];
@@ -72,7 +73,8 @@ export function markRenderedSection(
 ): number {
   let marked = 0;
   const section = source.slice(sectionStart, sectionEnd);
-  for (const mark of marks) {
+  // Last passage first: wrapping one never shifts the occurrence count of a passage still to come.
+  for (const mark of [...marks].sort((a, b) => b.from - a.from)) {
     if (mark.from < sectionStart || mark.from >= sectionEnd) continue;
     if (mark.imageLink !== undefined) {
       if (markImage(el, section, mark, sectionStart, onOpen)) marked++;
@@ -91,7 +93,8 @@ export function markRenderedSection(
  */
 function markImage(el: HTMLElement, section: string, mark: ReadingMark, sectionStart: number, onOpen: (id: string) => void): boolean {
   const occurrence = findImageEmbeds(section).filter(
-    (e) => e.link === mark.imageLink && e.from < mark.from - sectionStart,
+    // Only wiki embeds appear as `.internal-embed[src]`, so only they count toward the position.
+    (e) => e.wiki && e.link === mark.imageLink && e.from < mark.from - sectionStart,
   ).length;
   const matches = [...el.querySelectorAll<HTMLElement>('.internal-embed[src]')].filter(
     (e) => e.getAttribute('src')!.split('|')[0].split('#')[0].trim() === mark.imageLink,

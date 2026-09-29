@@ -421,6 +421,27 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(view.previewMode.rerenders).toBe(rerenders);
   });
 
+  it('re-renders a Reading pane of a note that is also open in an editor (Gitar review on PR #3)', async () => {
+    // The editor pane comes first in the leaf list, as in the reported case.
+    const reading = app.workspace.open(NOTE) as typeof view;
+    reading.mode = 'preview';
+    await commentOn('worth a comment', 'Two panes');
+    const afterCreate = reading.previewMode.rerenders;
+    expect(afterCreate).toBeGreaterThan(0);
+    expect(view.previewMode.rerenders).toBe(0);
+
+    // Resolving changes the marks, so the Reading pane re-renders again; the source pane never does.
+    button('Resolve')!.click();
+    await flush();
+    expect(reading.previewMode.rerenders).toBeGreaterThan(afterCreate);
+    expect(view.previewMode.rerenders).toBe(0);
+
+    // A pane switched to Reading later gets its own first render with the current marks.
+    view.mode = 'preview';
+    await plugin.refresh();
+    expect(view.previewMode.rerenders).toBe(1);
+  });
+
   it('shows loading-free empty states and the open-panel command', async () => {
     app.workspace.activeFile = null;
     app.workspace.leaves = app.workspace.leaves.filter((l) => l.view !== view);

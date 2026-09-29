@@ -13,6 +13,8 @@ export interface ImageEmbed {
   to: number;
   /** The link as written, without size/alias suffixes or the `#` subpath. */
   link: string;
+  /** `![[…]]` rather than `![…](…)`; only wiki embeds keep their link in Reading view's DOM. */
+  wiki: boolean;
 }
 
 export type ImageSupport =
@@ -82,7 +84,7 @@ export function findImageEmbeds(doc: string): ImageEmbed[] {
     const link = cleanLink(wiki ? m[1] : m[2], wiki);
     const ext = extensionOf(link);
     if (!(ext in SUPPORTED) && !(ext in UNSUPPORTED)) continue;
-    found.push({ from: m.index, to: m.index + m[0].length, link });
+    found.push({ from: m.index, to: m.index + m[0].length, link, wiki });
   }
   return found;
 }
