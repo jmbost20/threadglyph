@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION, type AnchorKind, type Author, type Message, type ThreadRecord } from './types';
+import { SCHEMA_VERSION, type AnchorKind, type Author, type Message, type MessageOrigin, type ThreadRecord } from './types';
 
 export interface Clock {
   now(): string;
@@ -60,8 +60,11 @@ export function addReply(
   author: Author,
   body: string,
   clock: Clock = systemClock,
+  /** For AI authors: `ai-edited` when the person revised the draft before adding it. */
+  origin?: MessageOrigin,
 ): ThreadRecord {
   const reply = newMessage(author, body, clock);
+  if (origin && author.kind === 'ai') reply.origin = origin;
   return touch(thread, clock, { messages: [...thread.messages, reply] });
 }
 

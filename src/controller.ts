@@ -92,6 +92,16 @@ export class ThreadController {
     return this.update(threadId, (t) => addReply(t, this.author(), body, this.clock));
   }
 
+  /**
+   * Adds an AI draft the user accepted. It stays attributed to the assistant;
+   * if the user changed it first it is marked `ai-edited`, never passed off as
+   * an untouched model reply.
+   */
+  async addAiReply(threadId: string, assistant: string, body: string, edited: boolean): Promise<Outcome> {
+    const author = { kind: 'ai' as const, name: assistant };
+    return this.update(threadId, (t) => addReply(t, author, body, this.clock, edited ? 'ai-edited' : 'ai'));
+  }
+
   startEdit(threadId: string, messageId: string): void {
     const message = this.store.get(threadId)?.messages.find((m) => m.id === messageId);
     if (!message) return;

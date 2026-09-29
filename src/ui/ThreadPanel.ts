@@ -1,4 +1,5 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
+import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
 import {
@@ -14,6 +15,17 @@ import {
 
 export const VIEW_TYPE_THREADGLYPH = 'threadglyph-panel';
 
+/** An open "Ask AI" session on one thread, with everything the preview must show. */
+export interface AiCardView {
+  state: AiState;
+  /** One line per item that will be sent. */
+  items: string[];
+  scopes: { scope: ContextScope; label: string }[];
+  /** The exact text of the request (images are named, not inlined). */
+  exactText: string;
+  canSend: boolean;
+}
+
 export interface PanelState {
   status: 'loading' | 'no-note' | 'ready';
   notePath: string | null;
@@ -25,6 +37,9 @@ export interface PanelState {
   problems: LoadProblem[];
   focusedThreadId: string | null;
   filter: ThreadFilter;
+  /** The assistant's name when AI is enabled, else null (no AI controls are shown). */
+  assistant: string | null;
+  ai: Record<string, AiCardView>;
 }
 
 /** What the panel may ask the plugin to do. All persistence lives behind this boundary. */
@@ -43,6 +58,13 @@ export interface PanelActions {
   goTo(threadId: string): Promise<void>;
   /** A displayable URL for a vault image, or null when the file is missing. */
   imageSrc(path: string): string | null;
+  aiOpen(threadId: string): void;
+  aiScope(threadId: string, scope: ContextScope): void;
+  aiSend(threadId: string): void;
+  aiCancel(threadId: string): void;
+  aiClose(threadId: string): void;
+  /** Adds the (possibly edited) draft to the thread as an attributed AI message. */
+  aiAdopt(threadId: string, body: string): Promise<boolean>;
   setFilter(filter: ThreadFilter): void;
   rerender(): void;
 }
@@ -67,6 +89,8 @@ export class ThreadPanel extends ItemView {
     problems: [],
     focusedThreadId: null,
     filter: 'open',
+    assistant: null,
+    ai: {},
   };
   /** Search text is local to the panel; typing never touches storage. */
   private query = '';
@@ -290,12 +314,174 @@ export class ThreadPanel extends ItemView {
       );
     }
 
+    const ai = this.state.ai[thread.id];
+    if (ai) this.renderAi(card, thread.id, ai);
+
     const footer = card.createDiv({ cls: 'tg-card-footer' });
+    if (this.state.assistant && thread.status === 'open' && !ai) {
+      const ask = footer.createEl('button', { cls: 'tg-link tg-ask', text: `Ask ${this.state.assistant}` });
+      ask.onclick = () => this.actions.aiOpen(thread.id);
+    }
     const toggle = footer.createEl('button', {
       cls: 'tg-link',
       text: thread.status === 'open' ? 'Resolve' : 'Reopen',
     });
     toggle.onclick = () => void this.actions.setResolved(thread.id, thread.status === 'open');
+  }
+
+  private renderAi(card: HTMLElement, threadId: string, ai: AiCardView): void {
+    const name = this.state.assistant ?? 'AI';
+    const box = card.createDiv({ cls: `tg-ai tg-ai-phase-${ai.state.phase}` });
+    box.setAttr('aria-live', 'polite');
+    const buttons = (parent: HTMLElement) => parent.createDiv({ cls: 'tg-composer-buttons' });
+    const button = (parent: HTMLElement, text: string, onClick: () => void, cta = false) => {
+      const b = parent.createEl('button', { cls: cta ? 'tg-button mod-cta' : 'tg-button', text });
+      b.onclick = onClick;
+      return b;
+    };
+    const retry = (parent: HTMLElement) => {
+      if (ai.canSend) button(parent, 'Retry', () => this.actions.aiSend(threadId));
+    };
+
+    switch (ai.state.phase) {
+      case 'preview': {
+        box.createDiv({ cls: 'tg-ai-title', text: `Ask ${name}` });
+        box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive:` });
+        const list = box.createEl('ul', { cls: 'tg-ai-items' });
+        for (const item of ai.items) list.createEl('li', { text: item });
+        const scopes = box.createDiv({ cls: 'tg-ai-scopes', attr: { role: 'radiogroup', 'aria-label': 'How much of the note to include' } });
+        for (const option of ai.scopes) {
+          const label = scopes.createEl('label', { cls: 'tg-ai-scope' });
+          const radio = label.createEl('input', { attr: { type: 'radio', name: `tg-scope-${threadId}`, value: option.scope } });
+          radio.checked = ai.state.scope === option.scope;
+          radio.onchange = () => this.actions.aiScope(threadId, option.scope);
+          label.createSpan({ text: option.label });
+        }
+        const details = box.createEl('details', { cls: 'tg-ai-exact' });
+        details.createEl('summary', { text: 'Show exact text' });
+        details.createEl('pre', { text: ai.exactText });
+        const row = buttons(box);
+        button(row, 'Cancel', () => this.actions.aiClose(threadId));
+        const send = button(row, 'Send', () => this.actions.aiSend(threadId), true);
+        send.disabled = !ai.canSend;
+        break;
+      }
+      case 'running': {
+        box.createDiv({ cls: 'tg-ai-title', text: `Asking ${name}…` });
+        button(buttons(box), 'Cancel', () => this.actions.aiCancel(threadId));
+        break;
+      }
+      case 'draft': {
+        box.createDiv({ cls: 'tg-ai-title', text: `${name} · draft, not in the thread yet` });
+        const key = `ai:${threadId}`;
+        const input = box.createEl('textarea', { cls: 'tg-input', attr: { rows: '4', 'aria-label': `${name}'s draft reply` } });
+        input.dataset.draftKey = key;
+        input.value = this.actions.drafts.get(key) ?? ai.state.text;
+        input.oninput = () => this.actions.drafts.set(key, input.value);
+        const original = ai.state.text;
+        const row = buttons(box);
+        button(row, 'Discard', () => {
+          if (input.value.trim() !== original.trim() && !window.confirm('Discard your edits to this draft?')) return;
+          this.actions.drafts.delete(key);
+          this.actions.aiClose(threadId);
+        });
+        retry(row);
+        let busy = false;
+        const add = button(
+          row,
+          'Add to thread',
+          () => {
+            if (busy || !input.value.trim()) return;
+            busy = true;
+            add.disabled = true;
+            void this.actions
+              .aiAdopt(threadId, input.value)
+              .then((ok) => {
+                if (ok) this.actions.drafts.delete(key);
+              })
+              .finally(() => {
+                busy = false;
+                add.disabled = false;
+                this.actions.rerender();
+              });
+          },
+          true,
+        );
+        break;
+      }
+      case 'error': {
+        box.createDiv({ cls: 'tg-ai-title', text: `${name} could not answer` });
+        box.createDiv({ cls: 'tg-ai-error', text: ai.state.message });
+        if (!ai.canSend) box.createDiv({ cls: 'tg-ai-note', text: 'No retries left for this request. Close it and ask again later.' });
+        const row = buttons(box);
+        button(row, 'Close', () => this.actions.aiClose(threadId));
+        retry(row);
+        break;
+      }
+    }
+  }
+
+  /**
+   * @-mention suggestions for the assistant. Returns a key handler the composer
+   * consults first, so arrows/Enter/Escape drive the menu only while it is open.
+   */
+  private attachMentions(input: HTMLTextAreaElement, wrap: HTMLElement): (e: KeyboardEvent) => boolean {
+    const assistant = this.state.assistant;
+    if (!assistant) return () => false;
+    const names = [assistant];
+    let menu: HTMLElement | null = null;
+    let items: string[] = [];
+    let index = 0;
+
+    const close = () => {
+      menu?.remove();
+      menu = null;
+      items = [];
+    };
+    const pick = (name: string) => {
+      const caret = input.selectionStart ?? input.value.length;
+      const before = input.value.slice(0, caret).replace(/@(\w*)$/, `@${name} `);
+      input.value = before + input.value.slice(caret);
+      input.setSelectionRange(before.length, before.length);
+      close();
+      input.dispatchEvent(new Event('input'));
+    };
+    const update = () => {
+      const typed = /(?:^|\s)@(\w*)$/.exec(input.value.slice(0, input.selectionStart ?? input.value.length));
+      items = typed ? names.filter((n) => n.toLowerCase().startsWith(typed[1].toLowerCase())) : [];
+      if (!items.length) return close();
+      index = Math.min(index, items.length - 1);
+      menu ??= wrap.createDiv({ cls: 'tg-mention-menu', attr: { role: 'listbox', 'aria-label': 'Mention an assistant' } });
+      menu.empty();
+      items.forEach((name, i) => {
+        const option = menu!.createDiv({ cls: 'tg-mention-option', text: `@${name}` });
+        option.setAttr('role', 'option');
+        option.setAttr('aria-selected', String(i === index));
+        if (i === index) option.addClass('is-selected');
+        option.onmousedown = (e) => {
+          e.preventDefault();
+          pick(name);
+        };
+      });
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('blur', close);
+
+    return (e) => {
+      if (!menu) return false;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        index = (index + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+        update();
+      } else if ((e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey) {
+        pick(items[index]);
+      } else if (e.key === 'Escape') {
+        close();
+      } else {
+        return false;
+      }
+      e.preventDefault();
+      return true;
+    };
   }
 
   /** Image preview; a missing or unreadable file is named instead of shown. */
@@ -415,7 +601,9 @@ export class ThreadPanel extends ItemView {
     const submitButton = buttons.createEl('button', { cls: 'tg-button mod-cta', text: submitLabel });
     submitButton.onclick = () => void doSubmit();
 
+    const mentionKey = this.attachMentions(input, wrap);
     input.onkeydown = (e) => {
+      if (mentionKey(e)) return;
       if (isSubmit(e)) {
         e.preventDefault();
         void doSubmit();

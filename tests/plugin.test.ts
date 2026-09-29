@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ThreadglyphPlugin from '../src/main';
 import { addReply } from '../src/model/thread';
 import type { ThreadRecord } from '../src/model/types';
+import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { ANCHORS_DIR, THREADS_DIR } from '../src/storage/paths';
 
 type Fake = InstanceType<typeof FakeApp>;
@@ -441,7 +442,13 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     input.dispatchEvent(new Event('input'));
     await flush();
     expect(plugin.settings.authorName).toBe('Jonah');
-    expect((plugin as unknown as { data: unknown }).data).toEqual({ authorName: 'Jonah' });
+    expect((plugin as unknown as { data: unknown }).data).toEqual({
+      authorName: 'Jonah',
+      aiEnabled: false,
+      claudePath: '',
+      aiModel: '',
+      aiTimeoutSeconds: 120,
+    });
     input.value = '   ';
     input.dispatchEvent(new Event('input'));
     await flush();
@@ -562,5 +569,202 @@ describe('Threadglyph plugin image threads', () => {
     await (plugin as unknown as { reattach(id: string): Promise<void> }).reattach(threads()[0].id);
     expect(anchorFile()).toMatchObject({ imagePath: 'Attachments/lost.png', quote: '![[lost.png]]' });
     expect(threads()[0].messages[0].body).toBe('Keep me');
+  });
+});
+
+describe('Threadglyph plugin AI', () => {
+  let requests: AiRequest[];
+  let answers: AiResult[];
+
+  beforeEach(() => {
+    requests = [];
+    answers = [];
+    const adapter: AiAdapter = {
+      id: 'fake',
+      name: 'Claude',
+      capabilities: { text: true, images: true },
+      ask: async (request) => {
+        requests.push(request);
+        return answers.shift() ?? { ok: true, text: 'A synthetic reply.' };
+      },
+    };
+    plugin.adapterFactory = (settings) => (settings.aiEnabled ? adapter : null);
+  });
+
+  const enable = async () => {
+    plugin.settings.aiEnabled = true;
+    await plugin.refresh();
+  };
+
+  it('shows no AI controls until enabled, and @Claude does nothing while off', async () => {
+    await commentOn('worth a comment', 'Hey @Claude');
+    expect(button('Ask Claude')).toBeUndefined();
+    expect(q('.tg-ai')).toBeNull();
+    await enable();
+    expect(button('Ask Claude')).toBeDefined();
+  });
+
+  it('opens a preview when a new comment mentions @Claude, and sends only after Send', async () => {
+    await enable();
+    await commentOn('worth a comment', 'What do you think, @claude?');
+    expect(q('.tg-ai-title')?.textContent).toBe('Ask Claude');
+    expect([...panelEl().querySelectorAll('.tg-ai-items li')].map((li) => li.textContent)).toEqual([
+      'The passage (15 characters)',
+      '1 message in this thread',
+    ]);
+    expect(requests).toHaveLength(0);
+
+    const radios = [...panelEl().querySelectorAll<HTMLInputElement>('.tg-ai-scope input')];
+    radios[2].dispatchEvent(new Event('change'));
+    await flush();
+    button('Send')!.click();
+    await flush();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      noteName: '2026-09-28',
+      quote: 'worth a comment',
+      image: null,
+      context: { label: 'The whole note', text: NOTE_TEXT.trimEnd() },
+      messages: [{ author: 'Me', origin: 'human', body: 'What do you think, @claude?' }],
+    });
+    expect(q<HTMLTextAreaElement>('.tg-ai textarea')?.value).toBe('A synthetic reply.');
+    expect(threads()[0].messages).toHaveLength(1);
+
+    button('Add to thread')!.click();
+    await flush();
+    expect(threads()[0].messages[1]).toMatchObject({ author: { kind: 'ai', name: 'Claude' }, origin: 'ai', body: 'A synthetic reply.' });
+    expect(q('.tg-ai')).toBeNull();
+    expect(panelEl().querySelector('.tg-origin')?.textContent).toBe('AI');
+  });
+
+  it('marks a draft the user edited as AI edited, and opens from a reply mention', async () => {
+    await enable();
+    await commentOn('worth a comment', 'First');
+    const reply = q<HTMLTextAreaElement>('textarea[data-draft-key^="reply:"]')!;
+    reply.value = '@Claude please weigh in';
+    reply.dispatchEvent(new Event('input'));
+    button('Reply')!.click();
+    await flush();
+    button('Send')!.click();
+    await flush();
+    const draft = q<HTMLTextAreaElement>('.tg-ai textarea')!;
+    draft.value = 'A synthetic reply, edited by me.';
+    draft.dispatchEvent(new Event('input'));
+    button('Add to thread')!.click();
+    await flush();
+    expect(threads()[0].messages.at(-1)).toMatchObject({ origin: 'ai-edited', author: { kind: 'ai' } });
+    expect([...panelEl().querySelectorAll('.tg-origin')].at(-1)?.textContent).toBe('AI · edited by you');
+  });
+
+  it('shows provider errors and retries without duplicating replies', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Try');
+    button('Ask Claude')!.click();
+    await flush();
+    answers.push({ ok: false, kind: 'quota', message: 'Claude is at a usage or rate limit.' });
+    button('Send')!.click();
+    await flush();
+    expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Claude is at a usage or rate limit.');
+    button('Retry')!.click();
+    await flush();
+    button('Add to thread')!.click();
+    await flush();
+    expect(requests).toHaveLength(2);
+    expect(threads()[0].messages.filter((m) => m.origin === 'ai')).toHaveLength(1);
+  });
+
+  it('cancel and close leave the thread untouched', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Hmm');
+    button('Ask Claude')!.click();
+    await flush();
+    button('Cancel')!.click();
+    await flush();
+    expect(q('.tg-ai')).toBeNull();
+    const actions = (plugin as unknown as { panelActions(): { aiCancel(id: string): void; aiAdopt(id: string, b: string): Promise<boolean> } }).panelActions();
+    actions.aiCancel(threads()[0].id);
+    expect(await actions.aiAdopt(threads()[0].id, 'no draft')).toBe(false);
+    expect(threads()[0].messages).toHaveLength(1);
+  });
+
+  describe('with an image thread', () => {
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3]);
+    const TRIP = 'Trip.md';
+    const TRIP_TEXT = 'Look:\n![[sky.png]]\n';
+
+    async function imageThread() {
+      app.vault.adapter.files.set(TRIP, TRIP_TEXT);
+      app.vault.adapter.files.set('Pics/sky.png', 'placeholder');
+      app.vault.binaries.set('Pics/sky.png', PNG);
+      const trip = app.workspace.open(TRIP) as typeof view;
+      const at = TRIP_TEXT.indexOf('![[sky.png]]') + 3;
+      trip.editor.selection = [at, at];
+      await enable();
+      command('comment-on-selection').editorCheckCallback!(false, trip.editor, trip);
+      await flush();
+      const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+      input.value = 'What is in this picture, @Claude?';
+      input.dispatchEvent(new Event('input'));
+      button('Comment')!.click();
+      await flush();
+    }
+
+    it('sends the image file’s real bytes, not a caption', async () => {
+      await imageThread();
+      expect(panelEl().querySelector('.tg-ai-items li')?.textContent).toBe('The image sky.png');
+      button('Send')!.click();
+      await flush();
+      expect(requests[0].quote).toBeNull();
+      expect(requests[0].image).toEqual({
+        path: 'Pics/sky.png',
+        mediaType: 'image/png',
+        data: Buffer.from(PNG).toString('base64'),
+        bytes: PNG.length,
+      });
+    });
+
+    it('refuses a damaged or missing image before calling the model', async () => {
+      await imageThread();
+      app.vault.binaries.set('Pics/sky.png', new TextEncoder().encode('not an image'));
+      button('Send')!.click();
+      await flush();
+      expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Pics/sky.png does not contain valid PNG, JPEG or WebP data.');
+      app.vault.adapter.files.delete('Pics/sky.png');
+      button('Retry')!.click();
+      await flush();
+      expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Image file not found: Pics/sky.png');
+      expect(requests).toHaveLength(0);
+    });
+  });
+
+  it('reports a thread whose note disappeared', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Gone soon');
+    button('Ask Claude')!.click();
+    await flush();
+    app.vault.adapter.files.delete(NOTE);
+    const actions = (plugin as unknown as { panelActions(): { aiSend(id: string): void } }).panelActions();
+    actions.aiSend(threads()[0].id);
+    await flush();
+    expect(requests).toHaveLength(0);
+  });
+
+  it('saves the AI settings', async () => {
+    const tab = (plugin as unknown as { settingTabs: { display(): void; containerEl: HTMLElement }[] }).settingTabs[0];
+    tab.display();
+    const [toggle] = [...tab.containerEl.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    const [, path, model, timeout] = [...tab.containerEl.querySelectorAll<HTMLInputElement>('input:not([type])')];
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    for (const [input, value] of [[path, ' /opt/claude '], [model, ' sonnet '], [timeout, '45']] as const) {
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+    }
+    await flush();
+    expect(plugin.settings).toMatchObject({ aiEnabled: true, claudePath: '/opt/claude', aiModel: 'sonnet', aiTimeoutSeconds: 45 });
+    timeout.value = '3';
+    timeout.dispatchEvent(new Event('input'));
+    await flush();
+    expect(plugin.settings.aiTimeoutSeconds).toBe(120);
   });
 });

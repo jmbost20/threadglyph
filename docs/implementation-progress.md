@@ -85,6 +85,19 @@ Owner feedback from the first sandbox session: no visible highlight, and a reque
 - [x] **Sandbox content.** `Images.md` plus two generated gradient PNGs, a fake `.heic` and a missing-file embed.
 - [ ] Owner UI review in the sandbox
 
+### Stage 5: optional AI (`codex/ask-ai`, stacked on stage 4)
+- [x] **Adapter (one).** The local Claude Code CLI through the owner's existing sign-in, so there is no API key and no new billing. It declares text and images. Isolation: `--tools ""`, `--strict-mcp-config`, `--setting-sources ""`, `--no-session-persistence`, `--disable-slash-commands`, cwd in the OS temp folder, spawned without a shell, output capped.
+- [x] **Off by default.** Human comments never need a model. Settings: enable, CLI path (blank = auto-detect in the usual install folders, since the Dock app doesn't inherit the shell PATH), model and timeout.
+- [x] **Explicit start.** An "Ask Claude" link on each open thread, and an **@ dropdown** in every comment box. Posting a comment that @mentions Claude opens the preview; nothing is sent automatically. There is no background mention sweep.
+- [x] **Preview.** Lists exactly what goes out: the passage or the image, the number of messages, and optional context. Scope defaults to passage + thread; section and whole-note are deliberate choices, capped at 40,000 characters. "Show exact text" shows the request verbatim.
+- [x] **Draft, not a message.** The answer is an editable draft; only "Add to thread" writes it. Author kind `ai`, origin `ai`, or `ai-edited` if the user changed it.
+- [x] **Cancel, timeout, retry.** A cancel kills the process. Retries are bounded (3 attempts). A cancelled or superseded request's late answer is dropped, so a retry cannot duplicate a reply.
+- [x] **Errors.** Not installed, not signed in, usage/rate limit, network, timeout and empty reply each get their own message.
+- [x] **Images.** The request carries the file's real bytes (type checked from content, 5 MB cap). A damaged or missing image is refused before any call.
+- [x] **Untrusted data.** Note text and earlier messages are fenced as data, and closing tags inside them are neutralised. The model has no tools and cannot touch the note.
+- [x] **Real-provider check (2026-09-29).** One manual request with a synthetic gradient PNG through the same flags returned "Blue gradient, dark to light." The CLI's init line showed `tools: []` and `mcp_servers: []`. CI never calls a real provider; every automated test uses a fake adapter or a Node subprocess.
+- [ ] Owner UI review in the sandbox (enable it under Settings → Threadglyph → Enable Ask Claude)
+
 ## Known limitations
 
 - Desktop only. Mobile and sync behavior are untested (stage 6).

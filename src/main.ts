@@ -12,21 +12,34 @@ import {
   type Editor,
   type MarkdownPostProcessorContext,
 } from 'obsidian';
-import { embedAtSelection, imageSupport, isRemote, type ImageEmbed } from './anchor/imageEmbed';
+import { defaultAdapter, type AiSettings } from './ai/defaultAdapter';
+import { aiPreview, buildAiRequest, type RequestInputs } from './ai/request';
+import { AiSessions, type BuiltRequest, type ContextScope } from './ai/session';
+import type { AiAdapter } from './ai/types';
+import { embedAtSelection, imageSupport, isRemote, prepareImage, type ImageEmbed } from './anchor/imageEmbed';
 import { ThreadController, type Outcome } from './controller';
 import { THREADS_DIR } from './storage/paths';
 import { AdapterFileStore } from './storage/adapterFileStore';
 import { ThreadStore } from './storage/threadStore';
-import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type PanelActions } from './ui/ThreadPanel';
+import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions } from './ui/ThreadPanel';
 import { setThreadMarks, threadMarksExtension, type ThreadMark } from './ui/editorMarks';
 import { lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks';
 import { buildThreadViews, type ThreadFilter, type ThreadView } from './ui/viewModel';
 
-interface ThreadglyphSettings {
+interface ThreadglyphSettings extends AiSettings {
   authorName: string;
 }
 
-const DEFAULT_SETTINGS: ThreadglyphSettings = { authorName: 'Me' };
+const DEFAULT_SETTINGS: ThreadglyphSettings = {
+  authorName: 'Me',
+  // AI is opt-in: human comments never need a model.
+  aiEnabled: false,
+  claudePath: '',
+  aiModel: '',
+  aiTimeoutSeconds: 120,
+};
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function cmView(view: MarkdownView): EditorView | null {
   return (view.editor as unknown as { cm?: EditorView }).cm ?? null;
@@ -43,11 +56,15 @@ export default class ThreadglyphPlugin extends Plugin {
   private focusedThreadId: string | null = null;
   /** The note the panel is showing; kept when focus moves into the panel itself. */
   private currentFile: TFile | null = null;
+  private ai!: AiSessions;
+  /** Builds the AI adapter from settings; replaceable so tests never start a real process. */
+  adapterFactory: (settings: AiSettings) => AiAdapter | null = defaultAdapter;
 
   private readonly scheduleRefresh = debounce(() => void this.refresh(), 300, true);
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    this.ai = new AiSessions(() => void this.refresh());
     this.store = new ThreadStore(new AdapterFileStore(this.app.vault.adapter));
     this.controller = new ThreadController(this.store, () => ({ kind: 'human', name: this.settings.authorName }));
 
@@ -114,6 +131,7 @@ export default class ThreadglyphPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.ai?.closeAll();
     this.scheduleRefresh.cancel();
   }
 
@@ -182,14 +200,22 @@ export default class ThreadglyphPlugin extends Plugin {
       createThread: (body) =>
         attempt(async () => {
           const result = await c.commitThread(body);
-          if (result.ok && result.thread) this.focusedThreadId = result.thread.id;
+          if (result.ok && result.thread) {
+            this.focusedThreadId = result.thread.id;
+            if (this.mentionsAssistant(body)) this.ai.open(result.thread.id);
+          }
           return result;
         }),
       cancelNewThread: () => {
         c.cancelThread();
         void this.refresh();
       },
-      reply: (id, body) => attempt(() => c.reply(id, body)),
+      reply: (id, body) =>
+        attempt(async () => {
+          const result = await c.reply(id, body);
+          if (result.ok && this.mentionsAssistant(body)) this.ai.open(id);
+          return result;
+        }),
       startEdit: (id, messageId) => {
         c.startEdit(id, messageId);
         void this.refresh();
@@ -204,6 +230,23 @@ export default class ThreadglyphPlugin extends Plugin {
         await this.refresh();
       },
       reattach: (id) => this.reattach(id),
+      aiOpen: (id) => this.ai.open(id),
+      aiScope: (id, scope) => this.ai.setScope(id, scope),
+      aiSend: (id) => {
+        const adapter = this.adapter();
+        if (adapter) void this.ai.send(id, adapter, (scope) => this.buildRequest(id, scope));
+      },
+      aiCancel: (id) => this.ai.cancel(id),
+      aiClose: (id) => this.ai.close(id),
+      aiAdopt: async (id, body) => {
+        const state = this.ai.get(id);
+        const adapter = this.adapter();
+        if (state?.phase !== 'draft' || !adapter) return false;
+        const edited = body.trim() !== state.text.trim();
+        const ok = await attempt(() => c.addAiReply(id, adapter.name, body, edited));
+        if (ok) this.ai.close(id);
+        return ok;
+      },
       imageSrc: (path) => {
         const file = this.app.vault.getAbstractFileByPath(path);
         return file instanceof TFile ? this.app.vault.getResourcePath(file) : null;
@@ -263,6 +306,7 @@ export default class ThreadglyphPlugin extends Plugin {
       problems: this.store.loadProblems(),
       focusedThreadId: this.focusedThreadId,
       filter: this.filter,
+      assistant: this.adapter()?.name ?? null,
     };
     if (!this.loaded || !note) {
       for (const panel of panels) {
@@ -272,15 +316,74 @@ export default class ThreadglyphPlugin extends Plugin {
           views: [],
           pendingQuote: null,
           pendingImagePath: null,
+          ai: {},
         });
       }
       return;
     }
-    const views = buildThreadViews(this.store, note.path, await this.noteText(note), this.resolveLink);
+    const doc = await this.noteText(note);
+    const views = buildThreadViews(this.store, note.path, doc, this.resolveLink);
+    const ai = this.aiCards(note, doc, views);
     const pending = this.controller.pending?.notePath === note.path ? this.controller.pending : null;
     const pendingQuote = pending?.anchor.quote ?? null;
     const pendingImagePath = pending?.anchor.imagePath ?? null;
-    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath });
+    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath, ai });
+  }
+
+  // ── AI ──────────────────────────────────────────────────────────────────────
+
+  private adapter(): AiAdapter | null {
+    return this.adapterFactory(this.settings);
+  }
+
+  /** True when a comment @-mentions the enabled assistant, e.g. "@Claude". */
+  private mentionsAssistant(body: string): boolean {
+    const adapter = this.adapter();
+    return !!adapter && new RegExp(`(^|\\s)@${escapeRegExp(adapter.name)}\\b`, 'i').test(body);
+  }
+
+  private requestInputs(note: TFile, doc: string, view: ThreadView): RequestInputs {
+    const found = view.anchor.kind === 'found' ? view.anchor : null;
+    return {
+      noteName: note.basename,
+      doc,
+      thread: view.thread,
+      quote: found ? doc.slice(found.from, found.to) : view.quote,
+      anchorOffset: found?.from ?? null,
+      imagePath: view.imagePath,
+    };
+  }
+
+  private aiCards(note: TFile, doc: string, views: ThreadView[]): Record<string, AiCardView> {
+    const cards: Record<string, AiCardView> = {};
+    for (const view of views) {
+      const state = this.ai.get(view.thread.id);
+      if (!state) continue;
+      const preview = aiPreview(this.requestInputs(note, doc, view), state.scope);
+      cards[view.thread.id] = { state, ...preview, canSend: this.ai.canSend(view.thread.id) };
+    }
+    return cards;
+  }
+
+  /** Assembles the request at send time, reading the image's real bytes. */
+  private async buildRequest(threadId: string, scope: ContextScope): Promise<BuiltRequest> {
+    const thread = this.store.get(threadId);
+    const file = thread && this.app.vault.getAbstractFileByPath(thread.notePath);
+    if (!thread || !(file instanceof TFile)) return { ok: false, message: 'The note for this thread is missing.' };
+    const doc = await this.noteText(file);
+    const [view] = buildThreadViews(
+      { forNote: () => [thread], anchorFor: (id) => this.store.anchorFor(id) },
+      file.path,
+      doc,
+      this.resolveLink,
+    );
+    const inputs = this.requestInputs(file, doc, view);
+    if (!inputs.imagePath) return { ok: true, request: buildAiRequest(inputs, scope, null) };
+    const imageFile = this.app.vault.getAbstractFileByPath(inputs.imagePath);
+    if (!(imageFile instanceof TFile)) return { ok: false, message: `Image file not found: ${inputs.imagePath}` };
+    const prepared = prepareImage(imageFile.path, new Uint8Array(await this.app.vault.readBinary(imageFile)));
+    if (!prepared.ok) return { ok: false, message: prepared.reason };
+    return { ok: true, request: buildAiRequest(inputs, scope, prepared.image) };
   }
 
   /** Threads of a note with their anchors resolved against `doc`; empty until storage has loaded. */
@@ -510,6 +613,48 @@ class ThreadglyphSettingTab extends PluginSettingTab {
       .addText((text) =>
         text.setValue(this.plugin.settings.authorName).onChange(async (value) => {
           this.plugin.settings.authorName = value.trim() || DEFAULT_SETTINGS.authorName;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(this.containerEl).setName('AI assistant').setHeading();
+    new Setting(this.containerEl)
+      .setName('Enable Ask Claude')
+      .setDesc(
+        'Adds “Ask Claude” to threads and @Claude to comment boxes. Requests run through your local Claude Code ' +
+          'sign-in with every tool disabled. Nothing is sent until you press Send in the preview.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.aiEnabled).onChange(async (value) => {
+          this.plugin.settings.aiEnabled = value;
+          await this.plugin.saveSettings();
+        }),
+      );
+    new Setting(this.containerEl)
+      .setName('Claude Code path')
+      .setDesc('Leave blank to look in the usual install locations (~/.local/bin/claude and others).')
+      .addText((text) =>
+        text.setValue(this.plugin.settings.claudePath).onChange(async (value) => {
+          this.plugin.settings.claudePath = value.trim();
+          await this.plugin.saveSettings();
+        }),
+      );
+    new Setting(this.containerEl)
+      .setName('Model')
+      .setDesc('Optional, e.g. “sonnet”. Blank uses Claude Code’s default.')
+      .addText((text) =>
+        text.setValue(this.plugin.settings.aiModel).onChange(async (value) => {
+          this.plugin.settings.aiModel = value.trim();
+          await this.plugin.saveSettings();
+        }),
+      );
+    new Setting(this.containerEl)
+      .setName('Timeout (seconds)')
+      .setDesc('How long to wait for a reply before giving up.')
+      .addText((text) =>
+        text.setValue(String(this.plugin.settings.aiTimeoutSeconds)).onChange(async (value) => {
+          const seconds = Number.parseInt(value, 10);
+          this.plugin.settings.aiTimeoutSeconds = Number.isFinite(seconds) && seconds >= 10 ? seconds : DEFAULT_SETTINGS.aiTimeoutSeconds;
           await this.plugin.saveSettings();
         }),
       );

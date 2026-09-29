@@ -480,3 +480,129 @@ body {
   top: 0;
   vertical-align: top;
 }
+
+/* ── Ask AI ─────────────────────────────────────────────── */
+
+.tg-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--tg-accent-mid);
+  background: var(--tg-accent-soft);
+}
+
+.tg-ai-title {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.tg-ai-phase-running .tg-ai-title::after {
+  content: '';
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-left: 6px;
+  border: 2px solid var(--tg-accent-line);
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: tg-spin 0.9s linear infinite;
+}
+
+@keyframes tg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tg-ai-phase-running .tg-ai-title::after {
+    animation: none;
+  }
+}
+
+.tg-ai-note,
+.tg-ai-items {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-ai-items {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.tg-ai-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-ai-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.tg-ai-exact summary {
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.tg-ai-exact pre {
+  max-height: 200px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tg-ai-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.tg-card-footer {
+  gap: 12px;
+}
+
+/* ── @ mentions ─────────────────────────────────────────── */
+
+.tg-composer {
+  position: relative;
+}
+
+.tg-mention-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% - 34px);
+  left: 8px;
+  min-width: 140px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s, 0 2px 8px rgba(0, 0, 0, 0.2));
+}
+
+.tg-mention-option {
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tg-mention-option.is-selected,
+.tg-mention-option:hover {
+  background: var(--tg-accent-soft);
+  color: var(--text-normal);
+}

@@ -139,6 +139,12 @@ export class FakeVault extends Events {
   async cachedRead(file: TFile) {
     return this.adapter.read(file.path);
   }
+  /** Binary contents for image files; text files fall back to their UTF-8 bytes. */
+  binaries = new Map<string, Uint8Array>();
+  async readBinary(file: TFile): Promise<ArrayBuffer> {
+    const bytes = this.binaries.get(file.path) ?? new TextEncoder().encode(await this.adapter.read(file.path));
+    return bytes.slice().buffer;
+  }
   getResourcePath(file: TFile) {
     return `app://local/${encodeURI(file.path)}`;
   }
@@ -320,6 +326,18 @@ export class Setting {
     return this;
   }
   setDesc() {
+    return this;
+  }
+  setHeading() {
+    return this;
+  }
+  addToggle(build: (t: { setValue(v: boolean): unknown; onChange(cb: (v: boolean) => unknown): unknown }) => unknown) {
+    const input = this.el.createEl('input', { attr: { type: 'checkbox' } });
+    const api = {
+      setValue: (v: boolean) => ((input.checked = v), api),
+      onChange: (cb: (v: boolean) => unknown) => ((input.onchange = () => void cb(input.checked)), api),
+    };
+    build(api);
     return this;
   }
   addText(build: (t: { setValue(v: string): unknown; onChange(cb: (v: string) => unknown): unknown }) => unknown) {
