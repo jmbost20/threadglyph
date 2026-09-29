@@ -79,3 +79,13 @@ Each entry records: **problem → tool feedback → decision → changed behavio
   - Extracted the preview's request section from `renderAi`.
   - **Rejected** the two `await`-in-loop warnings (import and restore). The writes are sequential on purpose: they share folder creation, and parallel `mkdir` calls race in Obsidian's adapter.
 - **Verification:** 297 tests, 99.75% line coverage; typecheck, lint and build pass. The gate result for the fix commit is recorded on the PR.
+
+### 5. Gitar on PR #7 (`2fea26f`): 4 findings, all accepted
+
+"Approved with suggestions". Each finding was reproduced with a failing test first (`tests/gitarPr7.test.ts`: 4 of 4 failed before the fix), then fixed:
+1. **Import, edge case.** The legacy pattern's lazy passage could run past a plain `{==a==}` with no comment and swallow it into the next commented highlight. The parser now scans by hand, and a passage ends at its own `==}`. This also drops the last backtracking regex in that file.
+2. **Restore, bug.** Restore skipped existing thread files but could overwrite an anchor file that had outlived its thread file, for example after a later reattach. Existing anchors are now kept, which matches the "never overwrite" promise.
+3. **Gemini folder, bug.** A folder pointed at in settings (the sandbox borrows `~/.ilc/gemini`) could still receive `.gemini/settings.json` if it had none. Only Threadglyph's own folder is prepared now; a borrowed folder is never written to.
+4. **Sessions, edge case.** An `@Gemini` reply after a failed Local request did nothing. Mentioning a different assistant now switches a failed request, not only a preview, to a fresh preview for that assistant.
+
+- **Verification:** 301 tests, typecheck, lint and build pass.

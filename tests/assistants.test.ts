@@ -8,6 +8,7 @@ import {
   defaultAssistants,
   geminiFolderPath,
   migrateAiSettings,
+  nodeGeminiFiles,
   preferredAssistant,
 } from '../src/ai/assistants';
 import type { ProcessRunner, RunOutcome } from '../src/ai/claudeCli';
@@ -207,7 +208,7 @@ describe('Gemini CLI adapter', () => {
       removeDir: vi.fn(async () => {}),
     };
     const run = vi.fn<ProcessRunner>(async () => out);
-    const adapter = new GeminiCliAdapter({ command: '/bin/gemini', folder: '/home/.threadglyph/gemini', model, timeoutMs: 90_000, env: { PATH: '/x' }, run, files });
+    const adapter = new GeminiCliAdapter({ command: '/bin/gemini', folder: '/home/.threadglyph/gemini', ownsFolder: true, model, timeoutMs: 90_000, env: { PATH: '/x' }, run, files });
     return { adapter, run, files };
   }
 
@@ -278,7 +279,8 @@ describe('Gemini folder files', () => {
   it('creates settings once, never overwrites them, and stages images privately', async () => {
     const home = await mkdtemp(join(tmpdir(), 'tg-gemini-test-'));
     try {
-      const adapter = defaultAssistants({ ...DEFAULT_AI_SETTINGS, aiEnabled: true, geminiFolder: home, geminiPath: '/nonexistent/gemini' })[1];
+      const run = vi.fn<ProcessRunner>(async () => ({ code: null, stdout: '', stderr: '', timedOut: false, aborted: false, error: { code: 'ENOENT', message: 'spawn ENOENT' } }));
+      const adapter = new GeminiCliAdapter({ command: '/nonexistent/gemini', folder: home, ownsFolder: true, model: '', timeoutMs: 1000, env: {}, run, files: nodeGeminiFiles });
       const result = await adapter.ask(request({ image: PNG }), live());
       expect(result).toMatchObject({ ok: false, kind: 'not-installed' });
       const settingsPath = join(home, '.gemini', 'settings.json');

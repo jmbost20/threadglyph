@@ -44,8 +44,13 @@ export interface GeminiFiles {
 
 export interface GeminiCliOptions {
   command: string;
-  /** Threadglyph's Gemini folder: the working directory, holding `.gemini/settings.json` and `.gemini/.env`. */
+  /** The working directory, holding `.gemini/settings.json` and `.gemini/.env`. */
   folder: string;
+  /**
+   * True for Threadglyph's own folder, which gets tool-free settings on first use.
+   * A folder the owner points at (e.g. another tool's) is borrowed and never written to.
+   */
+  ownsFolder: boolean;
   model: string;
   timeoutMs: number;
   env: Record<string, string>;
@@ -141,9 +146,9 @@ export class GeminiCliAdapter implements AiAdapter {
   }
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
-    const { command, folder, model, timeoutMs, env, run, files } = this.options;
+    const { command, folder, ownsFolder, model, timeoutMs, env, run, files } = this.options;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
-    await files.prepareFolder(folder, `${JSON.stringify(GEMINI_FOLDER_SETTINGS, null, 2)}\n`);
+    if (ownsFolder) await files.prepareFolder(folder, `${JSON.stringify(GEMINI_FOLDER_SETTINGS, null, 2)}\n`);
 
     let staged: { dir: string; file: string } | null = null;
     try {

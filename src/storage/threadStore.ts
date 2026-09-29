@@ -111,7 +111,9 @@ export class ThreadStore {
    */
   async restore(thread: ThreadRecord, anchor: TextAnchor | undefined): Promise<'restored' | 'exists'> {
     if (this.threads.has(thread.id) || (await this.fs.read(threadPath(thread.id))) !== null) return 'exists';
-    if (anchor) await this.writeAnchor(anchor);
+    // An anchor left on this device (e.g. from a later reattach) is newer than the backup's; keep it.
+    const hasAnchor = this.anchors.has(thread.id) || (await this.fs.read(anchorPath(thread.id))) !== null;
+    if (anchor && !hasAnchor) await this.writeAnchor(anchor);
     await this.fs.ensureDir(THREADS_DIR);
     await this.fs.write(threadPath(thread.id), serialize(thread));
     this.threads.set(thread.id, thread);

@@ -39,13 +39,14 @@ export class AiSessions {
   }
 
   /**
-   * Opens the preview for `assistant`. An open preview switches to it; a
-   * running request or an unadopted draft is left alone.
+   * Opens the preview for `assistant`. A preview or a failed request switches
+   * to it (as a fresh request); a running request or an unadopted draft is
+   * left alone.
    */
   open(threadId: string, assistant: string): void {
     const state = this.states.get(threadId);
     if (!state) this.states.set(threadId, { phase: 'preview', scope: 'anchor', assistant, attempts: 0 });
-    else if (state.phase === 'preview') this.states.set(threadId, { ...state, assistant });
+    else if (state.assistant !== assistant) return this.setAssistant(threadId, assistant);
     this.onChange();
   }
 

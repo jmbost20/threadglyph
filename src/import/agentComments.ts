@@ -28,8 +28,6 @@ export interface LegacyThread {
   resolved: boolean;
 }
 
-const FULL = /\{==([\s\S]+?)==\}((?:\{>>[\s\S]+?<<\})+)/g;
-const BLOCK = /\{>>([\s\S]+?)<<\}/g;
 
 /** The old plugin escaped `<<` and `>>` inside bodies. */
 const unescape = (text: string) => text.replaceAll('‹‹', '<<').replaceAll('››', '>>');
@@ -54,19 +52,30 @@ export function parseEntry(raw: string): LegacyEntry {
   return { author: 'unknown', date: '', type: 'note', text: unescape(raw.trim()) };
 }
 
+/**
+ * Scanned by hand: a passage ends at its own `==}`, so a plain highlight with
+ * no comment is never merged into the next commented one.
+ */
 export function parseLegacyComments(doc: string): LegacyThread[] {
   const found: LegacyThread[] = [];
-  for (const m of doc.matchAll(FULL)) {
-    const entries = [...m[2].matchAll(BLOCK)].map((b) => parseEntry(b[1]));
-    const from = m.index + 3;
-    found.push({
-      quote: m[1],
-      from,
-      to: from + m[1].length,
-      entries,
+  let open = doc.indexOf('{==');
+  while (open !== -1) {
+    const close = doc.indexOf('==}', open + 3);
+    if (close === -1) break;
+    const entries: LegacyEntry[] = [];
+    let cursor = close + 3;
+    while (doc.startsWith('{>>', cursor)) {
+      const end = doc.indexOf('<<}', cursor + 3);
+      if (end === -1) break;
+      entries.push(parseEntry(doc.slice(cursor + 3, end)));
+      cursor = end + 3;
+    }
+    if (entries.length && close > open + 3) {
+      const from = open + 3;
       // The old plugin marks a resolved thread with a trailing `resolve` entry.
-      resolved: entries.at(-1)?.type === 'resolve',
-    });
+      found.push({ quote: doc.slice(from, close), from, to: close, entries, resolved: entries.at(-1)?.type === 'resolve' });
+    }
+    open = doc.indexOf('{==', cursor);
   }
   return found;
 }

@@ -71,7 +71,7 @@ export function findClaude(configured: string, exists: (path: string) => boolean
 export const geminiFolderPath = (settings: Pick<AiSettings, 'geminiFolder'>, home = homedir()) =>
   settings.geminiFolder.trim().replace(/^~(?=\/|$)/, home) || join(home, '.threadglyph', 'gemini');
 
-const nodeGeminiFiles: GeminiFiles = {
+export const nodeGeminiFiles: GeminiFiles = {
   async prepareFolder(folder, settings) {
     await mkdir(join(folder, '.gemini'), { recursive: true });
     // 'wx' fails if the file exists: the owner may have edited it, so it is never overwritten.
@@ -101,6 +101,7 @@ export function defaultAssistants(settings: AiSettings): AiAdapter[] {
       return new GeminiCliAdapter({
         command,
         folder: geminiFolderPath(settings, home),
+        ownsFolder: !settings.geminiFolder.trim(),
         model: settings.geminiModel,
         timeoutMs,
         env: { PATH: toolPath(command, inherited, home) },
