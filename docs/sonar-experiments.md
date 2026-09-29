@@ -50,3 +50,17 @@ Each entry records: **problem → tool feedback → decision → changed behavio
 - **Result:** 122 tests pass. Local line coverage 99.8% (was 72.8%). SonarQube Cloud on `bf59bf3`: **quality gate passed**, 98.7% coverage on new code, 0 new issues, 0 security hotspots, 0.0% duplication. The gate conditions were unchanged.
 - **Gitar on `bf59bf3`:** "Approved with suggestions" (3 of 4 findings closed). Its new suggestion was valid: the "ignores renames of its own thread files" test would pass even with the guard deleted, because no thread lives under that path. The test now spies on `renameNote`, covers renames into, out of and within the thread folder, and confirms a real note rename still goes through. Mutation check: deleting the whole guard, or only its `oldPath` half, now fails the test.
 - **Limitation:** the fake runtime models only the Obsidian API surface Threadglyph uses. It is not proof of behavior inside the real app; the sandbox-vault check covers that.
+
+### 3. Gitar and SonarQube Cloud on the stacked stage 3–5 PRs (#3, #4, #5)
+- **Context:** the owner asked for stages 3–5 without a separate Sonar/Gitar round per stage. CI and both bots still ran on every push, and their findings were handled in one pass afterwards.
+- **SonarQube Cloud:** the quality gate passed on all three PR heads, with the conditions unchanged.
+- **Gitar:** 7 inline findings, all accepted, all real:
+  1. **#3, Reading view.** The second of two threads on a repeated quote got no badge: wrapping the first shifted the DOM occurrence count. Fix: wrap last-to-first.
+  2. **#3, Reading view.** Re-render signatures were keyed by path and saved even for source panes, so a Reading pane of the same note could stay stale. Fix: per-view `WeakMap`, recorded only for panes in Reading mode.
+  3. **#4, Reading view.** A thread on a Markdown-style image embed could badge a different wiki embed of the same file, because those embeds shifted the count. Fix: embeds record their style; Markdown ones are skipped and not counted.
+  4. **#5, AI.** After an edit, Retry showed the stale edit instead of the new answer. Fix: clear the draft key on send, cancel and close.
+  5. **#5, AI.** A thrown `build()` (an unreadable note or image) left the card spinning. Fix: catch it and settle into an error.
+  6. **#5, AI.** Switching AI off left sessions running and cards visible. Fix: `closeAll()` plus a refresh on every settings save, and no cards while the adapter is null.
+  7. **#5, AI.** The adapter was rebuilt, probing the disk, on every refresh. Fix: cache it per settings key.
+- **Verification:** each finding got a regression test, and each test was run against the unfixed source and failed there (mutation check by stashing `src/`). After the fixes: 233 tests, 99.8% line coverage, CI plus both bots green on all three heads, and no new Gitar comments.
+- **Process note:** the first push of #4 failed CI on lint (`Buffer` undefined in the sandbox script), because PNG generation was added after that stage's local check had run. The fix went onto #4 and was merged forward. Lesson: run `npm run check` after the last edit, not before it.
