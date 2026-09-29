@@ -137,10 +137,20 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
 
   it('ignores renames of its own thread files', async () => {
     await commentOn('worth a comment', 'Stay');
+    const store = (plugin as unknown as { store: { renameNote: (...a: unknown[]) => Promise<string[]> } }).store;
+    const rename = vi.spyOn(store, 'renameNote');
     const before = new Map(app.vault.adapter.files);
+    // Into, out of, and within the thread folder: none of these are note renames.
     app.vault.trigger('rename', new TFile(`${THREADS_DIR}/x-renamed-1.json`), `${THREADS_DIR}/x-original-1.json`);
+    app.vault.trigger('rename', new TFile(`${THREADS_DIR}/moved-in-1.json`), 'Elsewhere/moved-in-1.json');
+    app.vault.trigger('rename', new TFile('Elsewhere/moved-out-1.json'), `${THREADS_DIR}/moved-out-1.json`);
     await flush();
+    expect(rename).not.toHaveBeenCalled();
     expect(app.vault.adapter.files).toEqual(before);
+
+    app.vault.trigger('rename', new TFile('Other-renamed.md'), 'Other.md');
+    await flush();
+    expect(rename).toHaveBeenCalledWith('Other.md', 'Other-renamed.md');
   });
 
   it('reloads a thread changed on disk by another device', async () => {
