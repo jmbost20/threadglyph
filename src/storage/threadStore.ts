@@ -19,17 +19,24 @@ export type SaveResult =
 
 export type UpdateResult = SaveResult | { ok: false; reason: 'missing'; current: null };
 
+/** Where `path` ends up when `oldPath` (a note or folder) is renamed, or null if it is unaffected. */
+function renamedPath(path: string, oldPath: string, newPath: string): string | null {
+  if (path === oldPath) return newPath;
+  if (path.startsWith(`${oldPath}/`)) return newPath + path.slice(oldPath.length);
+  return null;
+}
+
 export interface LoadProblem {
   path: string;
   error: string;
 }
 
 export class ThreadStore {
-  private threads = new Map<string, ThreadRecord>();
-  private anchors = new Map<string, TextAnchor>();
-  private problems = new Map<string, string>();
+  private readonly threads = new Map<string, ThreadRecord>();
+  private readonly anchors = new Map<string, TextAnchor>();
+  private readonly problems = new Map<string, string>();
   /** Tail of the pending write chain for each thread; writes to one thread never interleave. */
-  private queues = new Map<string, Promise<unknown>>();
+  private readonly queues = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly fs: FileStore,
@@ -152,7 +159,7 @@ export class ThreadStore {
     const raw = await this.fs.read(path);
     const onDisk = raw === null ? null : parseThread(raw);
     const current = onDisk?.ok ? onDisk.value : null;
-    if (!current || current.revision !== expectedRevision) {
+    if (current?.revision !== expectedRevision) {
       if (current) this.threads.set(current.id, current);
       else if (raw === null) this.threads.delete(next.id);
       return { ok: false, reason: 'conflict', current };
@@ -171,15 +178,17 @@ export class ThreadStore {
 
   /** Follows a note (or folder) rename. Returns threads that could not be moved because of a conflict. */
   async renameNote(oldPath: string, newPath: string): Promise<string[]> {
-    const moved = (p: string): string | null =>
-      p === oldPath ? newPath : p.startsWith(`${oldPath}/`) ? newPath + p.slice(oldPath.length) : null;
+    // Decide every move before the first await: the cache can change while writes are in flight.
+    const moves: { id: string; target: string }[] = [];
+    for (const thread of this.threads.values()) {
+      const target = renamedPath(thread.notePath, oldPath, newPath);
+      if (target !== null) moves.push({ id: thread.id, target });
+    }
     const conflicts: string[] = [];
-    for (const thread of [...this.threads.values()]) {
-      const target = moved(thread.notePath);
-      if (target === null) continue;
-      const result = await this.update(thread.id, (latest) => moveThread(latest, target, this.clock));
-      if (!result.ok) conflicts.push(thread.id);
-      const anchor = this.anchors.get(thread.id);
+    for (const { id, target } of moves) {
+      const result = await this.update(id, (latest) => moveThread(latest, target, this.clock));
+      if (!result.ok) conflicts.push(id);
+      const anchor = this.anchors.get(id);
       if (anchor) await this.writeAnchor({ ...anchor, notePath: target });
     }
     return conflicts;

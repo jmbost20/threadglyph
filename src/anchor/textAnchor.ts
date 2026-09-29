@@ -10,7 +10,7 @@ export type AnchorResolution =
 
 export function lineOf(doc: string, offset: number): number {
   let line = 0;
-  for (let i = 0; i < offset && i < doc.length; i++) if (doc.charCodeAt(i) === 10) line++;
+  for (let i = 0; i < offset && i < doc.length; i++) if (doc[i] === '\n') line++;
   return line;
 }
 

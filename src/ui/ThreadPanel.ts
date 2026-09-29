@@ -137,10 +137,8 @@ export class ThreadPanel extends ItemView {
     const open = this.state.views.filter((v) => v.thread.status === 'open').length;
     const resolved = this.state.views.length - open;
     if (this.state.status === 'ready') {
-      header.createDiv({
-        cls: 'tg-header-meta',
-        text: `${open} open${resolved ? ` · ${resolved} resolved` : ''}`,
-      });
+      const counts = resolved ? `${open} open · ${resolved} resolved` : `${open} open`;
+      header.createDiv({ cls: 'tg-header-meta', text: counts });
     }
     if (this.state.problems.length) {
       const warn = header.createDiv({ cls: 'tg-problem' });
