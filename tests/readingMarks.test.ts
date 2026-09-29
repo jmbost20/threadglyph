@@ -137,4 +137,42 @@ describe('Reading view image badges', () => {
       { threadId: 't1', quote: '![[b.png|200]]', from, number: 2, resolved: true, imageLink: 'b.png' },
     ]);
   });
+
+  describe('beside Markdown-style embeds of the same file (Gitar review on PR #4)', () => {
+    const mixed = 'Pics: ![](a.png) ![[a.png]] ![[a.png]]\n';
+    // Reading view renders the Markdown embed as a bare <img> and only the wiki embeds keep a src link.
+    const mixedHtml =
+      '<p>Pics: <img src="app://a.png"> ' +
+      '<span class="internal-embed image-embed" src="a.png"><img></span> ' +
+      '<span class="internal-embed image-embed" src="a.png"><img></span></p>';
+    const at = (markup: string, nth = 0) => {
+      let from = -1;
+      for (let i = 0; i <= nth; i++) from = mixed.indexOf(markup, from + 1);
+      return from;
+    };
+    const view = (id: string, from: number, markup: string): ThreadView =>
+      ({
+        thread: { id, status: 'open' },
+        number: 1,
+        quote: markup,
+        imagePath: 'a.png',
+        anchor: { kind: 'found', from, to: from + markup.length },
+      }) as unknown as ThreadView;
+
+    it('does not badge anything for a thread on the Markdown embed', () => {
+      const marks = readingMarks([view('md', at('![](a.png)'), '![](a.png)')], mixed);
+      expect(marks).toEqual([]);
+      const el = section(mixedHtml);
+      expect(markRenderedSection(el, mixed, 0, mixed.length, marks, vi.fn())).toBe(0);
+      expect(el.querySelector('.tg-image-anchor')).toBeNull();
+    });
+
+    it('badges the right wiki embed when a Markdown embed comes first', () => {
+      const marks = readingMarks([view('first-wiki', at('![[a.png]]', 0), '![[a.png]]')], mixed);
+      const el = section(mixedHtml);
+      expect(markRenderedSection(el, mixed, 0, mixed.length, marks, vi.fn())).toBe(1);
+      const embeds = [...el.querySelectorAll<HTMLElement>('.internal-embed')];
+      expect(embeds.map((e) => e.dataset.tgThread ?? null)).toEqual(['first-wiki', null]);
+    });
+  });
 });
