@@ -72,7 +72,8 @@ export function markRenderedSection(
 ): number {
   let marked = 0;
   const section = source.slice(sectionStart, sectionEnd);
-  for (const mark of marks) {
+  // Last passage first: wrapping one never shifts the occurrence count of a passage still to come.
+  for (const mark of [...marks].sort((a, b) => b.from - a.from)) {
     if (mark.from < sectionStart || mark.from >= sectionEnd) continue;
     if (mark.imageLink !== undefined) {
       if (markImage(el, section, mark, sectionStart, onOpen)) marked++;

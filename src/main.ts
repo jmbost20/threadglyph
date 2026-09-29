@@ -38,8 +38,8 @@ export default class ThreadglyphPlugin extends Plugin {
   private controller!: ThreadController;
   private loaded = false;
   private filter: ThreadFilter = 'open';
-  /** Last Reading-view marks per note, so previews re-render only when threads change. */
-  private readonly readingSignatures = new Map<string, string>();
+  /** Marks each Reading view last rendered with, so a view re-renders only when its threads change. */
+  private readonly readingSignatures = new WeakMap<MarkdownView, string>();
   private focusedThreadId: string | null = null;
   /** The note the panel is showing; kept when focus moves into the panel itself. */
   private currentFile: TFile | null = null;
@@ -343,11 +343,12 @@ export default class ThreadglyphPlugin extends Plugin {
 
   /** Reading view is rendered once per section; re-render it only when its threads change. */
   private rerenderReadingIfChanged(view: MarkdownView, views: ThreadView[]): void {
-    const path = view.file!.path;
+    // Source mode renders from scratch when the user switches to Reading, so only live previews need a nudge.
+    if (view.getMode?.() !== 'preview') return;
     const signature = JSON.stringify(readingMarks(views, view.editor.getValue()));
-    if (this.readingSignatures.get(path) === signature) return;
-    this.readingSignatures.set(path, signature);
-    if (view.getMode?.() === 'preview') view.previewMode?.rerender(true);
+    if (this.readingSignatures.get(view) === signature) return;
+    this.readingSignatures.set(view, signature);
+    view.previewMode?.rerender(true);
   }
 
   private decorateReading(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
