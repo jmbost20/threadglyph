@@ -62,3 +62,245 @@ export class ItemView {
 export function setIcon(el: HTMLElement, icon: string): void {
   el.dataset.icon = icon;
 }
+
+// ── Fake runtime for plugin integration tests ─────────────────────────────────
+// Just enough of Obsidian's App/Vault/Workspace/Editor surface for src/main.ts,
+// backed by an in-memory file map with explicit event triggers.
+
+type Listener = (...args: unknown[]) => unknown;
+
+class Events {
+  private listeners = new Map<string, Listener[]>();
+  on(name: string, cb: Listener) {
+    this.listeners.set(name, [...(this.listeners.get(name) ?? []), cb]);
+    return { name, cb };
+  }
+  trigger(name: string, ...args: unknown[]): void {
+    for (const cb of this.listeners.get(name) ?? []) cb(...args);
+  }
+}
+
+export class TAbstractFile {
+  constructor(public path: string) {}
+}
+
+export class TFile extends TAbstractFile {
+  get basename(): string {
+    return this.path.split('/').pop()!.replace(/\.[^.]+$/, '');
+  }
+  get extension(): string {
+    return this.path.split('.').pop() ?? '';
+  }
+}
+
+export const notices: string[] = [];
+export class Notice {
+  constructor(message: string) {
+    notices.push(message);
+  }
+}
+
+/** Calls through immediately; the fake runtime has no need for timers. */
+export function debounce<T extends unknown[]>(fn: (...args: T) => unknown) {
+  const run = (...args: T) => void fn(...args);
+  run.cancel = () => run;
+  return run;
+}
+
+export class FakeAdapter {
+  files = new Map<string, string>();
+  dirs = new Set<string>();
+  async exists(path: string) {
+    return this.files.has(path) || this.dirs.has(path);
+  }
+  async read(path: string) {
+    const data = this.files.get(path);
+    if (data === undefined) throw new Error(`ENOENT ${path}`);
+    return data;
+  }
+  async write(path: string, data: string) {
+    this.files.set(path, data);
+  }
+  async mkdir(path: string) {
+    this.dirs.add(path);
+  }
+  async list(dir: string) {
+    const prefix = `${dir}/`;
+    const files = [...this.files.keys()].filter((p) => p.startsWith(prefix) && !p.slice(prefix.length).includes('/'));
+    return { files, folders: [] as string[] };
+  }
+}
+
+export class FakeVault extends Events {
+  adapter = new FakeAdapter();
+  getAbstractFileByPath(path: string) {
+    return this.adapter.files.has(path) ? new TFile(path) : null;
+  }
+  async cachedRead(file: TFile) {
+    return this.adapter.read(file.path);
+  }
+}
+
+/** Offsets double as positions, which keeps selections easy to express. */
+export class FakeEditor {
+  selection: [number, number] = [0, 0];
+  scrolled: unknown = null;
+  cm: unknown = undefined;
+  constructor(private readonly text: () => string) {}
+  getValue() {
+    return this.text();
+  }
+  somethingSelected() {
+    return this.selection[0] !== this.selection[1];
+  }
+  getCursor(which: 'from' | 'to' = 'to') {
+    return { offset: which === 'from' ? this.selection[0] : this.selection[1] };
+  }
+  posToOffset(pos: { offset: number }) {
+    return pos.offset;
+  }
+  offsetToPos(offset: number) {
+    return { offset };
+  }
+  setSelection(from: { offset: number }, to: { offset: number }) {
+    this.selection = [from.offset, to.offset];
+  }
+  scrollIntoView(range: unknown) {
+    this.scrolled = range;
+  }
+}
+
+export class WorkspaceLeafImpl extends WorkspaceLeaf {
+  view: unknown = null;
+  constructor(private readonly workspace: FakeWorkspace) {
+    super();
+  }
+  async setViewState(state: { type: string }) {
+    this.view = this.workspace.createView(state.type, this);
+    await (this.view as { onOpen?: () => Promise<void> }).onOpen?.();
+  }
+  async openFile(file: TFile) {
+    this.view = new MarkdownView(this, file, this.workspace.vault);
+    this.workspace.leaves.push(this);
+  }
+}
+
+export class MarkdownView {
+  editor: FakeEditor;
+  constructor(
+    public leaf: WorkspaceLeafImpl,
+    public file: TFile | null,
+    vault: FakeVault,
+  ) {
+    this.editor = new FakeEditor(() => (file ? (vault.adapter.files.get(file.path) ?? '') : ''));
+  }
+}
+
+export class FakeWorkspace extends Events {
+  leaves: WorkspaceLeafImpl[] = [];
+  activeFile: TFile | null = null;
+  activeLeaf: WorkspaceLeafImpl | null = null;
+  factories = new Map<string, (leaf: WorkspaceLeafImpl) => unknown>();
+  constructor(public vault: FakeVault) {
+    super();
+  }
+  createView(type: string, leaf: WorkspaceLeafImpl) {
+    return this.factories.get(type)!(leaf);
+  }
+  onLayoutReady(cb: () => void) {
+    cb();
+  }
+  getLeavesOfType(type: string) {
+    return this.leaves.filter((l) =>
+      type === 'markdown' ? l.view instanceof MarkdownView : (l.view as { getViewType?: () => string })?.getViewType?.() === type,
+    );
+  }
+  getRightLeaf() {
+    const leaf = new WorkspaceLeafImpl(this);
+    this.leaves.push(leaf);
+    return leaf;
+  }
+  getLeaf() {
+    return new WorkspaceLeafImpl(this);
+  }
+  async revealLeaf() {}
+  getActiveFile() {
+    return this.activeFile;
+  }
+  setActiveLeaf(leaf: WorkspaceLeafImpl) {
+    this.activeLeaf = leaf;
+  }
+  /** Opens a note in a new markdown leaf and makes it active. */
+  open(path: string): MarkdownView {
+    const leaf = new WorkspaceLeafImpl(this);
+    const view = new MarkdownView(leaf, new TFile(path), this.vault);
+    leaf.view = view;
+    this.leaves.push(leaf);
+    this.activeFile = view.file;
+    return view;
+  }
+}
+
+export class FakeApp {
+  vault = new FakeVault();
+  workspace = new FakeWorkspace(this.vault);
+}
+
+export class Plugin {
+  commands: { id: string; editorCheckCallback?: Listener; callback?: Listener }[] = [];
+  extensions: unknown[] = [];
+  settingTabs: PluginSettingTab[] = [];
+  ribbon: Listener[] = [];
+  data: unknown = null;
+  constructor(public app: FakeApp) {}
+  registerView(type: string, factory: (leaf: WorkspaceLeafImpl) => unknown) {
+    this.app.workspace.factories.set(type, factory);
+  }
+  registerEditorExtension(ext: unknown) {
+    this.extensions.push(ext);
+  }
+  addCommand(cmd: { id: string }) {
+    this.commands.push(cmd);
+  }
+  registerEvent() {}
+  addRibbonIcon(_icon: string, _title: string, cb: Listener) {
+    this.ribbon.push(cb);
+  }
+  addSettingTab(tab: PluginSettingTab) {
+    this.settingTabs.push(tab);
+  }
+  async loadData() {
+    return this.data;
+  }
+  async saveData(data: unknown) {
+    this.data = structuredClone(data);
+  }
+}
+
+export class PluginSettingTab {
+  containerEl = document.createElement('div');
+  constructor(
+    public app: unknown,
+    public plugin: unknown,
+  ) {}
+}
+
+export class Setting {
+  constructor(private readonly el: HTMLElement) {}
+  setName(name: string) {
+    this.el.createDiv({ cls: 'setting-name', text: name });
+    return this;
+  }
+  setDesc() {
+    return this;
+  }
+  addText(build: (t: { setValue(v: string): unknown; onChange(cb: (v: string) => unknown): unknown }) => unknown) {
+    const input = this.el.createEl('input');
+    const api = {
+      setValue: (v: string) => ((input.value = v), api),
+      onChange: (cb: (v: string) => unknown) => ((input.oninput = () => void cb(input.value)), api),
+    };
+    build(api);
+    return this;
+  }
+}

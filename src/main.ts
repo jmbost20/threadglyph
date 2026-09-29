@@ -9,12 +9,12 @@ import {
   TFile,
   debounce,
   type App,
-  type DataAdapter,
   type Editor,
 } from 'obsidian';
 import { ThreadController, type Outcome } from './controller';
 import { THREADS_DIR } from './storage/paths';
-import { ThreadStore, type FileStore } from './storage/threadStore';
+import { AdapterFileStore } from './storage/adapterFileStore';
+import { ThreadStore } from './storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type PanelActions } from './ui/ThreadPanel';
 import { setThreadMarks, threadMarksExtension, type ThreadMark } from './ui/editorMarks';
 import { buildThreadViews } from './ui/viewModel';
@@ -24,30 +24,6 @@ interface ThreadglyphSettings {
 }
 
 const DEFAULT_SETTINGS: ThreadglyphSettings = { authorName: 'Me' };
-
-class AdapterFileStore implements FileStore {
-  constructor(private readonly adapter: DataAdapter) {}
-
-  async read(path: string): Promise<string | null> {
-    return (await this.adapter.exists(path)) ? this.adapter.read(path) : null;
-  }
-
-  write(path: string, data: string): Promise<void> {
-    return this.adapter.write(path, data);
-  }
-
-  async list(dir: string): Promise<string[]> {
-    return (await this.adapter.exists(dir)) ? (await this.adapter.list(dir)).files : [];
-  }
-
-  async ensureDir(dir: string): Promise<void> {
-    let path = '';
-    for (const part of dir.split('/')) {
-      path = path ? `${path}/${part}` : part;
-      if (!(await this.adapter.exists(path))) await this.adapter.mkdir(path);
-    }
-  }
-}
 
 function cmView(view: MarkdownView): EditorView | null {
   return (view.editor as unknown as { cm?: EditorView }).cm ?? null;
@@ -238,7 +214,7 @@ export default class ThreadglyphPlugin extends Plugin {
 
   async refresh(): Promise<void> {
     const active = this.app.workspace.getActiveFile();
-    if (active && active.extension === 'md') this.currentFile = active;
+    if (active?.extension === 'md') this.currentFile = active;
     const file = this.currentFile && this.app.vault.getAbstractFileByPath(this.currentFile.path);
     const note = file instanceof TFile ? file : null;
 
