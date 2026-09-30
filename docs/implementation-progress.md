@@ -156,4 +156,6 @@ The owner's sandbox was still loading the PR #7 build, so the PR #8 changes (Ent
 - **Delete:** a Delete button on each comment, and ⌘⇧Delete (or Ctrl+Shift+Delete) on a clicked comment. Deletion is soft (`deletedAt`); the text stays in the record, is left out of AI requests, and can be restored from **Deleted comments → Undo delete** in the panel header. A thread whose comments are all deleted is hidden.
 - **Centering:** a new comment box, a newly focused card and an opened Ask AI box are centered in the panel. Re-renders keep the scroll position, and focus no longer scrolls on its own.
 - **Fix:** after posting a comment with an @mention, the panel stays on the Ask AI box and its Send button instead of re-scrolling to the card's top.
+- **Delete confirmation:** both the Delete button and ⌘⇧Delete ask “Delete this comment?” first; Enter confirms, Escape cancels.
+- **Panel navigation:** ⌘⇧→ / ⌘⇧← step through the visible cards (wrapping), highlight the passage without moving focus to the note, and keep focus on the card. Inside a text box they still select text. The note keeps ⌥⌘] / ⌥⌘[ (owner's choice), so ⌘⇧←/→ still selects to line start/end there.
 - Started by Codex (uncommitted when it hit its usage limit), finished here.

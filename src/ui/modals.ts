@@ -91,3 +91,36 @@ export class RestoreModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+/** Asks before a comment is deleted. Delete has focus, so Enter confirms and Escape cancels. */
+export class ConfirmDeleteModal extends Modal {
+  constructor(
+    app: App,
+    private readonly body: string,
+    private readonly onConfirm: () => Promise<unknown>,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    this.titleEl.setText('Delete this comment?');
+    contentEl.addClass('tg-modal');
+    contentEl.createEl('blockquote', { cls: 'tg-quote', text: previewQuote(this.body) });
+    contentEl.createEl('p', { text: 'You can bring it back later from “Deleted comments” at the top of the panel.' });
+    const buttons = contentEl.createDiv({ cls: 'tg-composer-buttons' });
+    const cancel = buttons.createEl('button', { cls: 'tg-button', text: 'Cancel' });
+    cancel.onclick = () => this.close();
+    const remove = buttons.createEl('button', { cls: 'tg-button mod-warning', text: 'Delete' });
+    remove.onclick = async () => {
+      remove.disabled = true;
+      await this.onConfirm();
+      this.close();
+    };
+    remove.focus();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}

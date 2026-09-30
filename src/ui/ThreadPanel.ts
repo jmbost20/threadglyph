@@ -2,6 +2,7 @@ import { ItemView, Scope, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
+import { ConfirmDeleteModal } from './modals';
 import {
   anchorProblem,
   EMPTY_COMMENT_FILTERS,
@@ -71,6 +72,8 @@ export interface PanelActions {
   setResolved(threadId: string, resolved: boolean): Promise<void>;
   reattach(threadId: string): Promise<void>;
   goTo(threadId: string): Promise<void>;
+  /** Highlights the thread's passage and focuses its card, keeping the keyboard in the panel. */
+  select(threadId: string): Promise<void>;
   /** A displayable URL for a vault image, or null when the file is missing. */
   imageSrc(path: string): string | null;
   /** Opens the Ask AI preview, with `assistant` chosen (default: the preferred one). */
@@ -144,7 +147,31 @@ export class ThreadPanel extends ItemView {
       this.focusSearch();
       return false;
     });
+    // Cmd/Ctrl+Shift+Right/Left step through comments; inside a text box they keep selecting text.
+    this.scope.register(['Mod', 'Shift'], 'ArrowRight', () => this.stepCard(1));
+    this.scope.register(['Mod', 'Shift'], 'ArrowLeft', () => this.stepCard(-1));
     this.render();
+  }
+
+  /**
+   * Moves to the next or previous visible card (wrapping), focuses it and
+   * highlights its passage. Returns false when handled, as Obsidian's Scope expects.
+   */
+  stepCard(direction: 1 | -1): boolean {
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) return true;
+    const cards = [...this.contentEl.querySelectorAll<HTMLElement>('.tg-card[data-thread-id]')];
+    if (!cards.length) return true;
+    const current = active?.closest<HTMLElement>('.tg-card[data-thread-id]')
+      ?? cards.find((c) => c.dataset.threadId === this.state.focusedThreadId);
+    const index = current ? cards.indexOf(current) : -1;
+    const next = index === -1
+      ? cards[direction === 1 ? 0 : cards.length - 1]
+      : cards[(index + direction + cards.length) % cards.length];
+    next.focus({ preventScroll: true });
+    this.center(next);
+    void this.actions.select(next.dataset.threadId!);
+    return false;
   }
 
   /** Puts the caret in the search box, selecting any existing query. */
@@ -415,6 +442,8 @@ export class ThreadPanel extends ItemView {
     const { thread } = view;
     const card = list.createDiv({ cls: 'tg-card' });
     card.dataset.threadId = thread.id;
+    // Lets a re-render keep keyboard focus on this card (panel navigation).
+    card.dataset.draftKey = `card:${thread.id}`;
     card.setAttr('tabindex', '0');
     card.setAttr('aria-label', `Thread ${view.number}${thread.status === 'resolved' ? ', resolved' : ''}`);
     card.onkeydown = (e) => this.onCardKey(e, card, thread.id);
@@ -705,6 +734,10 @@ export class ThreadPanel extends ItemView {
     figure.createDiv({ cls: 'tg-image-name', text: name });
   }
 
+  private confirmDelete(threadId: string, message: Message): void {
+    new ConfirmDeleteModal(this.app, message.body, () => this.actions.setMessageDeleted(threadId, message.id, true)).open();
+  }
+
   private renderMessage(parent: HTMLElement, threadId: string, message: Message): void {
     const el = parent.createDiv({ cls: `tg-message tg-message-${message.author.kind}` });
     el.tabIndex = 0;
@@ -718,13 +751,13 @@ export class ThreadPanel extends ItemView {
       if (e.target !== el || !(e.metaKey || e.ctrlKey) || !e.shiftKey || !['Backspace', 'Delete'].includes(e.key)) return;
       e.preventDefault();
       e.stopPropagation();
-      void this.actions.setMessageDeleted(threadId, message.id, true);
+      this.confirmDelete(threadId, message);
     };
     const meta = el.createDiv({ cls: 'tg-message-meta' });
     const remove = meta.createEl('button', { cls: 'tg-delete-comment', text: 'Delete' });
     remove.setAttr('aria-label', `Delete comment from ${message.author.name}`);
     remove.setAttr('title', 'Delete comment (⌘⇧Delete). Recover it under Deleted comments.');
-    remove.onclick = () => { void this.actions.setMessageDeleted(threadId, message.id, true); };
+    remove.onclick = () => this.confirmDelete(threadId, message);
     meta.createSpan({ cls: 'tg-author', text: message.author.name });
     const origin = originLabel(message);
     if (origin) meta.createSpan({ cls: 'tg-origin', text: origin });
