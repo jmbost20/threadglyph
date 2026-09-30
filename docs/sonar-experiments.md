@@ -89,3 +89,18 @@ Each entry records: **problem → tool feedback → decision → changed behavio
 4. **Sessions, edge case.** An `@Gemini` reply after a failed Local request did nothing. Mentioning a different assistant now switches a failed request, not only a preview, to a fresh preview for that assistant.
 
 - **Verification:** 301 tests, typecheck, lint and build pass.
+
+
+## September 30 — AI interaction and custom filter batch
+
+PR: https://github.com/jmbost20/threadglyph/pull/8. Initial code commit: `149bbc6`.
+
+Local baseline on `7b9a5f4`: 301 tests passed. The first restricted run could not bind the loopback HTTP fixture or write the dependency cache; the correctly permissioned run passed. Updated local `npm run check`: 308 passing tests, 99.76% line coverage, typecheck, lint and production build. No scan or Gitar approval is inferred from local checks. CI, Sonar and review results for this branch must be read from its own PR head, separately from PR #7.
+
+
+### PR #8, first cloud scan on `5e880af`
+
+- Actual scan completed (CI run `36697964623`); Sonar quality gate passed, 98.8% new-code coverage, 0.0% new-code duplication and no security hotspots.
+- Three maintainability findings accepted: use a Set for mention membership, separate focus restoration from panel rendering (cognitive complexity 20 > 15), and extract a nested context-label template. These are clarity changes; the existing behavior regressions remain the validation contract.
+- Gitar's check succeeded on this SHA, with no review comments or inline findings returned by GitHub at inspection. This records the observed check, not a claim about unreported review coverage.
+- The follow-up commit reruns the full local suite and GitHub checks; its final results are on PR #8. Owner Obsidian UX validation remains pending.

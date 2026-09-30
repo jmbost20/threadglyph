@@ -1,7 +1,7 @@
 import type { PreparedImage } from '../anchor/imageEmbed';
 import type { ThreadRecord } from '../model/types';
 import { sectionAround, wholeNote } from './context';
-import { buildPromptText } from './prompt';
+import { SYSTEM_PROMPT, buildPromptText } from './prompt';
 import type { ContextScope } from './session';
 import type { AiRequest } from './types';
 
@@ -21,7 +21,7 @@ export interface RequestInputs {
 export function buildAiRequest(inputs: RequestInputs, scope: ContextScope, image: PreparedImage | null): AiRequest {
   const offset = inputs.anchorOffset ?? 0;
   let context = null;
-  if (scope === 'section') context = sectionAround(inputs.doc, offset);
+  if (scope === 'section' && inputs.anchorOffset !== null) context = sectionAround(inputs.doc, offset);
   if (scope === 'note') context = wholeNote(inputs.doc);
   return {
     noteName: inputs.noteName,
@@ -49,20 +49,21 @@ export function aiPreview(inputs: RequestInputs, scope: ContextScope): AiPreview
   const request = buildAiRequest(inputs, scope, placeholder);
   const items: string[] = [];
   if (imageName) items.push(`The image ${imageName}`);
-  else if (request.quote !== null) items.push(`The passage (${count(request.quote.length, 'character')})`);
+  else if (request.quote !== null) items.push(`The passage (${count([...request.quote].length, 'character')})`);
   items.push(`${count(request.messages.length, 'message')} in this thread`);
-  if (request.context) items.push(`${request.context.label} (${count(request.context.text.length, 'character')})`);
+  if (request.context) items.push(`${request.context.label} (${count([...request.context.text].length, 'character')})`);
 
   const section = sectionAround(inputs.doc, inputs.anchorOffset ?? 0);
-  const note = wholeNote(inputs.doc);
-  let exactText = buildPromptText(request);
+  const sectionLabel = inputs.anchorOffset === null ? 'Section unavailable — passage and thread only' : `Also ${lower(section.label)}`;
+  const total = (candidate: ContextScope) => count([...SYSTEM_PROMPT].length + [...buildPromptText(buildAiRequest(inputs, candidate, placeholder))].length, 'character');
+  let exactText = `Instructions:\n${SYSTEM_PROMPT}\n\nRequest:\n${buildPromptText(request)}`;
   if (imageName) exactText = `[Attached: the image file ${imageName}]\n\n${exactText}`;
   return {
     items,
     scopes: [
-      { scope: 'anchor', label: imageName ? 'Just the image and the thread' : 'Just the passage and the thread' },
-      { scope: 'section', label: `Also ${lower(section.label)} (${count(section.text.length, 'character')})` },
-      { scope: 'note', label: `Also the whole note (${count(note.text.length, 'character')})` },
+      { scope: 'anchor', label: `${imageName ? 'Just the image and the thread' : 'Just the passage and the thread'} (${total('anchor')})` },
+      { scope: 'section', label: `${sectionLabel} (${total('section')})` },
+      { scope: 'note', label: `Also the whole note (${total('note')})` },
     ],
     exactText,
   };

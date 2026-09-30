@@ -533,6 +533,19 @@ describe('ThreadPanel AI', () => {
     return thread;
   }
 
+  it('starts exact text expanded and handles Enter once and Escape without deleting comments', async () => {
+    const thread = await withAi(preview());
+    expect(q<HTMLDetailsElement>('.tg-ai-exact')!.open).toBe(true);
+    const send = button('Send')!;
+    key(send, 'Enter');
+    key(send, 'Enter');
+    expect(actions.aiSend).toHaveBeenCalledTimes(1);
+    key(send, 'Escape');
+    expect(actions.aiClose).toHaveBeenCalledWith(thread.id);
+    expect(actions.goTo).toHaveBeenCalledWith(thread.id);
+    expect(store.get(thread.id)!.messages).toHaveLength(1);
+  });
+
   it('offers Ask only when an assistant is enabled and no session is open', async () => {
     const thread = await withAi(null);
     button('Ask AI')!.click();
@@ -576,7 +589,7 @@ describe('ThreadPanel AI', () => {
   it('lets the user edit, add, retry or discard a draft', async () => {
     const draft = preview({ state: { phase: 'draft', scope: 'anchor', assistant: 'claude', attempts: 1, text: 'Model draft' } });
     const thread = await withAi(draft);
-    expect(q('.tg-ai-title')?.textContent).toBe('Claude · draft, not in the thread yet');
+    expect(q('.tg-ai-title')?.textContent).toBe('Claude · reply could not be saved');
     const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="ai:${thread.id}"]`)!;
     expect(input.value).toBe('Model draft');
     type(input, 'Model draft, tightened');
@@ -775,5 +788,29 @@ describe('ThreadPanel search shortcut', () => {
     expect(scope.press(['Mod'], 'f')).toBe(false);
     expect(document.activeElement).toBe(search);
     expect([search.selectionStart, search.selectionEnd]).toEqual([0, 3]);
+  });
+});
+
+
+describe('custom filter controls', () => {
+  it('keeps the existing status row and filters by agent below it, with a reset', async () => {
+    const thread = await createViaPanel('Question');
+    await ctl.addAiReply(thread.id, 'Local', 'Answer', false);
+    render();
+    expect(qa('.tg-filter-option').map((b) => b.textContent)).toEqual(['Open', 'Resolved', 'All']);
+    expect(q('.tg-filter')!.nextElementSibling?.classList.contains('tg-custom-filters')).toBe(true);
+    const agent = q<HTMLSelectElement>('select[aria-label="Agent"]')!;
+    expect([...agent.options].map((o) => o.textContent)).toEqual(['Any agent or person', 'Local']);
+    agent.value = 'Local';
+    agent.dispatchEvent(new Event('change'));
+    expect(q<HTMLDetailsElement>('.tg-custom-filters')!.open).toBe(true);
+    expect(qa('.tg-card[data-thread-id]')).toHaveLength(1);
+    const date = q<HTMLInputElement>('input[aria-label="Comment from"]')!;
+    date.value = '2099-01-01';
+    date.dispatchEvent(new Event('change'));
+    expect(qa('.tg-card[data-thread-id]')).toHaveLength(0);
+    expect(q('.tg-empty')!.textContent).toContain('No threads match these filters');
+    button('Clear custom filters')!.click();
+    expect(qa('.tg-card[data-thread-id]')).toHaveLength(1);
   });
 });

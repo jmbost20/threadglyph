@@ -721,3 +721,15 @@ body {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
 }
+
+/* Keep controls inside narrow sidebars and distinguish included items from scope choices. */
+.tg-composer-buttons { flex-wrap: wrap; }
+.tg-composer-buttons > button { max-width: 100%; white-space: normal; height: auto; min-height: 30px; }
+.tg-ai, .tg-card, .tg-custom-filter > * { min-width: 0; }
+.tg-ai-scopes { border-top: 1px solid var(--background-modifier-border); padding-top: 10px; gap: 8px; }
+.tg-ai-scope { align-items: flex-start; overflow-wrap: anywhere; }
+.tg-ai-scope input { flex-shrink: 0; margin-top: 4px; }
+.tg-custom-filters { margin-top: 8px; }
+.tg-custom-filters summary { cursor: pointer; }
+.tg-custom-filter { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.tg-custom-filter input, .tg-custom-filter select { width: 100%; max-width: 100%; }

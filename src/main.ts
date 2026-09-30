@@ -294,7 +294,10 @@ export default class ThreadglyphPlugin extends Plugin {
         if (!this.assistants().length) return;
         // An edit of the previous answer must not stand in for the new one.
         c.drafts.delete(aiDraftKey(id));
-        void this.ai.send(id, (assistant) => this.findAssistant(assistant), (scope) => this.buildRequest(id, scope));
+        void this.ai.send(
+          id, (assistant) => this.findAssistant(assistant), (scope) => this.buildRequest(id, scope),
+          (assistant, body, edited) => attempt(() => c.addAiReply(id, this.findAssistant(assistant)?.name ?? assistant, body, edited)),
+        );
       },
       aiCancel: (id) => {
         c.drafts.delete(aiDraftKey(id));
@@ -304,16 +307,8 @@ export default class ThreadglyphPlugin extends Plugin {
         c.drafts.delete(aiDraftKey(id));
         this.ai.close(id);
       },
-      aiAdopt: async (id, body) => {
-        const state = this.ai.get(id);
-        if (state?.phase !== 'draft') return false;
-        // The draft stays attributed to whoever wrote it, even if that assistant was switched off since.
-        const name = this.findAssistant(state.assistant)?.name ?? state.assistant;
-        const edited = body.trim() !== state.text.trim();
-        const ok = await attempt(() => c.addAiReply(id, name, body, edited));
-        if (ok) this.ai.close(id);
-        return ok;
-      },
+      aiAdopt: (id, body) => this.ai.adopt(id, body, (assistant, text, edited) =>
+        attempt(() => c.addAiReply(id, this.findAssistant(assistant)?.name ?? assistant, text, edited))),
       imageSrc: (path) => {
         const file = this.app.vault.getAbstractFileByPath(path);
         return file instanceof TFile ? this.app.vault.getResourcePath(file) : null;

@@ -4,6 +4,9 @@ import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
 import {
   anchorProblem,
+  EMPTY_COMMENT_FILTERS,
+  hasCommentFilters,
+  type CommentFilters,
   draftKey,
   filterViews,
   formatTimestamp,
@@ -106,6 +109,9 @@ export class ThreadPanel extends ItemView {
   };
   /** Search text is local to the panel; typing never touches storage. */
   private query = '';
+  private custom: CommentFilters = { ...EMPTY_COMMENT_FILTERS };
+  private customOpen = false;
+  private pendingAiFocus: string | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -149,6 +155,10 @@ export class ThreadPanel extends ItemView {
   }
 
   update(state: PanelState): void {
+    if (document.activeElement?.closest('.tg-panel') === this.contentEl) {
+      const opened = Object.entries(state.ai).find(([id, ai]) => ai.state.phase === 'preview' && !this.state.ai[id]);
+      if (opened) this.pendingAiFocus = `reply:${opened[0]}`;
+    }
     this.state = state;
     this.render();
   }
@@ -159,8 +169,9 @@ export class ThreadPanel extends ItemView {
    */
   scrollToThread(threadId: string, focusComposer = true): void {
     const find = () => this.contentEl.querySelector<HTMLElement>(`[data-thread-id="${CSS.escape(threadId)}"]`);
-    if (!find() && this.query) {
+    if (!find() && (this.query || hasCommentFilters(this.custom))) {
       this.query = '';
+      this.custom = { ...EMPTY_COMMENT_FILTERS };
       this.render();
     }
     const card = find();
@@ -178,7 +189,9 @@ export class ThreadPanel extends ItemView {
   private render(): void {
     const active = document.activeElement as HTMLTextAreaElement | HTMLInputElement | null;
     const focusKey = active?.closest('.tg-panel') ? active.dataset.draftKey : undefined;
-    const caret = focusKey ? [active!.selectionStart, active!.selectionEnd] : null;
+    const caret: [number | null, number | null] | null = focusKey &&
+      (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement)
+      ? [active.selectionStart, active.selectionEnd] : null;
 
     const root = this.contentEl;
     root.empty();
@@ -192,11 +205,33 @@ export class ThreadPanel extends ItemView {
       this.renderBody(root);
     }
 
+    this.restoreFocus(focusKey, caret);
+  }
+
+  private restoreFocus(focusKey: string | undefined, caret: [number | null, number | null] | null): void {
+    const root = this.contentEl;
     if (focusKey) {
       const el = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(`[data-draft-key="${CSS.escape(focusKey)}"]`);
       if (el) {
         el.focus();
-        if (caret) el.setSelectionRange(caret[0], caret[1]);
+        if (caret && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'search'))) {
+          el.setSelectionRange(caret[0], caret[1]);
+        }
+      }
+    }
+    this.focusAiPreview();
+  }
+
+  private focusAiPreview(): void {
+    const root = this.contentEl;
+    if (this.pendingAiFocus) {
+      const id = this.pendingAiFocus.startsWith('reply:')
+        ? this.pendingAiFocus.slice('reply:'.length) : this.state.focusedThreadId;
+      const send = id ? [...root.querySelectorAll<HTMLButtonElement>('button[data-draft-key]')]
+        .find((button) => button.dataset.draftKey === `ai-send:${id}`) : undefined;
+      if (send) {
+        send.focus();
+        this.pendingAiFocus = null;
       }
     }
   }
@@ -252,18 +287,52 @@ export class ThreadPanel extends ItemView {
       if (selected) b.addClass('is-active');
       b.onclick = () => this.actions.setFilter(value);
     }
+    this.renderCustomFilters(bar);
+  }
+
+  private renderCustomFilters(bar: HTMLElement): void {
+    const details = bar.createEl('details', { cls: 'tg-custom-filters' });
+    details.open = this.customOpen;
+    details.ontoggle = () => { this.customOpen = details.open; };
+    details.createEl('summary', { text: hasCommentFilters(this.custom) ? 'Custom filters · active' : 'Custom filters' });
+    const select = (label: string, value: string, options: [string, string][], change: (value: string) => void) => {
+      const row = details.createEl('label', { cls: 'tg-custom-filter' });
+      row.createSpan({ text: label });
+      const input = row.createEl('select', { attr: { 'aria-label': label } });
+      for (const [key, text] of options) input.createEl('option', { text, attr: { value: key } });
+      input.value = value;
+      input.onchange = () => { this.customOpen = true; change(input.value); this.render(); };
+    };
+    const agents = new Set(this.state.views.flatMap((v) => v.thread.messages
+      .filter((m) => m.author.kind === 'ai').map((m) => m.author.name)));
+    if (this.custom.agent) agents.add(this.custom.agent);
+    select('Agent', this.custom.agent, [['', 'Any agent or person'], ...[...agents].sort((a, b) => a.localeCompare(b)).map((name): [string, string] => [name, name])],
+      (value) => { this.custom.agent = value; });
+    select('Comment age', String(this.custom.days), [['0', 'Any time'], ['1', 'Last 24 hours'], ['7', 'Last 7 days'], ['30', 'Last 30 days']],
+      (value) => { this.custom.days = Number(value); });
+    for (const [key, label] of [['from', 'Comment from'], ['to', 'Comment through']] as const) {
+      const row = details.createEl('label', { cls: 'tg-custom-filter' });
+      row.createSpan({ text: label });
+      const input = row.createEl('input', { attr: { type: 'date', 'aria-label': label } });
+      input.value = this.custom[key];
+      input.onchange = () => { this.customOpen = true; this.custom[key] = input.value; this.render(); };
+    }
+    details.createDiv({ cls: 'tg-filter-note', text: 'Matches when one comment meets all filters. Dates use your local time.' });
+    const reset = details.createEl('button', { cls: 'tg-button', text: 'Clear custom filters' });
+    reset.onclick = () => { this.custom = { ...EMPTY_COMMENT_FILTERS }; this.render(); };
   }
 
   private renderBody(root: HTMLElement): void {
     const list = root.createDiv({ cls: 'tg-list' });
     if (this.state.pendingQuote !== null && this.state.notePath) this.renderNewThread(list, this.state.notePath);
 
-    const shown = filterViews(this.state.views, this.state.filter, this.query);
+    const shown = filterViews(this.state.views, this.state.filter, this.query, this.custom);
     if (!shown.length && this.state.pendingQuote === null) list.createDiv({ cls: 'tg-empty', text: this.emptyText() });
     for (const view of shown) this.renderThread(list, view);
   }
 
   private emptyText(): string {
+    if (hasCommentFilters(this.custom)) return 'No threads match these filters. Clear custom filters or change the dates.';
     if (this.query.trim()) return `No threads match “${this.query.trim()}”.`;
     if (!this.state.views.length) {
       return 'No threads yet. Select text in the note, then run “Threadglyph: Comment on selection”.';
@@ -274,6 +343,12 @@ export class ThreadPanel extends ItemView {
 
   /** Arrow keys move between cards and Enter jumps to the passage, only when the card itself has focus. */
   private onCardKey(e: KeyboardEvent, card: HTMLElement, threadId: string): void {
+    if (e.key === 'Escape' && this.state.ai[threadId]) {
+      if (this.state.ai[threadId].state.phase !== 'saving') this.exitAi(threadId);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.target !== card) return;
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -379,9 +454,40 @@ export class ThreadPanel extends ItemView {
       radio.onchange = () => this.actions.aiScope(threadId, option.scope);
       label.createSpan({ text: option.label });
     }
+    box.createDiv({ cls: 'tg-ai-note', text: 'Counts include instructions, context and thread text; image bytes and provider formatting are separate.' });
     const details = box.createEl('details', { cls: 'tg-ai-exact' });
+    details.open = true;
     details.createEl('summary', { text: 'Show exact text' });
     details.createEl('pre', { text: ai.exactText });
+  }
+
+  private exitAi(threadId: string): void {
+    (document.activeElement as HTMLElement | null)?.blur();
+    this.actions.aiClose(threadId);
+    void this.actions.goTo(threadId);
+  }
+
+  private bindPreviewSend(box: HTMLElement, send: HTMLButtonElement, threadId: string, canSend: boolean): void {
+    send.disabled = !canSend;
+    send.dataset.draftKey = `ai-send:${threadId}`;
+    send.setAttr('aria-label', 'Send request (Enter)');
+    let sent = false;
+    const sendOnce = () => {
+      if (sent || send.disabled) return;
+      sent = true;
+      send.disabled = true;
+      this.actions.aiSend(threadId);
+    };
+    send.onclick = sendOnce;
+    box.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !e.repeat &&
+          !(e.target instanceof HTMLButtonElement && e.target !== send) &&
+          !(e.target instanceof HTMLElement && e.target.tagName === 'SUMMARY')) {
+        e.preventDefault();
+        e.stopPropagation();
+        sendOnce();
+      }
+    };
   }
 
   private renderAi(card: HTMLElement, threadId: string, ai: AiCardView): void {
@@ -407,9 +513,9 @@ export class ThreadPanel extends ItemView {
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
         this.renderAiRequest(box, threadId, ai);
         const row = buttons(box);
-        button(row, 'Cancel', () => this.actions.aiClose(threadId));
+        button(row, 'Cancel', () => this.exitAi(threadId));
         const send = button(row, 'Send', () => this.actions.aiSend(threadId), true);
-        send.disabled = !ai.canSend;
+        this.bindPreviewSend(box, send, threadId, ai.canSend);
         break;
       }
       case 'running': {
@@ -417,8 +523,13 @@ export class ThreadPanel extends ItemView {
         button(buttons(box), 'Cancel', () => this.actions.aiCancel(threadId));
         break;
       }
+      case 'saving': {
+        box.createDiv({ cls: 'tg-ai-title', text: `Saving ${name}'s reply…` });
+        break;
+      }
       case 'draft': {
-        box.createDiv({ cls: 'tg-ai-title', text: `${name} · draft, not in the thread yet` });
+        box.createDiv({ cls: 'tg-ai-title', text: `${name} · reply could not be saved` });
+        box.createDiv({ cls: 'tg-ai-note', text: 'Your answer is kept here. Add it to the thread to retry saving without asking the model again.' });
         const key = `ai:${threadId}`;
         const input = box.createEl('textarea', { cls: 'tg-input', attr: { rows: '4', 'aria-label': `${name}'s draft reply` } });
         input.dataset.draftKey = key;
@@ -523,7 +634,7 @@ export class ThreadPanel extends ItemView {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         index = (index + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
         update();
-      } else if ((e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey) {
+      } else if ((e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         pick(items[index]);
       } else if (e.key === 'Escape') {
         close();
@@ -601,6 +712,11 @@ export class ThreadPanel extends ItemView {
     };
   }
 
+  private hasAssistantMention(body: string): boolean {
+    const mentions = new Set([...body.matchAll(/(?:^|\s)@(\w+)\b/g)].map((m) => m[1].toLowerCase()));
+    return this.state.assistants.some((a) => mentions.has(a.name.toLowerCase()));
+  }
+
   /**
    * A textarea bound to a persistent draft. Cmd/Ctrl+Enter submits, Escape cancels.
    * Cancelling a changed draft asks before discarding it.
@@ -626,10 +742,14 @@ export class ThreadPanel extends ItemView {
     let busy = false;
     const doSubmit = async () => {
       if (busy || !input.value.trim()) return;
+      if (!key.startsWith('edit:') && this.hasAssistantMention(input.value)) this.pendingAiFocus = key;
       busy = true;
       submitButton.disabled = true;
       try {
-        if (await submit(input.value)) this.actions.drafts.delete(key);
+        if (await submit(input.value)) {
+          this.actions.drafts.delete(key);
+          if (!key.startsWith('edit:') && this.hasAssistantMention(input.value)) this.pendingAiFocus = key;
+        } else this.pendingAiFocus = null;
       } finally {
         busy = false;
         submitButton.disabled = false;
@@ -654,6 +774,13 @@ export class ThreadPanel extends ItemView {
 
     const mentionKey = this.attachMentions(input, wrap);
     input.onkeydown = (e) => {
+      if (e.isComposing || e.repeat) return;
+      const quickSend = e.key === 'Enter' && !e.shiftKey && !key.startsWith('edit:') && this.hasAssistantMention(input.value);
+      if (quickSend) {
+        e.preventDefault();
+        void doSubmit();
+        return;
+      }
       if (mentionKey(e)) return;
       if (isSubmit(e)) {
         e.preventDefault();

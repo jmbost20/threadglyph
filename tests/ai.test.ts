@@ -238,7 +238,7 @@ describe('request and preview', () => {
     ]);
     expect(buildAiRequest(inputs, 'section', null).context).toEqual({ label: 'The section “Heading”', text: '# Heading\nThe passage lives here.' });
     expect(buildAiRequest(inputs, 'note', null).context?.text).toBe(doc.trimEnd());
-    expect(buildAiRequest({ ...inputs, anchorOffset: null }, 'section', null).context?.label).toBe('The section “Heading”');
+    expect(buildAiRequest({ ...inputs, anchorOffset: null }, 'section', null).context).toBeNull();
   });
 
   it('previews text threads item by item with the exact text', () => {
@@ -248,11 +248,12 @@ describe('request and preview', () => {
       '2 messages in this thread',
       'The section “Heading” (33 characters)',
     ]);
-    expect(preview.scopes.map((s) => s.label)).toEqual([
-      'Just the passage and the thread',
-      'Also the section “Heading” (33 characters)',
-      'Also the whole note (47 characters)',
-    ]);
+    for (const option of preview.scopes) {
+      const prompt = buildPromptText(buildAiRequest(inputs, option.scope, null));
+      expect(option.label).toContain(`(${([...SYSTEM_PROMPT].length + [...prompt].length).toLocaleString('en-US')} characters)`);
+    }
+    expect(preview.scopes[0].label).toContain('Just the passage and the thread');
+    expect(preview.scopes[1].label).toContain('Also the section “Heading”');
     expect(preview.exactText).toContain('<note-context>');
     expect(aiPreview({ ...inputs, thread: createThread('n.md', human, 'Solo', clock) }, 'anchor').items[1]).toBe('1 message in this thread');
   });
@@ -261,7 +262,7 @@ describe('request and preview', () => {
     const image = { ...inputs, imagePath: 'Pics/sky.png', quote: '![[sky.png]]' };
     const preview = aiPreview(image, 'anchor');
     expect(preview.items[0]).toBe('The image sky.png');
-    expect(preview.scopes[0].label).toBe('Just the image and the thread');
+    expect(preview.scopes[0].label).toMatch(/^Just the image and the thread \(\d+ characters\)$/);
     expect(preview.exactText.startsWith('[Attached: the image file sky.png]')).toBe(true);
     expect(buildAiRequest(image, 'anchor', PNG)).toMatchObject({ quote: null, image: PNG });
   });
@@ -285,13 +286,52 @@ describe('AI sessions', () => {
     return { adapter, calls };
   }
 
+  it('automatically saves once, blocks duplicate adoption while saving, and recovers a failed save', async () => {
+    const sessions = new AiSessions(() => {});
+    const { adapter } = fakeAdapter([{ ok: true, text: 'Answer' }]);
+    sessions.open('t1', 'fake');
+    let finish!: (ok: boolean) => void;
+    const publish = vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const pending = sessions.send('t1', () => adapter, async () => built, publish);
+    await vi.waitFor(() => expect(sessions.get('t1')?.phase).toBe('saving'));
+    expect(sessions.canSend('t1')).toBe(false);
+    expect(await sessions.adopt('t1', 'Answer', publish)).toBe(false);
+    sessions.cancel('t1');
+    sessions.close('t1');
+    expect(sessions.get('t1')?.phase).toBe('saving');
+    finish(false);
+    await pending;
+    expect(sessions.get('t1')).toMatchObject({ phase: 'draft', text: 'Answer' });
+    expect(publish).toHaveBeenCalledTimes(1);
+    const recovery = vi.fn(async () => true);
+    expect(await sessions.adopt('t1', 'Answer edited', recovery)).toBe(true);
+    expect(recovery).toHaveBeenCalledWith('fake', 'Answer edited', true);
+    expect(sessions.get('t1')).toBeUndefined();
+    expect(adapter.ask).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish a late answer after Escape/close', async () => {
+    const sessions = new AiSessions(() => {});
+    let finish!: (result: AiResult) => void;
+    const { adapter } = fakeAdapter([new Promise((resolve) => { finish = resolve; })]);
+    const publish = vi.fn(async () => true);
+    sessions.open('t1', 'fake');
+    const pending = sessions.send('t1', () => adapter, async () => built, publish);
+    await vi.waitFor(() => expect(adapter.ask).toHaveBeenCalledTimes(1));
+    sessions.close('t1');
+    finish({ ok: true, text: 'Too late' });
+    await pending;
+    expect(publish).not.toHaveBeenCalled();
+    expect(sessions.get('t1')).toBeUndefined();
+  });
+
   it('moves preview → running → draft and back, changing scope only in preview', async () => {
     const onChange = vi.fn();
     const sessions = new AiSessions(onChange);
     const { adapter } = fakeAdapter([{ ok: true, text: 'Draft' }]);
     sessions.open('t1', 'fake');
     sessions.open('t1', 'fake');
-    expect(sessions.get('t1')).toEqual({ phase: 'preview', scope: 'anchor', assistant: 'fake', attempts: 0 });
+    expect(sessions.get('t1')).toEqual({ phase: 'preview', scope: 'section', assistant: 'fake', attempts: 0 });
     sessions.setScope('t1', 'note');
     const build = vi.fn(async () => built);
     const sending = sessions.send('t1', () => adapter, build);
