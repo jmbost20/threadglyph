@@ -10,7 +10,7 @@ All code in `src/`, `tests/`, `scripts/` and `styles.css` was written for this p
 |---|---|---|
 | Obsidian (desktop app) | Host application, plugin API, vault file access | No; provided at runtime |
 | `@codemirror/state`, `@codemirror/view` | Editor highlights and the margin glyph gutter | No; marked external, Obsidian's own copy is used |
-| Electron / Node built-ins | Not used by plugin code | — |
+| Node built-ins (`child_process`, `http`, `fs`, `os`, `path`) | AI adapters only: start the Gemini/Claude CLIs, call the local Ollama server, stage an image in a temp folder | No; provided by Obsidian desktop (Electron). This is why the plugin is desktop-only |
 
 The shipped `main.js` contains only this project's code.
 
@@ -29,8 +29,16 @@ Exact versions are pinned in `package-lock.json`.
 | @codemirror/state 6.5.0, @codemirror/view 6.38.6 | MIT | Pinned to the versions `obsidian` 1.13 declares as peers; runtime copy comes from Obsidian |
 | @types/node | MIT | Types for build scripts |
 
-## Optional AI runtime (stage 5)
+## Optional AI runtime
 
-"Ask Claude" runs the owner's locally installed **Claude Code CLI** (proprietary, Anthropic) as a child process, using its existing sign-in. No npm package or API key is added. The plugin passes fixed arguments with no shell: every built-in tool is disabled, MCP servers and settings files are skipped, the working directory is the OS temp folder and sessions are not persisted. Only the previewed request goes over stdin. The CLI is outside this repository's source and outside Sonar's analysis.
+All three assistants are external programs the owner installs. None is an npm dependency, none is bundled, and none is part of Sonar's analysis.
+
+| Assistant | Runtime | Where requests go | How it is called |
+|---|---|---|---|
+| Local (preferred) | [Ollama](https://ollama.com) app (MIT) with an open-weight model, e.g. `qwen3:8b` | This computer (`:cloud` models are labelled as leaving it) | HTTP to `localhost:11434` `/api/chat` with Node's `http`; `/api/show` to check vision support |
+| Gemini | Gemini CLI (Apache-2.0, Google), owner's API key | Google | Child process, no shell, request on stdin; `--approval-mode plan -e none`; runs in `~/.threadglyph/gemini`, whose settings exclude every built-in tool |
+| Claude | Claude Code CLI (proprietary, Anthropic), existing sign-in | Anthropic | Child process, no shell, request on stdin; tools, MCP servers and settings files off; OS temp folder as working directory |
+
+Only the request shown in the preview is sent. Keys are never read or stored by the plugin: Gemini CLI reads its own `.env` file, and Claude Code its own sign-in.
 
 Sonar analysis covers this repository's source. It is not an audit of Obsidian or of these dependencies.

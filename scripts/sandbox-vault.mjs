@@ -35,9 +35,11 @@ The same phrase appears twice: repeat me. And again: repeat me.
   'Unicode ü 🌿.md': '# Ünïcödé\n\nEmoji 🌿 and accents é à ü in an anchor.\n',
   'Images.md': `# Image threads
 
-Put the cursor on an image embed (click just after the image) and run **Threadglyph: Comment on selection**.
+Each image has a title line under it with a **Comment** button. You can also put the cursor on an embed and run **Threadglyph: Comment on selection**.
 
 ![[Sandbox sky.png]]
+
+With a title in the alias: ![[Sandbox sky.png|Evening sky|200]]
 
 The same picture twice, smaller: ![[Sandbox sky.png|120]]
 
@@ -46,6 +48,27 @@ A Markdown-style embed: ![a meadow](<Attachments/Sandbox meadow.png>)
 Unsupported format (shows a clear message): ![[Not supported.heic]]
 
 Missing file: ![[Nowhere.png]]
+`,
+  'Image titles.md': `# Image titles
+
+Every image below shows a title line with a **Comment** button. The title comes from the alias or alt text, else the file name. Nothing is written into this note.
+
+![[Sandbox sky.png|Evening sky]]
+
+![[Attachments/Sandbox meadow.png|200]]
+
+![A green meadow](<Attachments/Sandbox meadow.png>)
+`,
+  // Synthetic comments in the old Agent Comments format, for the import preview.
+  'Agent Comments sample.md': `# Garden plan (Agent Comments sample)
+
+Run **Threadglyph: Import Agent Comments from this note**. The note is not changed.
+
+We should {==plant the tomatoes early==}{>>user|2026-09-16 14:20|question: Is April too soon here?<<}{>>Local|2026-09-16 14:21|reply: Frost can still hit in April; mid-May is safer.<<}{>>user|2026-09-16 14:25|react: 👍 #1<<} this year.
+
+Also {==compost the fallen leaves==}{>>user|2026-09-17 09:00|important: Shred them first so they break down faster.<<}{>>user|2026-09-17 09:05|resolve: <<} before winter.
+
+{==Water deeply twice a week==}{>>Gemini|2026-09-18 18:30|suggest: Water deeply once or twice a week, depending on rain.<<} rather than a little every day.
 `,
 };
 
@@ -74,6 +97,16 @@ for (const file of ['main.js', 'manifest.json', 'styles.css']) {
   const target = join(pluginDir, file);
   if (existsSync(target) || isLink(target)) rmSync(target);
   symlinkSync(join(repo, file), target);
+}
+
+// Sandbox only: Ask AI starts switched on (Local first). If Agent Comments already has a
+// Gemini folder with a key, the sandbox borrows it read-only so Gemini works without setup.
+// An existing settings file is kept.
+const pluginData = join(pluginDir, 'data.json');
+if (!existsSync(pluginData)) {
+  const sharedGemini = join(homedir(), '.ilc', 'gemini');
+  const settings = { aiEnabled: true, ...(existsSync(join(sharedGemini, '.env')) ? { geminiFolder: '~/.ilc/gemini' } : {}) };
+  writeFileSync(pluginData, JSON.stringify(settings, null, 2));
 }
 
 const communityPlugins = join(vault, '.obsidian', 'community-plugins.json');

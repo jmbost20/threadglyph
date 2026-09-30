@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import type { ProcessRunner } from './claudeCli';
 
 /**
@@ -8,7 +8,7 @@ import type { ProcessRunner } from './claudeCli';
  */
 export const MAX_OUTPUT_CHARS = 2_000_000;
 
-export const nodeRunner: ProcessRunner = (command, args, input, { cwd, timeoutMs, signal }) =>
+export const nodeRunner: ProcessRunner = (command, args, input, { cwd, timeoutMs, signal, env }) =>
   new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
@@ -16,7 +16,12 @@ export const nodeRunner: ProcessRunner = (command, args, input, { cwd, timeoutMs
     let aborted = false;
     let settled = false;
 
-    const child = spawn(command, args, { cwd, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      cwd,
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: env ? { ...process.env, ...env } : process.env,
+    });
     const stop = () => {
       if (!child.killed) child.kill('SIGTERM');
     };

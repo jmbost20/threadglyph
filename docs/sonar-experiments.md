@@ -64,3 +64,43 @@ Each entry records: **problem → tool feedback → decision → changed behavio
   7. **#5, AI.** The adapter was rebuilt, probing the disk, on every refresh. Fix: cache it per settings key.
 - **Verification:** each finding got a regression test, and each test was run against the unfixed source and failed there (mutation check by stashing `src/`). After the fixes: 233 tests, 99.8% line coverage, CI plus both bots green on all three heads, and no new Gitar comments.
 - **Process note:** the first push of #4 failed CI on lint (`Buffer` undefined in the sandbox script), because PNG generation was added after that stage's local check had run. The fix went onto #4 and was merged forward. Lesson: run `npm run check` after the last edit, not before it.
+
+### 4. SonarQube Cloud on the end-to-end PR #7 (`42c882f`)
+
+- **Tool feedback:** quality gate **failed** on *Reliability Rating D on new code*. It was caused by 2 real bugs: `Array.sort()` without a compare function, in the restore dialog's file list (`modals.ts`) and in the import's date ordering (`agentComments.ts`). There were 21 further maintainability findings: `node:` import prefixes, 4 regular expressions with super-linear backtracking or too much complexity, `replaceAll` / `.at()` / optional-chain / `String.raw` / `codePointAt` preferences, cognitive complexity 16 > 15 in `renderAi`, and two `await` inside a loop.
+- **Decisions:**
+  - Accepted both bugs. The file list now sorts with `localeCompare`, newest first. The import no longer uses `sort().pop()` to keep message times in order; it compares the two ISO strings directly.
+  - Accepted all 4 regex findings:
+    - Legacy entries are parsed by hand, not with backtracking regexes.
+    - The embed pattern was split into separate wiki and Markdown patterns, merged by position, with nested matches skipped (new test).
+    - Stack-frame stripping filters lines instead of using a regex.
+    - Trailing-slash trimming is a loop.
+  - Accepted the style findings, including `node:` imports; esbuild now keeps `node:*` external too, and the bundle's `require` list was checked.
+  - Extracted the preview's request section from `renderAi`.
+  - **Rejected** the two `await`-in-loop warnings (import and restore). The writes are sequential on purpose: they share folder creation, and parallel `mkdir` calls race in Obsidian's adapter.
+- **Verification:** 297 tests, 99.75% line coverage; typecheck, lint and build pass. The gate result for the fix commit is recorded on the PR.
+
+### 5. Gitar on PR #7 (`2fea26f`): 4 findings, all accepted
+
+"Approved with suggestions". Each finding was reproduced with a failing test first (`tests/gitarPr7.test.ts`: 4 of 4 failed before the fix), then fixed:
+1. **Import, edge case.** The legacy pattern's lazy passage could run past a plain `{==a==}` with no comment and swallow it into the next commented highlight. The parser now scans by hand, and a passage ends at its own `==}`. This also drops the last backtracking regex in that file.
+2. **Restore, bug.** Restore skipped existing thread files but could overwrite an anchor file that had outlived its thread file, for example after a later reattach. Existing anchors are now kept, which matches the "never overwrite" promise.
+3. **Gemini folder, bug.** A folder pointed at in settings (the sandbox borrows `~/.ilc/gemini`) could still receive `.gemini/settings.json` if it had none. Only Threadglyph's own folder is prepared now; a borrowed folder is never written to.
+4. **Sessions, edge case.** An `@Gemini` reply after a failed Local request did nothing. Mentioning a different assistant now switches a failed request, not only a preview, to a fresh preview for that assistant.
+
+- **Verification:** 301 tests, typecheck, lint and build pass.
+
+
+## September 30 — AI interaction and custom filter batch
+
+PR: https://github.com/jmbost20/threadglyph/pull/8. Initial code commit: `149bbc6`.
+
+Local baseline on `7b9a5f4`: 301 tests passed. The first restricted run could not bind the loopback HTTP fixture or write the dependency cache; the correctly permissioned run passed. Updated local `npm run check`: 308 passing tests, 99.76% line coverage, typecheck, lint and production build. No scan or Gitar approval is inferred from local checks. CI, Sonar and review results for this branch must be read from its own PR head, separately from PR #7.
+
+
+### PR #8, first cloud scan on `5e880af`
+
+- Actual scan completed (CI run `36697964623`); Sonar quality gate passed, 98.8% new-code coverage, 0.0% new-code duplication and no security hotspots.
+- Three maintainability findings accepted: use a Set for mention membership, separate focus restoration from panel rendering (cognitive complexity 20 > 15), and extract a nested context-label template. These are clarity changes; the existing behavior regressions remain the validation contract.
+- Gitar's check succeeded on this SHA, with no review comments or inline findings returned by GitHub at inspection. This records the observed check, not a claim about unreported review coverage.
+- The follow-up commit reruns the full local suite and GitHub checks; its final results are on PR #8. Owner Obsidian UX validation remains pending.

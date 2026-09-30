@@ -7,7 +7,7 @@ const context = await esbuild.context({
   entryPoints: ['src/main.ts'],
   bundle: true,
   // Provided by Obsidian at runtime; bundling a second copy of CodeMirror breaks editor extensions.
-  external: ['obsidian', 'electron', '@codemirror/*', '@lezer/*', ...builtinModules],
+  external: ['obsidian', 'electron', '@codemirror/*', '@lezer/*', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
   format: 'cjs',
   target: 'es2022',
   logLevel: 'info',

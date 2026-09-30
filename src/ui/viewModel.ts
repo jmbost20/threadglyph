@@ -81,8 +81,38 @@ export function matchesQuery(view: ThreadView, query: string): boolean {
   return haystack.some((text) => text.toLocaleLowerCase().includes(needle));
 }
 
-export function filterViews(views: ThreadView[], filter: ThreadFilter, query: string): ThreadView[] {
-  return views.filter((v) => (filter === 'all' || v.thread.status === filter) && matchesQuery(v, query));
+/** Additional filters apply to a single matching comment, not unrelated messages in a thread. */
+export interface CommentFilters {
+  agent: string;
+  days: number;
+  from: string;
+  to: string;
+}
+
+export const EMPTY_COMMENT_FILTERS: CommentFilters = { agent: '', days: 0, from: '', to: '' };
+
+export function hasCommentFilters(filters: CommentFilters): boolean {
+  return !!(filters.agent || filters.days || filters.from || filters.to);
+}
+
+export function filterViews(
+  views: ThreadView[], filter: ThreadFilter, query: string,
+  custom: CommentFilters = EMPTY_COMMENT_FILTERS, now = Date.now(),
+): ThreadView[] {
+  const from = custom.from ? new Date(`${custom.from}T00:00:00`).getTime() : -Infinity;
+  // Use the next local midnight so a daylight-saving transition is handled correctly.
+  const end = custom.to ? new Date(`${custom.to}T00:00:00`) : null;
+  if (end) end.setDate(end.getDate() + 1);
+  const to = end?.getTime() ?? Infinity;
+  const recent = custom.days ? now - custom.days * 86_400_000 : -Infinity;
+  return views.filter((v) =>
+    (filter === 'all' || v.thread.status === filter) && matchesQuery(v, query) &&
+    (!hasCommentFilters(custom) || v.thread.messages.some((m) => {
+      const at = Date.parse(m.createdAt);
+      return (!custom.agent || (m.author.kind === 'ai' && m.author.name === custom.agent)) &&
+        at >= Math.max(from, recent) && at < to;
+    })),
+  );
 }
 
 export function anchorProblem(state: AnchorState, image = false): string | null {

@@ -53,9 +53,41 @@ export class WorkspaceLeaf {}
 
 export class ItemView {
   contentEl: HTMLElement;
+  app = { scope: null as Scope | null };
+  scope: Scope | null = null;
   constructor(public leaf: WorkspaceLeaf) {
     this.contentEl = document.createElement('div');
     document.body.appendChild(this.contentEl);
+  }
+}
+
+/** Records hotkeys; tests fire them with `press`. */
+export class Scope {
+  keys: { modifiers: string[]; key: string; run: () => unknown }[] = [];
+  constructor(public parent: Scope | null = null) {}
+  register(modifiers: string[], key: string, run: () => unknown) {
+    this.keys.push({ modifiers, key, run });
+  }
+  press(modifiers: string[], key: string) {
+    return this.keys.find((k) => k.key === key && k.modifiers.join() === modifiers.join())?.run();
+  }
+}
+
+export const openModals: Modal[] = [];
+export class Modal {
+  contentEl = document.createElement('div');
+  titleEl = document.createElement('div');
+  constructor(public app: unknown) {}
+  open() {
+    document.body.append(this.titleEl, this.contentEl);
+    openModals.push(this);
+    (this as unknown as { onOpen(): void }).onOpen();
+  }
+  close() {
+    (this as unknown as { onClose(): void }).onClose();
+    this.titleEl.remove();
+    this.contentEl.remove();
+    openModals.splice(openModals.indexOf(this), 1);
   }
 }
 
@@ -271,6 +303,7 @@ export class FakeWorkspace extends Events {
 }
 
 export class FakeApp {
+  scope = new Scope();
   vault = new FakeVault();
   workspace = new FakeWorkspace(this.vault);
   metadataCache = new FakeMetadataCache(this.vault);
@@ -336,6 +369,18 @@ export class Setting {
     const api = {
       setValue: (v: boolean) => ((input.checked = v), api),
       onChange: (cb: (v: boolean) => unknown) => ((input.onchange = () => void cb(input.checked)), api),
+    };
+    build(api);
+    return this;
+  }
+  addDropdown(
+    build: (d: { addOption(value: string, label: string): unknown; setValue(v: string): unknown; onChange(cb: (v: string) => unknown): unknown }) => unknown,
+  ) {
+    const select = this.el.createEl('select');
+    const api = {
+      addOption: (value: string, label: string) => (select.createEl('option', { text: label, attr: { value } }), api),
+      setValue: (v: string) => ((select.value = v), api),
+      onChange: (cb: (v: string) => unknown) => ((select.onchange = () => void cb(select.value)), api),
     };
     build(api);
     return this;

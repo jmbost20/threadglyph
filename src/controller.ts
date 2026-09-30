@@ -1,5 +1,6 @@
 import { imageSupport } from './anchor/imageEmbed';
 import { captureTextAnchor } from './anchor/textAnchor';
+import { importedThread, type ImportPeople, type LegacyThread } from './import/agentComments';
 import { addReply, createThread, editMessage, setStatus, type Clock, systemClock, ThreadError } from './model/thread';
 import type { Author, TextAnchor, ThreadRecord } from './model/types';
 import type { ThreadStore } from './storage/threadStore';
@@ -165,6 +166,19 @@ export class ThreadController {
       const anchor = captureTextAnchor(threadId, notePath, doc, from, to);
       await this.store.writeAnchor(image ? { ...anchor, kind: 'image', imagePath } : anchor);
       return { ok: true };
+    });
+  }
+
+  /**
+   * Imports one Agent Comments thread from `doc` as a new Threadglyph thread
+   * anchored to its passage. The note itself is not changed.
+   */
+  async importLegacy(notePath: string, doc: string, legacy: LegacyThread, people: ImportPeople): Promise<Outcome> {
+    const thread = importedThread(notePath, legacy, people, this.clock);
+    if (!thread) return { ok: false, message: 'That comment has no messages to import.' };
+    return this.guard(async () => {
+      await this.store.create(thread, captureTextAnchor(thread.id, notePath, doc, legacy.from, legacy.to));
+      return OK;
     });
   }
 
