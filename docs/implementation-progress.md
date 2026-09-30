@@ -159,3 +159,10 @@ The owner's sandbox was still loading the PR #7 build, so the PR #8 changes (Ent
 - **Delete confirmation:** both the Delete button and ⌘⇧Delete ask “Delete this comment?” first; Enter confirms, Escape cancels.
 - **Panel navigation:** ⌘⇧→ / ⌘⇧← step through the visible cards (wrapping), highlight the passage without moving focus to the note, and keep focus on the card. Inside a text box they still select text. The note keeps ⌥⌘] / ⌥⌘[ (owner's choice), so ⌘⇧←/→ still selects to line start/end there.
 - Started by Codex (uncommitted when it hit its usage limit), finished here.
+
+## September 30 — CI repair after the Dependabot merge
+
+Main had been red since PR #2 (Dependabot, ten dev-dependency updates) merged: `npm ci` failed because `@codemirror/state` 6.7.6 and `@codemirror/view` 6.43.13 conflict with the exact peer versions `obsidian@1.13.1` requires (6.5.0 / 6.38.6), and TypeScript 7 is outside `typescript-eslint`'s supported range. Local checks passed only because `node_modules` predated the merge.
+
+- `package.json` and `package-lock.json` restored to the last green set (commit `42c882f`); `npm ci && npm run check` passes from a clean install.
+- `.github/dependabot.yml`: `@codemirror/*` is ignored (it follows the `obsidian` package, which supplies CodeMirror at runtime), and the grouped PR now carries only minor and patch updates, so each major update (TypeScript 7, Vitest 5, ESLint 10, happy-dom 20) arrives as its own PR and must pass CI on its own.

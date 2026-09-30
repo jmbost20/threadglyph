@@ -5,9 +5,16 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 2
+    ignore:
+      # Obsidian supplies CodeMirror at runtime and pins exact peer versions;
+      # these follow the obsidian package, not the latest release.
+      - dependency-name: '@codemirror/*'
     groups:
+      # Minor and patch updates travel together; each major update gets its own
+      # PR so a breaking release can't ride in with the rest.
       dev-dependencies:
         patterns: ['*']
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule:
