@@ -34,8 +34,9 @@ describe('agent replies', () => {
 
   it('treats a reply without a block, or with unreadable JSON, as a plain reply', () => {
     expect(parseAgentReply('Just words.')).toEqual({ reply: 'Just words.', edits: [], read: null });
-    expect(parseAgentReply('Hi\n```threadglyph\n{nope\n```')).toEqual({ reply: 'Hi', edits: [], read: null });
-    expect(parseAgentReply('```threadglyph\n{nope\n```').reply).toContain('{nope');
+    expect(parseAgentReply('Hi\n```threadglyph\n{nope\n```')).toEqual({ reply: 'Hi', edits: [], read: null, malformed: true });
+    // An unreadable block is dropped, never passed on as reply text (it may quote the note).
+    expect(parseAgentReply('```threadglyph\n{nope "milk"\n```')).toEqual({ reply: '', edits: [], read: null, malformed: true });
   });
 
   it('reads a request to see other notes', () => {
@@ -118,8 +119,21 @@ describe('proposals', () => {
     expect(locateRegion(LIST, region)).toBe(region.from);
     expect(locateRegion(`New line\n${LIST}`, region)).toBe(region.from + 9);
     expect(locateRegion(LIST.replace('milk', 'oat milk'), region)).toBeNull();
-    expect(locateRegion(`${LIST}\n${region.text}`, { ...region, from: 1, to: 2 })).toBeNull();
+    // With its old place gone, a text that appears twice is ambiguous.
+    expect(locateRegion(`${LIST}\n${region.text}`, { ...region, before: undefined, after: undefined, from: 1, to: 2 })).toBeNull();
+    expect(locateRegion(`${LIST}\n${region.text}`, { ...region, from: 1, to: 2 })).toBe(region.from);
     expect(locateRegion('x', { from: 5, to: 5, text: '', label: '' })).toBeNull();
+  });
+
+  it('never moves onto another copy of the text when the original was edited (Gitar PR #10)', () => {
+    const twice = `${LIST}\n# Copy\n- [ ] Groceries\n  - [ ] milk\n  - [ ] apples\n`;
+    const at = twice.indexOf('Groceries');
+    const target = agentTarget(twice, at, at + 9, 'anchor');
+    const edited = twice.replace('  - [ ] milk', '  - [ ] oat milk');
+    expect(edited.indexOf(target.text)).toBeGreaterThan(target.from);
+    expect(locateRegion(edited, target)).toBeNull();
+    // Moving the untouched original (text added above) still finds it.
+    expect(locateRegion(`Top\n${twice}`, target)).toBe(target.from + 4);
   });
 
   it('applies as one editor transaction, and only if the text is unchanged', () => {

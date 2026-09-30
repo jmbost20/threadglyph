@@ -193,7 +193,7 @@ Owner request: let the local agent act on notes (sort a checkbox's children, gen
 - **In the note:** the target text is dimmed, and a block widget below it shows the added and removed lines with Accept / Reject.
 - **Sandbox:** new synthetic notes `Agent playground.md` and `Recipes.md`. Sandbox-only shortcuts: ⌘⇧↩ runs `@agent` on the line (⌘↩ already toggles checkboxes), and ⌘⇧A opens the chat.
 
-**Evidence:** 371 tests pass (`tests/agent.test.ts`, `tests/agentPlugin.test.ts`), including:
+**Evidence:** 374 tests pass (`tests/agent.test.ts`, `tests/agentPlugin.test.ts`), including:
 - no write without Accept, and Reject writes nothing;
 - stale refusal at Accept and on refresh;
 - Deny reads nothing, and searches exclude daily notes;

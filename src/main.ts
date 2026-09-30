@@ -23,11 +23,11 @@ import {
   type AssistantId,
 } from './ai/assistants';
 import { agentPreview, aiPreview, buildAgentRequest, buildAiRequest, type RequestInputs } from './ai/request';
-import { buildProposal } from './agent/apply';
+import { buildProposal, type Built } from './agent/apply';
 import { findInlineRequest, inlineTarget, type InlineRequest } from './agent/inline';
 import { agentTarget } from './agent/target';
 import { MAX_CONTEXT_CHARS } from './ai/context';
-import { parseAgentReply } from './agent/proposal';
+import { parseAgentReply, type ParsedReply } from './agent/proposal';
 import { AgentProposals } from './agent/service';
 import type { Region } from './agent/target';
 import { AiSessions, type BuiltRequest, type ContextScope } from './ai/session';
@@ -73,6 +73,14 @@ export function destination(adapter: AiAdapter): string {
 }
 
 const aiDraftKey = (threadId: string) => `ai:${threadId}`;
+
+/** What to show for an agent answer that has no prose of its own. */
+function agentFallback(parsed: ParsedReply, built: Built | null): string {
+  if (parsed.malformed) return 'The agent’s answer could not be read (its edit block was malformed). Nothing was changed.';
+  if (built && !built.ok) return built.noop ? built.message : 'Proposed a change to the note.';
+  if (built) return 'Proposed a change to the note.';
+  return parsed.read ? 'The agent asked to read other notes.' : 'The agent did not propose any change.';
+}
 
 /** "@Agent" anywhere in a comment, as its own word. */
 export const mentionsAgent = (body: string) => /(^|\s)@agent\b/i.test(body);
@@ -320,7 +328,8 @@ export default class ThreadglyphPlugin extends Plugin {
           error: built.ok ? null : built.message,
         });
       }
-      const text = parsed.reply || (built?.ok === false && built.noop ? built.message : parsed.edits.length ? 'Proposed a change to the note.' : body.trim());
+      // Only prose is saved: the edits block quotes the note, and a thread record must never hold note text.
+      const text = parsed.reply || agentFallback(parsed, built);
       const name = `${this.findAssistant(assistant)?.name ?? assistant} (agent)`;
       return attempt(() => c.addAiReply(id, name, text, edited));
     };
@@ -584,7 +593,7 @@ export default class ThreadglyphPlugin extends Plugin {
     }
     if (!result.ok) return { text: result.kind === 'cancelled' ? 'Cancelled.' : `${o.adapter.name} could not answer: ${result.message}`, proposed: false };
     const parsed = parseAgentReply(result.text);
-    if (!parsed.edits.length) return { text: parsed.reply || result.text.trim(), proposed: false };
+    if (!parsed.edits.length) return { text: parsed.reply || agentFallback(parsed, null), proposed: false };
     const built = buildProposal(o.file.path, o.region, parsed, o.base);
     if (!built.ok && built.noop) return { text: parsed.reply ? `${parsed.reply} (${built.message})` : built.message, proposed: false };
     this.agents.set({
@@ -656,7 +665,7 @@ export default class ThreadglyphPlugin extends Plugin {
     for (const view of views) {
       view.update({
         noteName: this.loaded && note ? note.basename : null,
-        target: 'your selection, or else the section around the cursor',
+        target: 'the lines you select (or the whole list item they are in), else the section around the cursor',
         via: via ? `Answered by ${via.name} (${via.detail}) · ${destination(via)}` : 'Turn on AI in Threadglyph settings to use the agent.',
         turns: this.chatTurns,
         running: this.chatRun !== null,

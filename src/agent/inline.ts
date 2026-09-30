@@ -1,5 +1,5 @@
 import { sectionRange } from '../ai/context';
-import { listBlockAt, type Region } from './target';
+import { listBlockAt, regionAt, type Region } from './target';
 
 /** An "@agent …" request typed on a line of a note. */
 export interface InlineRequest {
@@ -60,6 +60,6 @@ export function inlineTarget(doc: string, request: InlineRequest): { region: Reg
   const removed = request.removeTo - request.removeFrom;
   return {
     base: clean.slice(from, to),
-    region: { from, to: to + removed, text: doc.slice(from, to + removed), label },
+    region: regionAt(doc, from, to + removed, label),
   };
 }

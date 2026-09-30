@@ -20,6 +20,8 @@ export interface ParsedReply {
   reply: string;
   edits: AgentEdit[];
   read: ReadRequest | null;
+  /** The block was there but unreadable; it is dropped (it may quote the note). */
+  malformed?: true;
 }
 
 const BLOCK = /```threadglyph[^\n]*\n([\s\S]*?)```/i;
@@ -27,7 +29,10 @@ const BLOCK = /```threadglyph[^\n]*\n([\s\S]*?)```/i;
 const isEdit = (e: unknown): e is AgentEdit =>
   !!e && typeof (e as AgentEdit).old === 'string' && typeof (e as AgentEdit).new === 'string';
 
-/** Tolerant: a reply without a block, or with unreadable JSON, is just a reply. */
+/**
+ * Tolerant: a reply without a block is just a reply. The block is always
+ * removed from the prose, even when its JSON cannot be read.
+ */
 export function parseAgentReply(text: string): ParsedReply {
   const match = BLOCK.exec(text);
   const prose = (match ? text.replace(match[0], '') : text).trim();
@@ -36,7 +41,7 @@ export function parseAgentReply(text: string): ParsedReply {
   try {
     data = JSON.parse(match[1]);
   } catch {
-    return { reply: prose || text.trim(), edits: [], read: null };
+    return { reply: prose, edits: [], read: null, malformed: true };
   }
   const raw = data as { edits?: unknown; read?: { search?: unknown; notes?: unknown } };
   const edits = Array.isArray(raw.edits) ? raw.edits.filter(isEdit).map((e) => ({ old: e.old, new: e.new })) : [];

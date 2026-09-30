@@ -7,6 +7,24 @@ export interface Region {
   to: number;
   text: string;
   label: string;
+  /** Text just around it, so a moved region is found again but an identical copy elsewhere is not taken for it. */
+  before?: string;
+  after?: string;
+}
+
+/** How much surrounding text identifies a region. */
+const CONTEXT_CHARS = 40;
+
+/** `doc[from, to)` as a region, with the text around it. */
+export function regionAt(doc: string, from: number, to: number, label: string): Region {
+  return {
+    from,
+    to,
+    text: doc.slice(from, to),
+    label,
+    before: doc.slice(Math.max(0, from - CONTEXT_CHARS), from),
+    after: doc.slice(to, to + CONTEXT_CHARS),
+  };
 }
 
 const LIST_ITEM = /^(\s*)(?:[-*+]|\d+[.)])\s/;
@@ -57,7 +75,7 @@ function fullLines(doc: string, from: number, to: number): { from: number; to: n
 
 function region(doc: string, from: number, to: number, label: string): Region {
   const text = doc.slice(from, to).replace(/\s+$/, '');
-  return { from, to: from + text.length, text, label };
+  return regionAt(doc, from, from + text.length, label);
 }
 
 /**

@@ -104,3 +104,16 @@ Local baseline on `7b9a5f4`: 301 tests passed. The first restricted run could no
 - Three maintainability findings accepted: use a Set for mention membership, separate focus restoration from panel rendering (cognitive complexity 20 > 15), and extract a nested context-label template. These are clarity changes; the existing behavior regressions remain the validation contract.
 - Gitar's check succeeded on this SHA, with no review comments or inline findings returned by GitHub at inspection. This records the observed check, not a claim about unreported review coverage.
 - The follow-up commit reruns the full local suite and GitHub checks; its final results are on PR #8. Owner Obsidian UX validation remains pending.
+
+## September 30 — @agent batch (PR #10)
+
+PR: https://github.com/jmbost20/threadglyph/pull/10 (stacked on #9). First commit `7ed9463`.
+
+### PR #10, first cloud scan on `7ed9463`
+
+- CI, SonarQube Cloud and Gitar checks all passed. Sonar quality gate passed, but reports 15 new issues. The project is private, so the issue list could not be read without a token; the owner should review them in the Sonar dashboard. Nothing is inferred about their content.
+- Gitar requested changes with 4 findings. All were accepted, and each fix was preceded by a test that failed:
+  1. **Accept could rewrite a different copy of the text.** When the reviewed text was edited and an identical copy existed elsewhere, `locateRegion` took the copy. Regions now carry 40 characters of surrounding text, and relocation needs text plus surroundings unchanged and unique. Test: "never moves onto another copy…".
+  2. **Unreadable edit JSON could be saved to a thread record.** The block, which quotes the note, went into the thread when its JSON failed to parse or when there was no prose. The block is now always stripped, and a fixed message stands in. Test: "never saves an edit block to the thread…".
+  3. **The chat's "May change" label understated a selection inside a list item,** which expands to the whole item. The label now says so.
+  4. **The progress log's test count was stale.** Corrected.

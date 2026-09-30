@@ -32,12 +32,20 @@ export function buildProposal(notePath: string, region: Region, parsed: ParsedRe
   };
 }
 
-/** Where the proposal's text is in `doc` now: its old place, or its one other place; null when it changed. */
+/**
+ * Where the proposal's text is in `doc` now. The text and what surrounds it
+ * must still be there, unchanged, at its old place or exactly one other place
+ * (lines above it changed). An identical copy elsewhere is never taken for it;
+ * any doubt returns null.
+ */
 export function locateRegion(doc: string, region: Region): number | null {
-  if (region.to <= doc.length && doc.slice(region.from, region.to) === region.text) return region.from;
-  const at = doc.indexOf(region.text);
-  if (at === -1 || (region.text === '' && doc !== '')) return null;
-  return doc.indexOf(region.text, at + 1) === -1 ? at : null;
+  const before = region.before ?? '';
+  const needle = before + region.text + (region.after ?? '');
+  const start = region.from - before.length;
+  if (start >= 0 && start + needle.length <= doc.length && doc.startsWith(needle, start)) return region.from;
+  const at = doc.indexOf(needle);
+  if (at === -1 || needle === '' || doc.indexOf(needle, at + 1) !== -1) return null;
+  return at + before.length;
 }
 
 export const STALE_MESSAGE = 'The note changed since this preview. Nothing was changed; ask the agent again.';

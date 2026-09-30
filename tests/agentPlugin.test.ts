@@ -220,6 +220,22 @@ describe('@Agent in a comment', () => {
     expect(chatEl().querySelector('.tg-proposal')).toBeNull();
   });
 
+  it('never saves an edit block to the thread, even an unreadable one (Gitar PR #10)', async () => {
+    await commentOn('Groceries', '@Agent sort');
+    answers.push({ ok: true, text: '```threadglyph\n{"edits":[{"old":"  - [ ] milk\n  - [ ] apples","new":\n```' });
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    await commentOn('Hardware', '@Agent sort');
+    answers.push({ ok: true, text: '```threadglyph\n{"edits":[]}\n```' });
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    const saved = threadFiles().join();
+    expect(saved).not.toContain('threadglyph\\n');
+    expect(saved).not.toContain('apples');
+    expect(saved).toContain('could not be read');
+    expect(saved).toContain('did not propose any change');
+  });
+
   it('saves a plain answer as a reply with no proposal', async () => {
     await commentOn('Groceries', '@agent anything to change?');
     buttonIn(panelEl(), 'Send')!.click();
