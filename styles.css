@@ -733,3 +733,10 @@ body {
 .tg-custom-filters summary { cursor: pointer; }
 .tg-custom-filter { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .tg-custom-filter input, .tg-custom-filter select { width: 100%; max-width: 100%; }
+
+.tg-message:focus { outline: 2px solid var(--tg-accent); outline-offset: 4px; border-radius: 4px; }
+.tg-delete-comment { font-size: var(--font-ui-smaller); margin-left: auto; }
+.tg-deleted { margin-top: 8px; }
+.tg-deleted > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tg-message-meta { flex-wrap: wrap; }
+.tg-panel { overflow-anchor: none; }

@@ -73,6 +73,7 @@ beforeEach(async () => {
       ctl.cancelEdit(id, m);
       render();
     },
+    setMessageDeleted: async (id, m, deleted) => { const result = await ctl.setMessageDeleted(id, m, deleted); render(); return result.ok; },
     setResolved: async (id, resolved) => {
       await ctl.setResolved(id, resolved);
       render();
@@ -261,10 +262,12 @@ describe('ThreadPanel', () => {
     const thread = await createViaPanel('Focus me');
     panel.update(state({ focusedThreadId: thread.id }));
     expect(q('.tg-card-focused')).not.toBeNull();
-    const scroll = vi.fn();
-    q<HTMLElement>('.tg-card')!.scrollIntoView = scroll;
+    Object.defineProperty(panel.contentEl, 'clientHeight', { value: 600, configurable: true });
+    panel.contentEl.getBoundingClientRect = () => ({ top: 100 } as DOMRect);
+    q<HTMLElement>('.tg-card')!.getBoundingClientRect = () => ({ top: 900, height: 200 } as DOMRect);
+    panel.contentEl.scrollTop = 0;
     panel.scrollToThread(thread.id);
-    expect(scroll).toHaveBeenCalled();
+    expect(panel.contentEl.scrollTop).toBe(600);
     expect(document.activeElement?.tagName).toBe('TEXTAREA');
   });
 
@@ -813,4 +816,65 @@ describe('custom filter controls', () => {
     button('Clear custom filters')!.click();
     expect(qa('.tg-card[data-thread-id]')).toHaveLength(1);
   });
+});
+
+it('deletes a selected comment with Command Shift Backspace and retains recoverable content', async () => {
+  const thread = await createViaPanel('Keep recoverable');
+  const message = q<HTMLElement>('.tg-message')!;
+  message.click();
+  expect(document.activeElement).toBe(message);
+  message.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true, shiftKey: true, bubbles: true }));
+  await flush();
+  expect(q('.tg-card[data-thread-id]')).toBeNull();
+  const saved = store.get(thread.id)!.messages[0];
+  expect(saved.deletedAt).toBeTruthy();
+  expect(saved.body).toBe('Keep recoverable');
+  panel.update(state({ deletedMessages: [{ threadId: thread.id, message: saved }] }));
+  button('Undo delete')!.click();
+  await flush();
+  expect(q('.tg-message-body')?.textContent).toBe('Keep recoverable');
+});
+
+it('does not delete a comment when the deletion chord edits text in a reply', async () => {
+  const thread = await createViaPanel('Do not delete');
+  q('textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true, shiftKey: true, bubbles: true }));
+  await flush();
+  expect(store.get(thread.id)!.messages[0].deletedAt).toBeUndefined();
+});
+
+it('centers a new composer and preserves viewport position across ordinary updates', () => {
+  ctl.beginThread(note, doc, ...range('The passage'));
+  render();
+  panel.focusNewThread();
+  expect(document.activeElement).toBe(q('.tg-card-new textarea'));
+  panel.contentEl.scrollTop = 450;
+  render();
+  expect(panel.contentEl.scrollTop).toBe(450);
+});
+
+it('keeps the Ask AI box centered when a new @mention thread also becomes the focused card', async () => {
+  const thread = await createViaPanel('Question');
+  panel.update(state());
+  q<HTMLTextAreaElement>('textarea')!.focus();
+  Object.defineProperty(panel.contentEl, 'clientHeight', { value: 600, configurable: true });
+  panel.contentEl.getBoundingClientRect = () => ({ top: 0 } as DOMRect);
+  const aiView: AiCardView = {
+    state: { phase: 'preview', scope: 'section', assistant: 'local', attempts: 0 },
+    items: [], scopes: [], exactText: '', canSend: true,
+  };
+  const proto = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    if (this.classList.contains('tg-ai')) return { top: 1300, height: 200 } as DOMRect;
+    if (this.classList.contains('tg-card')) return { top: 800, height: 900 } as DOMRect;
+    return proto.call(this);
+  };
+  try {
+    panel.contentEl.scrollTop = 0;
+    panel.update(state({ focusedThreadId: thread.id, ai: { [thread.id]: aiView } }));
+    expect(document.activeElement?.textContent).toBe('Send');
+    // Centered on the AI box (1300 - (600 - 200) / 2), not re-scrolled to the card's top.
+    expect(panel.contentEl.scrollTop).toBe(1100);
+  } finally {
+    HTMLElement.prototype.getBoundingClientRect = proto;
+  }
 });

@@ -148,3 +148,12 @@ Branch: `codex/ai-review-ux`, isolated from the ongoing `codex/local-gemini-pilo
 - Knowledge integration remains a separate draft design; no knowledge publication or Anki functionality is claimed here.
 
 Owner sandbox validation still needed: (1) question + `@Local`, Enter, review the expanded section preview, Enter and observe one saved AI reply; (2) Escape from preview/running returns to the note without deleting the question; (3) narrow the panel and inspect button wrapping/scope separators; (4) filter AI replies by agent/date and reset. Existing edit, resolve/reopen, image-anchor and backup flows remain covered by the automated suite.
+
+## September 30 — Comment deletion and panel centering
+
+The owner's sandbox was still loading the PR #7 build, so the PR #8 changes (Enter after an @mention, Escape, expanded exact text with counts) had not been seen. The sandbox now links to this branch's build.
+
+- **Delete:** a Delete button on each comment, and ⌘⇧Delete (or Ctrl+Shift+Delete) on a clicked comment. Deletion is soft (`deletedAt`); the text stays in the record, is left out of AI requests, and can be restored from **Deleted comments → Undo delete** in the panel header. A thread whose comments are all deleted is hidden.
+- **Centering:** a new comment box, a newly focused card and an opened Ask AI box are centered in the panel. Re-renders keep the scroll position, and focus no longer scrolls on its own.
+- **Fix:** after posting a comment with an @mention, the panel stays on the Ask AI box and its Send button instead of re-scrolling to the card's top.
+- Started by Codex (uncommitted when it hit its usage limit), finished here.

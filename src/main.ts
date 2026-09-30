@@ -279,6 +279,16 @@ export default class ThreadglyphPlugin extends Plugin {
         c.cancelEdit(id, messageId);
         void this.refresh();
       },
+      setMessageDeleted: async (id, messageId, deleted) => {
+        if (this.ai.get(id)?.phase === 'saving') {
+          new Notice('The AI reply is saving. Try deleting again in a moment.');
+          return false;
+        }
+        this.ai.close(id);
+        const ok = await attempt(() => c.setMessageDeleted(id, messageId, deleted));
+        await this.refresh();
+        return ok;
+      },
       setResolved: async (id, resolved) => {
         await attempt(() => c.setResolved(id, resolved));
         await this.refresh();
@@ -362,7 +372,10 @@ export default class ThreadglyphPlugin extends Plugin {
 
     const panels = this.panels();
     if (!panels.length) return;
+    const deletedMessages = note ? this.store.forNote(note.path).flatMap((t) =>
+      t.messages.filter((m) => m.deletedAt).map((message) => ({ threadId: t.id, message }))) : [];
     const base = {
+      deletedMessages,
       notePath: note?.path ?? null,
       noteName: note?.basename ?? '',
       problems: this.store.loadProblems(),

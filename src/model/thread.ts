@@ -115,3 +115,14 @@ export function moveThread(
   if (thread.notePath === notePath) return thread;
   return touch(thread, clock, { notePath });
 }
+
+/** Reversible deletion; never discard the original text or revisions. */
+export function setMessageDeleted(thread: ThreadRecord, messageId: string, deleted: boolean, clock: Clock = systemClock): ThreadRecord {
+  const message = thread.messages.find((m) => m.id === messageId);
+  if (!message) throw new ThreadError('That comment no longer exists.');
+  if (!!message.deletedAt === deleted) return thread;
+  const next = { ...message };
+  if (deleted) next.deletedAt = clock.now();
+  else delete next.deletedAt;
+  return touch(thread, clock, { messages: thread.messages.map((m) => m.id === messageId ? next : m) });
+}

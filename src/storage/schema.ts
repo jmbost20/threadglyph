@@ -17,6 +17,7 @@ function checkMessage(m: unknown, i: number): string | null {
   }
   if (m.origin !== 'human' && m.origin !== 'ai' && m.origin !== 'ai-edited') return `messages[${i}].origin is invalid`;
   if (!isStr(m.createdAt) || !isStr(m.body)) return `messages[${i}] is missing createdAt/body`;
+  if (m.deletedAt !== undefined && !isStr(m.deletedAt)) return `messages[${i}].deletedAt is invalid`;
   if (m.editedAt !== undefined && !isStr(m.editedAt)) return `messages[${i}].editedAt is invalid`;
   if (!Array.isArray(m.revisions) || !m.revisions.every((r) => isObj(r) && isStr(r.body) && isStr(r.replacedAt))) {
     return `messages[${i}].revisions is invalid`;

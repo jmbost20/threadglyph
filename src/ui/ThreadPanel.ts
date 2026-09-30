@@ -34,6 +34,7 @@ export interface PanelState {
   notePath: string | null;
   noteName: string;
   views: ThreadView[];
+  deletedMessages?: { threadId: string; message: Message }[];
   pendingQuote: string | null;
   /** Image file of the pending selection, when the new thread is on an image. */
   pendingImagePath: string | null;
@@ -66,6 +67,7 @@ export interface PanelActions {
   startEdit(threadId: string, messageId: string): void;
   saveEdit(threadId: string, messageId: string, body: string): Promise<boolean>;
   cancelEdit(threadId: string, messageId: string): void;
+  setMessageDeleted(threadId: string, messageId: string, deleted: boolean): Promise<boolean>;
   setResolved(threadId: string, resolved: boolean): Promise<void>;
   reattach(threadId: string): Promise<void>;
   goTo(threadId: string): Promise<void>;
@@ -112,6 +114,8 @@ export class ThreadPanel extends ItemView {
   private custom: CommentFilters = { ...EMPTY_COMMENT_FILTERS };
   private customOpen = false;
   private pendingAiFocus: string | null = null;
+  /** Set when the last render centered an Ask AI box, so the update does not scroll elsewhere. */
+  private aiCentered = false;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -159,8 +163,14 @@ export class ThreadPanel extends ItemView {
       const opened = Object.entries(state.ai).find(([id, ai]) => ai.state.phase === 'preview' && !this.state.ai[id]);
       if (opened) this.pendingAiFocus = `reply:${opened[0]}`;
     }
+    const newComposer = state.pendingQuote !== null && this.state.pendingQuote === null;
+    const newFocus = state.focusedThreadId !== this.state.focusedThreadId;
     this.state = state;
+    this.aiCentered = false;
     this.render();
+    if (newComposer) this.focusNewThread();
+    // An opened Ask AI box was already centered on its Send button; centering the whole card would push it away.
+    else if (newFocus && state.focusedThreadId && !this.aiCentered) this.scrollToThread(state.focusedThreadId, false);
   }
 
   /**
@@ -175,14 +185,15 @@ export class ThreadPanel extends ItemView {
       this.render();
     }
     const card = find();
-    card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    if (focusComposer) card?.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+    if (focusComposer) card?.querySelector<HTMLTextAreaElement>('textarea')?.focus({ preventScroll: true });
+    if (card) this.center(card);
   }
 
   focusNewThread(): void {
     const input = this.contentEl.querySelector<HTMLTextAreaElement>('.tg-card-new textarea');
-    input?.scrollIntoView({ block: 'nearest' });
-    input?.focus();
+    input?.focus({ preventScroll: true });
+    const card = input?.closest<HTMLElement>('.tg-card-new');
+    if (card) this.center(card);
   }
 
   /** Re-renders while keeping focus and caret in whichever draft the user was typing. */
@@ -194,6 +205,7 @@ export class ThreadPanel extends ItemView {
       ? [active.selectionStart, active.selectionEnd] : null;
 
     const root = this.contentEl;
+    const scrollTop = root.scrollTop;
     root.empty();
     this.renderHeader(root);
 
@@ -205,6 +217,7 @@ export class ThreadPanel extends ItemView {
       this.renderBody(root);
     }
 
+    root.scrollTop = scrollTop;
     this.restoreFocus(focusKey, caret);
   }
 
@@ -213,7 +226,7 @@ export class ThreadPanel extends ItemView {
     if (focusKey) {
       const el = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(`[data-draft-key="${CSS.escape(focusKey)}"]`);
       if (el) {
-        el.focus();
+        el.focus({ preventScroll: true });
         if (caret && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'search'))) {
           el.setSelectionRange(caret[0], caret[1]);
         }
@@ -230,10 +243,20 @@ export class ThreadPanel extends ItemView {
       const send = id ? [...root.querySelectorAll<HTMLButtonElement>('button[data-draft-key]')]
         .find((button) => button.dataset.draftKey === `ai-send:${id}`) : undefined;
       if (send) {
-        send.focus();
+        send.focus({ preventScroll: true });
+        this.center(send.closest<HTMLElement>('.tg-ai') ?? send);
         this.pendingAiFocus = null;
+        this.aiCentered = true;
       }
     }
+  }
+
+  private center(target: HTMLElement): void {
+    const root = this.contentEl;
+    const box = target.getBoundingClientRect();
+    const viewport = root.getBoundingClientRect();
+    // Tall previews start at the top instead of hiding the question above the viewport.
+    root.scrollTop += box.top - viewport.top - Math.max(12, (root.clientHeight - box.height) / 2);
   }
 
   private renderHeader(root: HTMLElement): void {
@@ -250,6 +273,7 @@ export class ThreadPanel extends ItemView {
       header.createDiv({ cls: 'tg-header-meta', text: counts });
     }
     if (this.state.status === 'ready') this.renderToolbar(header);
+    this.renderDeleted(header);
     if (this.state.problems.length) {
       const warn = header.createDiv({ cls: 'tg-problem' });
       warn.setText(
@@ -320,6 +344,19 @@ export class ThreadPanel extends ItemView {
     details.createDiv({ cls: 'tg-filter-note', text: 'Matches when one comment meets all filters. Dates use your local time.' });
     const reset = details.createEl('button', { cls: 'tg-button', text: 'Clear custom filters' });
     reset.onclick = () => { this.custom = { ...EMPTY_COMMENT_FILTERS }; this.render(); };
+  }
+
+  private renderDeleted(root: HTMLElement): void {
+    const deleted = this.state.deletedMessages ?? [];
+    if (!deleted.length) return;
+    const details = root.createEl('details', { cls: 'tg-deleted' });
+    details.createEl('summary', { text: `Deleted comments (${deleted.length}) — Undo` });
+    for (const { threadId, message } of deleted) {
+      const row = details.createDiv();
+      row.createSpan({ text: previewQuote(message.body) });
+      const undo = row.createEl('button', { text: 'Undo delete' });
+      undo.onclick = () => { void this.actions.setMessageDeleted(threadId, message.id, false); };
+    }
   }
 
   private renderBody(root: HTMLElement): void {
@@ -670,7 +707,24 @@ export class ThreadPanel extends ItemView {
 
   private renderMessage(parent: HTMLElement, threadId: string, message: Message): void {
     const el = parent.createDiv({ cls: `tg-message tg-message-${message.author.kind}` });
+    el.tabIndex = 0;
+    el.dataset.messageId = message.id;
+    el.dataset.draftKey = `message:${message.id}`;
+    el.setAttr('aria-label', `Comment from ${message.author.name}. Command Shift Delete to delete.`);
+    el.onclick = (e) => {
+      if (!(e.target as HTMLElement).closest('button, textarea, input')) el.focus({ preventScroll: true });
+    };
+    el.onkeydown = (e) => {
+      if (e.target !== el || !(e.metaKey || e.ctrlKey) || !e.shiftKey || !['Backspace', 'Delete'].includes(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void this.actions.setMessageDeleted(threadId, message.id, true);
+    };
     const meta = el.createDiv({ cls: 'tg-message-meta' });
+    const remove = meta.createEl('button', { cls: 'tg-delete-comment', text: 'Delete' });
+    remove.setAttr('aria-label', `Delete comment from ${message.author.name}`);
+    remove.setAttr('title', 'Delete comment (⌘⇧Delete). Recover it under Deleted comments.');
+    remove.onclick = () => { void this.actions.setMessageDeleted(threadId, message.id, true); };
     meta.createSpan({ cls: 'tg-author', text: message.author.name });
     const origin = originLabel(message);
     if (origin) meta.createSpan({ cls: 'tg-origin', text: origin });
