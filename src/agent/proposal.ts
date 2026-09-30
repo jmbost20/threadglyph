@@ -44,6 +44,8 @@ export function parseAgentReply(text: string): ParsedReply {
   const match = BLOCK.exec(text) ?? JSON_BLOCK.exec(text);
   const prose = (match ? text.replace(match[0], '') : text).trim();
   if (!match) return { reply: prose, edits: [], read: null };
+  // Small models sometimes put the rewritten Markdown itself in the threadglyph block.
+  if (!match[1].trim().startsWith('{')) return { reply: prose, edits: [], read: null, replacement: match[1].replace(/\n$/, '') };
   let data: unknown;
   try {
     data = JSON.parse(match[1]);

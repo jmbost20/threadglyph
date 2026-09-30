@@ -16,6 +16,8 @@ export const setAgentPreviews = StateEffect.define<PreviewMark[]>();
 export interface PreviewActions {
   accept(key: string): void;
   reject(key: string): void;
+  /** Opens the original and proposed text side by side. */
+  compare(key: string): void;
 }
 
 class ProposalWidget extends WidgetType {
@@ -36,11 +38,17 @@ class ProposalWidget extends WidgetType {
     box.dataset.proposal = this.mark.key;
     box.setAttribute('role', 'group');
     box.setAttribute('aria-label', 'Proposed change from the agent');
-    // Only the changed lines: the original text is right above, dimmed.
+    // The proposed version; the original is right above, dimmed. New or changed lines are highlighted.
+    const removed = this.mark.diff.filter((d) => d.kind === 'remove').length;
+    const added = this.mark.diff.filter((d) => d.kind === 'add').length;
+    const head = document.createElement('div');
+    head.className = 'tg-inline-head';
+    head.textContent = `Proposed version · ${removed} line${removed === 1 ? '' : 's'} removed, ${added} added`;
+    box.appendChild(head);
     for (const line of this.mark.diff) {
-      if (line.kind === 'same') continue;
+      if (line.kind === 'remove') continue;
       const row = document.createElement('div');
-      row.className = `tg-inline-${line.kind}`;
+      row.className = `tg-inline-line tg-inline-${line.kind}`;
       row.textContent = line.text || ' ';
       box.appendChild(row);
     }
@@ -58,6 +66,7 @@ class ProposalWidget extends WidgetType {
       });
       buttons.appendChild(b);
     };
+    make('Compare', 'tg-button', () => this.actions.compare(this.mark.key));
     make('Reject', 'tg-button', () => this.actions.reject(this.mark.key));
     make('Accept', 'tg-button mod-cta', () => this.actions.accept(this.mark.key));
     box.appendChild(buttons);

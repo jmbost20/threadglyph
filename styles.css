@@ -851,3 +851,149 @@ body {
 .tg-read-list .tg-read-daily {
   color: var(--color-orange);
 }
+
+/* ── Ask AI preview tree ───────────────────────────────────────────────────── */
+
+.tg-ai-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0;
+}
+
+.tg-ai-group {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  width: 100%;
+  height: auto;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  white-space: normal;
+}
+
+.tg-ai-group:focus-visible,
+.tg-ai-group:focus {
+  outline: 2px solid var(--tg-accent);
+  background: var(--tg-accent-soft);
+}
+
+.tg-ai-caret {
+  color: var(--text-muted);
+  width: 1em;
+  flex: none;
+}
+
+.tg-ai-group-label {
+  font-weight: var(--font-semibold);
+  flex: none;
+}
+
+.tg-ai-group-summary {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-ai-group-body {
+  margin: 2px 0 6px 18px;
+}
+
+.tg-ai-scope:focus-within,
+.tg-ai-assistant:focus-within {
+  outline: 2px solid var(--tg-accent);
+  border-radius: 6px;
+}
+
+.tg-ai-keys {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+/* Diffs wrap instead of scrolling sideways in the narrow panel. */
+.tg-diff {
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  overflow-x: visible;
+}
+
+.tg-diff-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 1px 8px 1px 1.6em;
+  text-indent: -1.2em;
+}
+
+.tg-diff-summary {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* In the note: the proposed version under the dimmed original. */
+.tg-inline-head {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+}
+
+.tg-inline-line {
+  white-space: pre-wrap;
+}
+
+.tg-inline-same {
+  color: var(--text-normal);
+}
+
+.tg-inline-add {
+  color: var(--text-normal);
+  background: color-mix(in srgb, var(--color-green) 18%, transparent);
+  border-radius: 3px;
+}
+
+/* ── Side-by-side compare ──────────────────────────────────────────────────── */
+
+.modal.tg-compare-wide {
+  width: min(1200px, 92vw);
+  max-width: 92vw;
+}
+
+.tg-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  font-size: var(--font-ui-small);
+}
+
+.tg-compare-head {
+  position: sticky;
+  top: 0;
+  padding: 4px 8px;
+  background: var(--background-primary);
+  font-weight: var(--font-semibold);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tg-compare-cell {
+  padding: 1px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.4em;
+}
+
+.tg-compare-removed {
+  background: color-mix(in srgb, var(--color-red) 14%, transparent);
+}
+
+.tg-compare-added {
+  background: color-mix(in srgb, var(--color-green) 16%, transparent);
+}
+
+.tg-compare-empty {
+  background: var(--background-secondary);
+}

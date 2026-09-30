@@ -15,7 +15,7 @@ import { agentExtraSeconds, agentPreview, buildAgentRequest, type RequestInputs 
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { agentPreviewExtension, setAgentPreviews } from '../src/ui/agentPreview';
-import { ConfirmSendModal, ReadPermissionModal } from '../src/ui/modals';
+import { CompareModal, ConfirmSendModal, ReadPermissionModal, compareRows } from '../src/ui/modals';
 import { renderDiff, renderProposal } from '../src/ui/proposalView';
 
 const LIST = '# Shopping\n- [ ] Groceries\n  - [ ] milk\n  - [ ] apples\n- [ ] Hardware\n\n# Later\nSomething else.\n';
@@ -48,6 +48,12 @@ describe('agent replies', () => {
     // Other json blocks are just part of the answer.
     expect(parseAgentReply('```json\n{"x":1}\n```').edits).toEqual([]);
     expect(proposesChange(parseAgentReply('plain'))).toBe(false);
+  });
+
+  it('takes Markdown inside a threadglyph block as the rewritten text (sandbox, 2026-09-30)', () => {
+    expect(parseAgentReply('Here is the updated content:\n```threadglyph\n- [ ] A\n  - [ ] b\n```')).toEqual({
+      reply: 'Here is the updated content:', edits: [], read: null, replacement: '- [ ] A\n  - [ ] b',
+    });
   });
 
   it('applies a whole replacement, refusing an empty or unchanged one', () => {
@@ -354,7 +360,7 @@ describe('proposal views', () => {
   });
 
   it('draws a proposal under its text in the editor, with working buttons', () => {
-    const actions = { accept: vi.fn(), reject: vi.fn() };
+    const actions = { accept: vi.fn(), reject: vi.fn(), compare: vi.fn() };
     const view = new EditorView({ state: EditorState.create({ doc: LIST, extensions: [agentPreviewExtension(actions)] }), parent: document.body });
     const region = agentTarget(LIST, LIST.indexOf('Groceries'), LIST.indexOf('Groceries') + 9, 'anchor');
     const diff = lineDiff(region.text, region.text.replace('milk', 'oat milk'));
@@ -368,7 +374,9 @@ describe('proposal views', () => {
     const widget = view.dom.querySelector<HTMLElement>('.tg-inline-proposal[data-proposal="k"]')!;
     expect([...widget.querySelectorAll('.tg-inline-add')].map((e) => e.textContent)).toEqual(['  - [ ] oat milk']);
     expect(view.dom.querySelector('.tg-agent-target')).not.toBeNull();
-    const [reject, accept] = [...widget.querySelectorAll('button')];
+    const [compare, reject, accept] = [...widget.querySelectorAll('button')];
+    compare.click();
+    expect(actions.compare).toHaveBeenCalledWith('k');
     reject.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     accept.click();
     reject.click();
@@ -377,6 +385,30 @@ describe('proposal views', () => {
     view.dispatch({ changes: { from: 0, insert: 'x' } });
     expect(view.dom.querySelector('.tg-inline-proposal')).not.toBeNull();
     view.destroy();
+  });
+});
+
+describe('side-by-side compare', () => {
+  it('faces each removed run with the lines that replaced it', () => {
+    expect(compareRows(lineDiff('a\nb\nc\nd', 'a\nB\nc\nd\ne'))).toEqual([
+      { before: 'a', after: 'a', kind: 'same' },
+      { before: 'b', after: 'B', kind: 'change' },
+      { before: 'c', after: 'c', kind: 'same' },
+      { before: 'd', after: 'd', kind: 'same' },
+      { before: null, after: 'e', kind: 'change' },
+    ]);
+    expect(compareRows(lineDiff('x\ny', 'x'))).toEqual([{ before: 'x', after: 'x', kind: 'same' }, { before: 'y', after: null, kind: 'change' }]);
+  });
+
+  it('shows Original and Proposed columns with changes marked', () => {
+    const modal = new CompareModal({} as never, lineDiff('keep\nold', 'keep\nnew'));
+    modal.open();
+    const cells = [...modal.contentEl.querySelectorAll<HTMLElement>('.tg-compare > div')].map((c) => `${c.className.replace(/tg-compare-(cell|before|after) ?/g, '').trim()}|${c.textContent}`);
+    expect(cells).toEqual(['tg-compare-head|Original', 'tg-compare-head|Proposed', '|keep', '|keep', 'tg-compare-removed|old', 'tg-compare-added|new']);
+    modal.close();
+    const empty = new CompareModal({} as never, lineDiff('a', 'a\nb'));
+    empty.open();
+    expect(empty.contentEl.querySelector('.tg-compare-empty')).not.toBeNull();
   });
 });
 

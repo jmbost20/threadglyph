@@ -294,6 +294,8 @@ export class FakeWorkspace extends Events {
   leaves: WorkspaceLeafImpl[] = [];
   activeFile: TFile | null = null;
   activeLeaf: WorkspaceLeafImpl | null = null;
+  /** Obsidian's editor-suggest registry, in the order it asks them. */
+  editorSuggest = { suggests: [] as unknown[] };
   factories = new Map<string, (leaf: WorkspaceLeafImpl) => unknown>();
   constructor(public vault: FakeVault) {
     super();
@@ -356,6 +358,7 @@ export class Plugin {
   suggests: unknown[] = [];
   registerEditorSuggest(suggest: unknown) {
     this.suggests.push(suggest);
+    this.app.workspace.editorSuggest.suggests.push(suggest);
   }
   registerEditorExtension(ext: unknown) {
     this.extensions.push(ext);

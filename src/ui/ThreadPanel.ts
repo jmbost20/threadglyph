@@ -2,7 +2,7 @@ import { ItemView, Scope, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
-import { ConfirmDeleteModal } from './modals';
+import { CompareModal, ConfirmDeleteModal } from './modals';
 import { renderProposal, type ProposalView } from './proposalView';
 import {
   anchorProblem,
@@ -87,7 +87,11 @@ export interface PanelActions {
   aiAssistant(threadId: string, assistant: string): void;
   aiSend(threadId: string): void;
   aiCancel(threadId: string): void;
-  aiClose(threadId: string): void;
+  /**
+   * Ends the Ask AI session. With `discardQuestion`, the comment that opened it
+   * (an @mention not yet answered) is deleted too; it can be restored from Deleted comments.
+   */
+  aiClose(threadId: string, discardQuestion?: boolean): void;
   /** Adds the (possibly edited) draft to the thread as an attributed AI message. */
   aiAdopt(threadId: string, body: string): Promise<boolean>;
   /** Applies an agent proposal to the note (one undoable edit). */
@@ -128,6 +132,10 @@ export class ThreadPanel extends ItemView {
   private pendingAiFocus: string | null = null;
   /** Set when the last render centered an Ask AI box, so the update does not scroll elsewhere. */
   private aiCentered = false;
+  /** Open rows of each Ask AI preview tree, as `<threadId>:<row>`. */
+  private readonly expanded = new Set<string>();
+  /** Submit handlers of the visible comment boxes, for Cmd/Ctrl+Enter. */
+  private readonly submitters = new WeakMap<HTMLElement, () => void>();
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -159,6 +167,11 @@ export class ThreadPanel extends ItemView {
     // Cmd/Ctrl+Shift+Right/Left step through comments; inside a text box they keep selecting text.
     this.scope.register(['Mod', 'Shift'], 'ArrowRight', () => this.stepCard(1));
     this.scope.register(['Mod', 'Shift'], 'ArrowLeft', () => this.stepCard(-1));
+    // Claimed here so Obsidian's editor shortcuts (Cmd+Enter toggles a checkbox in the
+    // note, which stays the active editor) never swallow them while the panel has focus.
+    this.scope.register(['Mod'], 'Enter', () => this.submitFocused());
+    this.scope.register(['Mod', 'Shift'], 'Backspace', () => this.deleteFocused());
+    this.scope.register(['Mod', 'Shift'], 'Delete', () => this.deleteFocused());
     this.render();
   }
 
@@ -180,6 +193,34 @@ export class ThreadPanel extends ItemView {
     next.focus({ preventScroll: true });
     this.center(next);
     void this.actions.select(next.dataset.threadId!);
+    return false;
+  }
+
+  /** Cmd/Ctrl+Enter: submits the focused comment box, or sends the focused Ask AI preview. */
+  submitFocused(): boolean {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || !this.contentEl.contains(active)) return true;
+    const submit = this.submitters.get(active);
+    if (submit) {
+      submit();
+      return false;
+    }
+    const send = active.closest('.tg-ai')?.querySelector<HTMLButtonElement>('button[data-draft-key^="ai-send:"]');
+    if (!send) return true;
+    send.click();
+    return false;
+  }
+
+  /** Cmd/Ctrl+Shift+Delete: asks to delete the focused comment, or the focused card's latest one. */
+  deleteFocused(): boolean {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || !this.contentEl.contains(active) || active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) return true;
+    const card = active.closest<HTMLElement>('.tg-card[data-thread-id]');
+    const el = active.closest<HTMLElement>('.tg-message[data-message-id]') ?? [...(card?.querySelectorAll<HTMLElement>('.tg-message[data-message-id]') ?? [])].at(-1);
+    const threadId = card?.dataset.threadId;
+    const message = this.state.views.find((v) => v.thread.id === threadId)?.thread.messages.find((m) => m.id === el?.dataset.messageId);
+    if (!threadId || !message) return true;
+    this.confirmDelete(threadId, message);
     return false;
   }
 
@@ -276,8 +317,9 @@ export class ThreadPanel extends ItemView {
     if (this.pendingAiFocus) {
       const id = this.pendingAiFocus.startsWith('reply:')
         ? this.pendingAiFocus.slice('reply:'.length) : this.state.focusedThreadId;
-      const send = id ? [...root.querySelectorAll<HTMLButtonElement>('button[data-draft-key]')]
-        .find((button) => button.dataset.draftKey === `ai-send:${id}`) : undefined;
+      const keys = [`ai-row:${id}:scope`, `ai-send:${id}`];
+      const send = id ? keys.map((k) => [...root.querySelectorAll<HTMLElement>('[data-draft-key]')].find((el) => el.dataset.draftKey === k))
+        .find((el) => el) : undefined;
       if (send) {
         send.focus({ preventScroll: true });
         this.center(send.closest<HTMLElement>('.tg-ai') ?? send);
@@ -493,7 +535,8 @@ export class ThreadPanel extends ItemView {
     if (ai) this.renderAi(card, thread.id, ai);
     const proposal = this.state.proposals?.[thread.id];
     if (proposal) {
-      renderProposal(card, proposal, () => this.actions.proposalAccept(thread.id), () => this.actions.proposalReject(thread.id));
+      renderProposal(card, proposal, () => this.actions.proposalAccept(thread.id), () => this.actions.proposalReject(thread.id),
+        () => proposal.diff && new CompareModal(this.app, proposal.diff).open());
     }
 
     const footer = card.createDiv({ cls: 'tg-card-footer' });
@@ -508,41 +551,113 @@ export class ThreadPanel extends ItemView {
     toggle.onclick = () => void this.actions.setResolved(thread.id, thread.status === 'open');
   }
 
-  /** Radio buttons for choosing the assistant, each with its model and where the request goes. */
-  private renderAssistantPicker(box: HTMLElement, threadId: string, current: string): void {
-    const group = box.createDiv({ cls: 'tg-ai-assistants', attr: { role: 'radiogroup', 'aria-label': 'Assistant' } });
-    for (const a of this.state.assistants) {
-      const label = group.createEl('label', { cls: 'tg-ai-assistant' });
-      const radio = label.createEl('input', { attr: { type: 'radio', name: `tg-assistant-${threadId}`, value: a.id } });
-      radio.checked = a.id === current;
-      radio.onchange = () => this.actions.aiAssistant(threadId, a.id);
-      label.createSpan({ cls: 'tg-ai-assistant-name', text: a.name });
-      label.createSpan({ cls: 'tg-ai-assistant-detail', text: `${a.detail} · ${a.destination}` });
+  /**
+   * What the preview will send, as a small tree: "What to send", "Model" (with
+   * several assistants) and "Exact text" start collapsed, so Enter sends the
+   * defaults. Arrow keys open a row and move through its options; moving onto
+   * an option chooses it.
+   */
+  private renderPreviewTree(box: HTMLElement, threadId: string, ai: AiCardView): void {
+    const tree = box.createDiv({ cls: 'tg-ai-tree', attr: { role: 'tree', 'aria-label': 'Request options' } });
+    const group = (id: string, label: string, summary: string, render: (body: HTMLElement) => void) => {
+      const key = `${threadId}:${id}`;
+      const open = this.expanded.has(key);
+      const head = tree.createEl('button', { cls: 'tg-ai-row tg-ai-group', attr: { role: 'treeitem', 'aria-expanded': String(open) } });
+      head.dataset.draftKey = `ai-row:${key}`;
+      head.dataset.row = id;
+      head.createSpan({ cls: 'tg-ai-caret', text: open ? '▾' : '▸' });
+      head.createSpan({ cls: 'tg-ai-group-label', text: label });
+      head.createSpan({ cls: 'tg-ai-group-summary', text: summary });
+      head.onclick = () => this.toggleRow(key, !open);
+      if (open) render(tree.createDiv({ cls: 'tg-ai-group-body', attr: { role: 'group' } }));
+    };
+
+    const scope = ai.scopes.find((s) => s.scope === ai.state.scope);
+    group('scope', 'What to send', scope?.label ?? '', (body) => {
+      const list = body.createEl('ul', { cls: 'tg-ai-items' });
+      for (const item of ai.items) list.createEl('li', { text: item });
+      const scopes = body.createDiv({ cls: 'tg-ai-scopes', attr: { role: 'radiogroup', 'aria-label': 'How much of the note to include' } });
+      for (const option of ai.scopes) {
+        const label = scopes.createEl('label', { cls: 'tg-ai-scope' });
+        const radio = label.createEl('input', { cls: 'tg-ai-row', attr: { type: 'radio', name: `tg-scope-${threadId}`, value: option.scope } });
+        radio.dataset.draftKey = `ai-row:${threadId}:scope:${option.scope}`;
+        radio.checked = ai.state.scope === option.scope;
+        radio.onchange = () => this.actions.aiScope(threadId, option.scope);
+        label.createSpan({ text: option.label });
+      }
+      body.createDiv({ cls: 'tg-ai-note', text: 'Counts include instructions, context and thread text; image bytes and provider formatting are separate.' });
+    });
+
+    if (this.state.assistants.length > 1) {
+      const current = this.state.assistants.find((a) => a.id === ai.state.assistant);
+      group('model', 'Model', current ? `${current.name} · ${current.detail} · ${current.destination}` : '', (body) => {
+        const picker = body.createDiv({ cls: 'tg-ai-assistants', attr: { role: 'radiogroup', 'aria-label': 'Assistant' } });
+        for (const a of this.state.assistants) {
+          const label = picker.createEl('label', { cls: 'tg-ai-assistant' });
+          const radio = label.createEl('input', { cls: 'tg-ai-row', attr: { type: 'radio', name: `tg-assistant-${threadId}`, value: a.id } });
+          radio.dataset.draftKey = `ai-row:${threadId}:model:${a.id}`;
+          radio.checked = a.id === ai.state.assistant;
+          radio.onchange = () => this.actions.aiAssistant(threadId, a.id);
+          label.createSpan({ cls: 'tg-ai-assistant-name', text: a.name });
+          label.createSpan({ cls: 'tg-ai-assistant-detail', text: `${a.detail} · ${a.destination}` });
+        }
+      });
     }
+
+    group('exact', 'Exact text', `${[...ai.exactText].length.toLocaleString('en-US')} characters`, (body) => {
+      body.createDiv({ cls: 'tg-ai-exact' }).createEl('pre', { text: ai.exactText });
+    });
   }
 
-  /** What the preview will send: the items, the scope choice and the exact text. */
-  private renderAiRequest(box: HTMLElement, threadId: string, ai: AiCardView): void {
-    const list = box.createEl('ul', { cls: 'tg-ai-items' });
-    for (const item of ai.items) list.createEl('li', { text: item });
-    const scopes = box.createDiv({ cls: 'tg-ai-scopes', attr: { role: 'radiogroup', 'aria-label': 'How much of the note to include' } });
-    for (const option of ai.scopes) {
-      const label = scopes.createEl('label', { cls: 'tg-ai-scope' });
-      const radio = label.createEl('input', { attr: { type: 'radio', name: `tg-scope-${threadId}`, value: option.scope } });
-      radio.checked = ai.state.scope === option.scope;
-      radio.onchange = () => this.actions.aiScope(threadId, option.scope);
-      label.createSpan({ text: option.label });
-    }
-    box.createDiv({ cls: 'tg-ai-note', text: 'Counts include instructions, context and thread text; image bytes and provider formatting are separate.' });
-    const details = box.createEl('details', { cls: 'tg-ai-exact' });
-    details.open = true;
-    details.createEl('summary', { text: 'Show exact text' });
-    details.createEl('pre', { text: ai.exactText });
+  private toggleRow(key: string, open: boolean): void {
+    if (open) this.expanded.add(key);
+    else this.expanded.delete(key);
+    this.render();
+    this.contentEl.querySelector<HTMLElement>(`[data-draft-key="${CSS.escape(`ai-row:${key}`)}"]`)?.focus({ preventScroll: true });
   }
 
+  /** Up/Down move through the tree's rows and Send; Right opens a row, Left closes it or goes back to it. */
+  private onTreeKey(e: KeyboardEvent, box: HTMLElement, threadId: string): boolean {
+    const target = e.target as HTMLElement;
+    const rows = [...box.querySelectorAll<HTMLElement>('.tg-ai-row, button[data-draft-key^="ai-send:"]')];
+    const at = rows.indexOf(target);
+    const header = (el: HTMLElement) => el.classList.contains('tg-ai-group');
+    const parentOf = (el: HTMLElement) => el.closest('.tg-ai-group-body')?.previousElementSibling as HTMLElement | null;
+    let next: HTMLElement | null | undefined = null;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      next = rows[at === -1 ? 0 : Math.min(rows.length - 1, Math.max(0, at + (e.key === 'ArrowDown' ? 1 : -1)))];
+    } else if (e.key === 'ArrowRight' && header(target)) {
+      if (target.getAttribute('aria-expanded') !== 'true') {
+        this.toggleRow(`${threadId}:${target.dataset.row}`, true);
+        return true;
+      }
+      next = rows[at + 1];
+    } else if (e.key === 'ArrowLeft') {
+      if (header(target) && target.getAttribute('aria-expanded') === 'true') {
+        this.toggleRow(`${threadId}:${target.dataset.row}`, false);
+        return true;
+      }
+      next = parentOf(target);
+    } else {
+      return false;
+    }
+    if (next && next !== target) {
+      next.focus({ preventScroll: true });
+      this.center(next);
+      // Moving onto an option chooses it, as in a radio group.
+      if (next instanceof HTMLInputElement && next.type === 'radio' && !next.checked) {
+        next.checked = true;
+        next.dispatchEvent(new Event('change'));
+      }
+    }
+    return true;
+  }
+
+  /** Escape or Cancel before an answer: ends the request and discards the comment that asked it. */
   private exitAi(threadId: string): void {
     (document.activeElement as HTMLElement | null)?.blur();
-    this.actions.aiClose(threadId);
+    const phase = this.state.ai[threadId]?.state.phase;
+    this.actions.aiClose(threadId, phase === 'preview' || phase === 'running');
     void this.actions.goTo(threadId);
   }
 
@@ -559,9 +674,15 @@ export class ThreadPanel extends ItemView {
     };
     send.onclick = sendOnce;
     box.onkeydown = (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !e.repeat &&
-          !(e.target instanceof HTMLButtonElement && e.target !== send) &&
-          !(e.target instanceof HTMLElement && e.target.tagName === 'SUMMARY')) {
+      if (e.isComposing) return;
+      if (this.onTreeKey(e, box, threadId)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      const other = e.target instanceof HTMLButtonElement && e.target !== send && !e.target.classList.contains('tg-ai-row');
+      // Enter (or Cmd+Enter) sends with whatever is chosen, from anywhere in the preview.
+      if (e.key === 'Enter' && !e.shiftKey && !e.repeat && !other) {
         e.preventDefault();
         e.stopPropagation();
         sendOnce();
@@ -587,10 +708,10 @@ export class ThreadPanel extends ItemView {
     switch (ai.state.phase) {
       case 'preview': {
         box.createDiv({ cls: 'tg-ai-title', text: ai.state.agent ? 'Ask the agent to change the note' : 'Ask AI' });
-        if (this.state.assistants.length > 1) this.renderAssistantPicker(box, threadId, ai.state.assistant);
         const where = assistant ? ` ${assistant.destination}.` : '';
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
-        this.renderAiRequest(box, threadId, ai);
+        box.createDiv({ cls: 'tg-ai-note tg-ai-keys', text: 'Enter sends · ↑↓ move · → opens · Esc cancels and removes the question' });
+        this.renderPreviewTree(box, threadId, ai);
         const row = buttons(box);
         button(row, 'Cancel', () => this.exitAi(threadId));
         const send = button(row, 'Send', () => this.actions.aiSend(threadId), true);
@@ -761,12 +882,6 @@ export class ThreadPanel extends ItemView {
     el.onclick = (e) => {
       if (!(e.target as HTMLElement).closest('button, textarea, input')) el.focus({ preventScroll: true });
     };
-    el.onkeydown = (e) => {
-      if (e.target !== el || !(e.metaKey || e.ctrlKey) || !e.shiftKey || !['Backspace', 'Delete'].includes(e.key)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      this.confirmDelete(threadId, message);
-    };
     const meta = el.createDiv({ cls: 'tg-message-meta' });
     const remove = meta.createEl('button', { cls: 'tg-delete-comment', text: 'Delete' });
     remove.setAttr('aria-label', `Delete comment from ${message.author.name}`);
@@ -879,14 +994,10 @@ export class ThreadPanel extends ItemView {
     submitButton.onclick = () => void doSubmit();
 
     const mentionKey = this.attachMentions(input, wrap);
+    this.submitters.set(input, () => void doSubmit());
     input.onkeydown = (e) => {
       if (e.isComposing || e.repeat) return;
-      const quickSend = e.key === 'Enter' && !e.shiftKey && !key.startsWith('edit:') && this.hasAssistantMention(input.value);
-      if (quickSend) {
-        e.preventDefault();
-        void doSubmit();
-        return;
-      }
+      // Enter always makes a new line in a comment box; Cmd/Ctrl+Enter submits.
       if (mentionKey(e)) return;
       if (isSubmit(e)) {
         e.preventDefault();

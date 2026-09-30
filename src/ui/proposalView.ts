@@ -14,6 +14,9 @@ const CONTEXT = 2;
 
 /** Red/green line diff; long unchanged stretches are folded. */
 export function renderDiff(parent: HTMLElement, diff: DiffLine[]): HTMLElement {
+  const removed = diff.filter((d) => d.kind === 'remove').length;
+  const added = diff.filter((d) => d.kind === 'add').length;
+  parent.createDiv({ cls: 'tg-diff-summary', text: `${removed} line${removed === 1 ? '' : 's'} removed · ${added} added` });
   const box = parent.createDiv({ cls: 'tg-diff', attr: { role: 'group', 'aria-label': 'Proposed change' } });
   const near = diff.map((_, i) =>
     diff.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some((d) => d.kind !== 'same'));
@@ -40,6 +43,7 @@ export function renderProposal(
   view: ProposalView,
   onAccept: () => void,
   onReject: () => void,
+  onCompare?: () => void,
 ): HTMLElement {
   const box = parent.createDiv({ cls: 'tg-proposal' });
   box.dataset.proposal = view.key;
@@ -51,6 +55,11 @@ export function renderProposal(
     box.createDiv({ cls: 'tg-ai-note', text: 'Nothing has changed yet. Accept applies it as one edit; ⌘Z undoes it.' });
   }
   const buttons = box.createDiv({ cls: 'tg-composer-buttons' });
+  if (!view.error && view.diff && onCompare) {
+    const compare = buttons.createEl('button', { cls: 'tg-button', text: 'Compare' });
+    compare.setAttr('aria-label', 'Show the original and the proposed text side by side');
+    compare.onclick = onCompare;
+  }
   const reject = buttons.createEl('button', { cls: 'tg-button', text: view.error ? 'Dismiss' : 'Reject' });
   reject.onclick = onReject;
   if (!view.error) {

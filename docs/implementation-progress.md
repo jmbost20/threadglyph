@@ -229,3 +229,24 @@ The owner's first real `@Agent` request, "consolidate the cards under this item 
 2. **The edit format was too slow for a rewrite.** Copying every line as `old` and then writing `new`, JSON-escaped, came to about 14,000 output characters in 240–310 s. The agent can now answer with a ```` ```threadglyph-replace ```` block holding the complete new target as plain Markdown. Agent requests also get extra time: 45 s per 1,000 target characters on top of the configured timeout, which gives 495 s here.
 
 **After the fix,** the same request finished in 136 s and then 103 s. The parent stayed first, there were exactly 3 head bullets, and the proposal applied. It shrank 127 lines to 61–91, so the owner should review the diff before accepting. The running box now warns that local rewrites take minutes. 381 tests pass.
+
+## September 30 — Owner feedback from the sandbox: keys, preview tree, agent results
+
+**Owner requests (2026-09-30)**
+- ⌘↩ posts from every comment box, whatever it contains. Enter makes a new line; Enter-to-post with an @mention is gone. Later steps (the Ask AI preview) take Enter or ⌘↩.
+- The Ask AI preview should be navigable by keyboard as a tree: what to send, then the model. Enter continues with the defaults.
+- Esc in Ask AI cancels the whole thing, including the comment that asked.
+- Agent diffs should be readable, as original vs. proposed.
+- Inline `@agent` was not offered. ⌘⇧⌫ did not delete a comment when an agent reply was on it.
+
+**Causes found**
+- **⌘↩ did nothing:** with the panel focused, the note stays Obsidian's active editor, so its ⌘↩ (toggle checkbox) took the key. The panel and chat now register ⌘↩, and ⌘⇧⌫/⌦, in their own shortcut scope, which Obsidian consults first while they have focus.
+- **Empty agent reply** ("Here is the updated content:" with nothing after it): qwen put the rewritten Markdown in a `threadglyph` block instead of JSON. The block was stripped as unreadable and the proposal was lost. Markdown in that block now counts as a whole-block rewrite, and an unreadable answer is shown in the card instead of being dropped.
+- **No `@agent` in the note:** the Inline Comments plugin's "@" member menu answered first, and Obsidian shows only the first suggester that responds. Ours now moves to the front and answers only from `@a…`, so a bare `@` still reaches Inline Comments.
+
+**Changes**
+- The preview tree has rows "What to send", "Model" (with several assistants) and "Exact text", collapsed by default. ↑/↓ move, → opens, ← closes or returns to the row, and moving onto an option chooses it. The first row is focused on open.
+- Esc or Cancel before an answer soft-deletes the asking comment, which is restorable under *Deleted comments*. After Send, the question is never removed.
+- Diffs wrap and show "N removed · M added". **Compare** opens an Original | Proposed side-by-side view, where each removed run faces its replacement. In the note, the widget shows the proposed version, with new lines highlighted, under the dimmed original.
+- The agent chat uses the same keys: ⌘↩ sends, Enter makes a new line.
+- **Superseded tests:** "Enter posts with an @mention", "exact text starts expanded" and "Escape keeps the question" were rewritten to the new behavior, as the owner asked; they were not weakened. 392 tests pass.

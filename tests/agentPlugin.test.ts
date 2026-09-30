@@ -108,6 +108,7 @@ describe('@Agent in a comment', () => {
   async function propose() {
     await commentOn('Groceries', '@Agent sort the children alphabetically');
     expect(panelEl().querySelector('.tg-ai-title')?.textContent).toBe('Ask the agent to change the note');
+    panelEl().querySelector<HTMLElement>('.tg-ai-group[data-row="scope"]')!.click();
     expect(panelEl().querySelector('.tg-ai-items li')?.textContent).toBe(
       'The text it may change: the list item and everything under it (43 characters)');
     expect(requests).toHaveLength(0);
@@ -257,6 +258,38 @@ describe('@Agent in a comment', () => {
     expect(saved).toContain('did not propose any change');
   });
 
+  it('shows an unreadable answer instead of dropping it, and compares side by side', async () => {
+    await commentOn('Groceries', '@Agent sort');
+    answers.push({ ok: true, text: 'Sorting.\n```threadglyph\n{"edits": [broken\n```' });
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    expect(panelEl().querySelector('.tg-proposal .tg-ai-error')?.textContent).toContain('could not be read');
+
+    await commentOn('Hardware', '@Agent sort');
+    answers.push({ ok: true, text: '```threadglyph\n{"edits":[{"old":"Hardware","new":"Hardware store"}]}\n```' });
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    const ready = [...panelEl().querySelectorAll<HTMLElement>('.tg-proposal')].find((p) => !p.querySelector('.tg-ai-error'))!;
+    buttonIn(ready, 'Compare')!.click();
+    expect(openModals.at(-1)!.titleEl.textContent).toBe('Original vs. proposed');
+    openModals.at(-1)!.close();
+    buttonIn(view.editor.cm!.dom.querySelector<HTMLElement>('.tg-inline-proposal')!, 'Compare')!.click();
+    expect(openModals.at(-1)!.titleEl.textContent).toBe('Original vs. proposed');
+  });
+
+  it('deletes the agent\'s reply with Cmd+Shift+Delete on its card', async () => {
+    await commentOn('Groceries', '@Agent sort');
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    const panel = app.workspace.getLeavesOfType('threadglyph-panel')[0].view as unknown as { scope: { press(m: string[], k: string): unknown } };
+    panelEl().querySelector<HTMLElement>('.tg-card[data-thread-id]')!.focus();
+    expect(panel.scope.press(['Mod', 'Shift'], 'Delete')).toBe(false);
+    buttonIn(openModals.at(-1)!.contentEl, 'Delete')!.click();
+    await flush();
+    const saved = JSON.parse(threadFiles()[0]);
+    expect(saved.messages.map((m: { deletedAt?: string }) => !!m.deletedAt)).toEqual([false, true]);
+  });
+
   it('saves a plain answer as a reply with no proposal', async () => {
     await commentOn('Groceries', '@agent anything to change?');
     buttonIn(panelEl(), 'Send')!.click();
@@ -305,7 +338,13 @@ describe('agent chat', () => {
     const input = chatEl().querySelector<HTMLTextAreaElement>('.tg-chat-input')!;
     input.value = text;
     input.dispatchEvent(new Event('input'));
+    // Enter is a new line; Cmd+Enter sends.
+    const turns = () => chatEl().querySelectorAll('.tg-chat-you').length;
+    const before = turns();
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await flush();
+    expect(turns()).toBe(before);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }));
     await flush();
   }
 
@@ -354,6 +393,19 @@ describe('agent chat', () => {
     view.editor.selection = [0, 3];
     await say('try');
     expect(chatEl().textContent).toContain('Local could not answer: socket closed');
+  });
+
+  it('sends with Cmd+Enter through its own shortcut scope', async () => {
+    await openChat();
+    const chat = app.workspace.getLeavesOfType('threadglyph-agent')[0].view as unknown as { scope: { press(m: string[], k: string): unknown } };
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(chat.scope.press(['Mod'], 'Enter')).toBe(true);
+    const input = chatEl().querySelector<HTMLTextAreaElement>('.tg-chat-input')!;
+    input.value = 'tidy';
+    input.focus();
+    expect(chat.scope.press(['Mod'], 'Enter')).toBe(false);
+    await flush();
+    expect(requests.at(-1)?.messages.at(-1)?.body).toBe('tidy');
   });
 
   it('names itself and its icon, and empties on close', async () => {
@@ -468,6 +520,15 @@ describe('@agent inline in the note', () => {
     await flush();
     expect(requests).toHaveLength(0);
     expect(notices.at(-1)).toContain('Type what the agent should do');
+  });
+
+  it('goes ahead of other plugins\' @ menus, answering only from "@a"', () => {
+    const registry = app.workspace.editorSuggest.suggests;
+    expect(registry[0]).toBe(suggest());
+    app.vault.adapter.files.set(NOTE, 'Ping @');
+    expect(suggest().onTrigger(view.editor.offsetToPos(6) as never, view.editor as never)).toBeNull();
+    app.vault.adapter.files.set(NOTE, 'Ping @m');
+    expect(suggest().onTrigger(view.editor.offsetToPos(7) as never, view.editor as never)).toBeNull();
   });
 
   it('offers @agent while typing "@", and inserts it when chosen', () => {

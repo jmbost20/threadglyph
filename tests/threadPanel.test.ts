@@ -41,6 +41,11 @@ function state(overrides: Partial<PanelState> = {}): PanelState {
 const render = () => panel.update(state());
 const q = <T extends HTMLElement = HTMLElement>(sel: string) => panel.contentEl.querySelector<T>(sel);
 const qa = (sel: string) => [...panel.contentEl.querySelectorAll<HTMLElement>(sel)];
+const scope = () => (panel as unknown as { scope: { press(m: string[], k: string): unknown } }).scope;
+/** Opens every collapsed row of the Ask AI preview tree (they start closed so Enter sends the defaults). */
+const expandAll = () => {
+  for (let head = q<HTMLElement>('.tg-ai-group[aria-expanded="false"]'); head; head = q<HTMLElement>('.tg-ai-group[aria-expanded="false"]')) head.click();
+};
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const button = (label: string) => qa('button').find((b) => b.textContent === label);
 const type = (el: HTMLTextAreaElement, value: string) => {
@@ -540,15 +545,20 @@ describe('ThreadPanel AI', () => {
     return thread;
   }
 
-  it('starts exact text expanded and handles Enter once and Escape without deleting comments', async () => {
+  it('starts with its rows collapsed, sends once on Enter, and Escape cancels the whole request', async () => {
     const thread = await withAi(preview());
-    expect(q<HTMLDetailsElement>('.tg-ai-exact')!.open).toBe(true);
+    expect(q('.tg-ai-exact')).toBeNull();
+    expect(qa('.tg-ai-group').map((g) => g.textContent)).toEqual([
+      '▸What to sendJust the passage and the thread',
+      '▸Exact text27 characters',
+    ]);
     const send = button('Send')!;
     key(send, 'Enter');
     key(send, 'Enter');
     expect(actions.aiSend).toHaveBeenCalledTimes(1);
     key(send, 'Escape');
-    expect(actions.aiClose).toHaveBeenCalledWith(thread.id);
+    // The owner asked (2026-09-30) that Escape in the preview cancel everything, the asking comment included.
+    expect(actions.aiClose).toHaveBeenCalledWith(thread.id, true);
     expect(actions.goTo).toHaveBeenCalledWith(thread.id);
     expect(store.get(thread.id)!.messages).toHaveLength(1);
   });
@@ -568,6 +578,7 @@ describe('ThreadPanel AI', () => {
     expect(q('.tg-ai-title')?.textContent).toBe('Ask AI');
     expect(q('.tg-ai-note')?.textContent).toBe('Claude will receive the items below. Sent to Anthropic.');
     expect(q('.tg-ai-assistants')).toBeNull();
+    expandAll();
     expect(qa('.tg-ai-items li').map((li) => li.textContent)).toEqual(['The passage (11 characters)', '1 message in this thread']);
     expect(q('.tg-ai-exact pre')?.textContent).toBe('Note: topic <b>not html</b>');
     expect(q('.tg-ai-exact b')).toBeNull();
@@ -578,7 +589,7 @@ describe('ThreadPanel AI', () => {
     button('Send')!.click();
     expect(actions.aiSend).toHaveBeenCalledWith(thread.id);
     button('Cancel')!.click();
-    expect(actions.aiClose).toHaveBeenCalledWith(thread.id);
+    expect(actions.aiClose).toHaveBeenCalledWith(thread.id, true);
   });
 
   it('disables Send when no attempts remain', async () => {
@@ -738,9 +749,42 @@ describe('ThreadPanel with several assistants', () => {
     canSend: true,
   });
 
+  it('walks the preview tree with the arrow keys; moving onto an option chooses it; Enter sends', async () => {
+    const thread = await createViaPanel('Question');
+    const twoScopes = { ...card('preview'), scopes: [{ scope: 'anchor' as const, label: 'Just the passage' }, { scope: 'section' as const, label: 'Also the section' }] };
+    actions.rerender = () => panel.update(state({ assistants: THREE, ai: { [thread.id]: twoScopes } }));
+    actions.rerender();
+    const row = (id: string) => q<HTMLElement>(`.tg-ai-group[data-row="${id}"]`)!;
+    row('scope').focus();
+    key(row('scope'), 'ArrowDown');
+    expect(document.activeElement).toBe(row('model'));
+    key(row('model'), 'ArrowUp');
+    expect(document.activeElement).toBe(row('scope'));
+    key(row('scope'), 'ArrowRight');
+    expect(row('scope').getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(row('scope'));
+    key(row('scope'), 'ArrowRight');
+    const [anchor, section] = qa('.tg-ai-scope input') as HTMLInputElement[];
+    expect(document.activeElement).toBe(anchor);
+    key(anchor, 'ArrowDown');
+    expect(document.activeElement).toBe(section);
+    expect(actions.aiScope).toHaveBeenCalledWith(thread.id, 'section');
+    key(section, 'ArrowLeft');
+    expect(document.activeElement).toBe(row('scope'));
+    key(row('scope'), 'ArrowLeft');
+    expect(row('scope').getAttribute('aria-expanded')).toBe('false');
+    key(row('scope'), 'Tab');
+    key(row('scope'), 'Enter');
+    expect(actions.aiSend).toHaveBeenCalledWith(thread.id);
+    // Cmd+Enter in the preview sends too (through the panel's shortcut scope).
+    row('scope').focus();
+    expect(scope().press(['Mod'], 'Enter')).toBe(false);
+  });
+
   it('lets the user pick the assistant, showing each model and where it sends', async () => {
     const thread = await createViaPanel('Question');
     panel.update(state({ assistants: THREE, ai: { [thread.id]: card('preview') } }));
+    expandAll();
     const options = qa('.tg-ai-assistant');
     expect(options.map((o) => o.textContent)).toEqual([
       'Localqwen3:8b · Stays on this computer',
@@ -827,7 +871,8 @@ it('asks before deleting a clicked comment with Command Shift Backspace, and Und
   const message = q<HTMLElement>('.tg-message')!;
   message.click();
   expect(document.activeElement).toBe(message);
-  message.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', metaKey: true, shiftKey: true, bubbles: true }));
+  // The panel's own shortcut scope takes it, so Obsidian's editor shortcuts cannot swallow it.
+  expect(scope().press(['Mod', 'Shift'], 'Backspace')).toBe(false);
   await flush();
   expect(openModals).toHaveLength(1);
   expect(store.get(thread.id)!.messages[0].deletedAt).toBeUndefined();
@@ -942,10 +987,43 @@ it('keeps the Ask AI box centered when a new @mention thread also becomes the fo
   try {
     panel.contentEl.scrollTop = 0;
     panel.update(state({ focusedThreadId: thread.id, ai: { [thread.id]: aiView } }));
-    expect(document.activeElement?.textContent).toBe('Send');
+    expect(document.activeElement?.textContent).toBe('▸What to send');
     // Centered on the AI box (1300 - (600 - 200) / 2), not re-scrolled to the card's top.
     expect(panel.contentEl.scrollTop).toBe(1100);
   } finally {
     HTMLElement.prototype.getBoundingClientRect = proto;
   }
+});
+
+describe('ThreadPanel keyboard shortcuts', () => {
+  it('Cmd+Enter posts from any comment box; Enter is a new line even with an @mention', async () => {
+    const thread = await createViaPanel('Question');
+    panel.update(state({ assistants: CLAUDE }));
+    const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!;
+    type(input, 'Thoughts @Claude');
+    input.focus();
+    key(input, 'Enter');
+    await flush();
+    expect(store.get(thread.id)!.messages).toHaveLength(1);
+    expect(scope().press(['Mod'], 'Enter')).toBe(false);
+    await flush();
+    expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Question', 'Thoughts @Claude']);
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(scope().press(['Mod'], 'Enter')).toBe(true);
+  });
+
+  it('Cmd+Shift+Delete on a card asks to delete its latest comment, but not while typing', async () => {
+    const thread = await createViaPanel('First');
+    await ctl.reply(thread.id, 'Latest');
+    render();
+    const card = q<HTMLElement>('.tg-card[data-thread-id]')!;
+    card.focus();
+    expect(scope().press(['Mod', 'Shift'], 'Delete')).toBe(false);
+    expect(openModals.at(-1)!.contentEl.textContent).toContain('Latest');
+    openModals.at(-1)!.close();
+    q<HTMLTextAreaElement>('textarea')!.focus();
+    expect(scope().press(['Mod', 'Shift'], 'Backspace')).toBe(true);
+    (document.activeElement as HTMLElement).blur();
+    expect(scope().press(['Mod', 'Shift'], 'Backspace')).toBe(true);
+  });
 });

@@ -37,7 +37,7 @@ import { ThreadController, type Outcome } from './controller';
 import { planImport } from './import/agentComments';
 import { EXPORTS_DIR, buildExport, exportFileName, parseExport } from './storage/backup';
 import { THREADS_DIR } from './storage/paths';
-import { ConfirmSendModal, ImportModal, RestoreModal } from './ui/modals';
+import { CompareModal, ConfirmSendModal, ImportModal, RestoreModal } from './ui/modals';
 import { AgentView, VIEW_TYPE_AGENT, type ChatActions, type ChatTurn } from './ui/AgentView';
 import { AgentSuggest } from './ui/agentSuggest';
 import { AdapterFileStore } from './storage/adapterFileStore';
@@ -108,6 +108,8 @@ export default class ThreadglyphPlugin extends Plugin {
   agents!: AgentProposals;
   /** The text each thread's agent request was shown, to check its edits against. */
   private readonly agentRegions = new Map<string, Region>();
+  /** The comment whose @mention opened each thread's Ask AI preview, until it is sent. */
+  private readonly aiQuestions = new Map<string, string>();
   /** The agent chat, in memory only (it holds note text). */
   private chatTurns: ChatTurn[] = [];
   private chatRun: AbortController | null = null;
@@ -132,14 +134,26 @@ export default class ThreadglyphPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_THREADGLYPH, (leaf) => new ThreadPanel(leaf, this.panelActions()));
     this.registerView(VIEW_TYPE_AGENT, (leaf) => new AgentView(leaf, this.chatActions()));
-    this.registerEditorSuggest(new AgentSuggest(this.app, () => {
+    const agentSuggest = new AgentSuggest(this.app, () => {
       const info = this.agentInfo();
-      return info ? { label: '@agent', detail: `${info.detail}. Type the request, then run “Run @agent on this line”.` } : null;
-    }));
+      return info ? { label: '@agent', detail: `${info.detail}. Type the request, then ⌘⇧↩ (Run @agent on this line).` } : null;
+    });
+    this.registerEditorSuggest(agentSuggest);
+    // Obsidian asks editor suggesters in order and shows only the first that answers. Go first,
+    // so another plugin's "@" menu (Inline Comments) does not hide @agent; ours answers only to "@a…".
+    const suggesters = (this.app.workspace as unknown as { editorSuggest?: { suggests?: unknown[] } }).editorSuggest?.suggests;
+    if (Array.isArray(suggesters) && suggesters.includes(agentSuggest)) {
+      suggesters.splice(suggesters.indexOf(agentSuggest), 1);
+      suggesters.unshift(agentSuggest);
+    }
     this.registerEditorExtension(threadMarksExtension((id, source) => void this.focusThread(id, source !== 'text')));
     this.registerEditorExtension(agentPreviewExtension({
       accept: (key) => void this.agents.accept(key),
       reject: (key) => this.agents.reject(key),
+      compare: (key) => {
+        const diff = this.agents.view(key)?.diff;
+        if (diff) new CompareModal(this.app, diff).open();
+      },
     }));
     this.registerEditorExtension(imageTitlesExtension((cm, embed) => void this.commentOnImageIn(cm, embed)));
     this.registerMarkdownPostProcessor((el, ctx) => this.decorateReading(el, ctx));
@@ -317,6 +331,10 @@ export default class ThreadglyphPlugin extends Plugin {
       const region = this.agentRegions.get(id);
       const thread = this.store.get(id);
       const built = region && thread && proposesChange(parsed) ? buildProposal(thread.notePath, region, parsed) : null;
+      // An unreadable answer is shown, never silently dropped.
+      if (thread && parsed.malformed) {
+        this.agents.set({ key: id, source: 'thread', notePath: thread.notePath, reply: '', proposal: null, error: agentFallback(parsed, null) });
+      }
       // Edits that change nothing are just an answer: "it is already in order".
       if (thread && built && !(!built.ok && built.noop)) {
         this.agents.set({
@@ -342,7 +360,10 @@ export default class ThreadglyphPlugin extends Plugin {
           if (result.ok && result.thread) {
             this.focusedThreadId = result.thread.id;
             const mentioned = this.mentionedAssistant(body);
-            if (mentioned) this.ai.open(result.thread.id, mentioned.adapter.id, mentioned.agent);
+            if (mentioned) {
+              this.ai.open(result.thread.id, mentioned.adapter.id, mentioned.agent);
+              this.aiQuestions.set(result.thread.id, result.thread.messages[0].id);
+            }
           }
           return result;
         }),
@@ -354,7 +375,11 @@ export default class ThreadglyphPlugin extends Plugin {
         attempt(async () => {
           const result = await c.reply(id, body);
           const mentioned = result.ok ? this.mentionedAssistant(body) : null;
-          if (mentioned) this.ai.open(id, mentioned.adapter.id, mentioned.agent);
+          if (mentioned) {
+            this.ai.open(id, mentioned.adapter.id, mentioned.agent);
+            const question = this.store.get(id)?.messages.at(-1);
+            if (question) this.aiQuestions.set(id, question.id);
+          }
           return result;
         }),
       startEdit: (id, messageId) => {
@@ -391,6 +416,8 @@ export default class ThreadglyphPlugin extends Plugin {
         if (!this.assistants().length) return;
         // An edit of the previous answer must not stand in for the new one.
         c.drafts.delete(aiDraftKey(id));
+        // Once sent, the question belongs to the thread; Escape no longer discards it.
+        this.aiQuestions.delete(id);
         if (this.ai.get(id)?.agent) {
           void this.ai.send(id, (assistant) => this.agentAssistant(id, assistant), (scope) => this.buildAgentThreadRequest(id, scope), publishAgent(id));
           return;
@@ -404,9 +431,14 @@ export default class ThreadglyphPlugin extends Plugin {
         c.drafts.delete(aiDraftKey(id));
         this.ai.cancel(id);
       },
-      aiClose: (id) => {
+      aiClose: (id, discardQuestion) => {
         c.drafts.delete(aiDraftKey(id));
         this.ai.close(id);
+        const question = this.aiQuestions.get(id);
+        this.aiQuestions.delete(id);
+        if (discardQuestion && question) {
+          void attempt(() => c.setMessageDeleted(id, question, true)).then(() => this.refresh());
+        }
       },
       aiAdopt: (id, body) => this.ai.adopt(id, body, this.ai.get(id)?.agent ? publishAgent(id) : (assistant, text, edited) =>
         attempt(() => c.addAiReply(id, this.findAssistant(assistant)?.name ?? assistant, text, edited))),

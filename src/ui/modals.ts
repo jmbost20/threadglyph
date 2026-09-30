@@ -1,4 +1,5 @@
 import { Modal, type App } from 'obsidian';
+import type { DiffLine } from '../agent/diff';
 import type { ImportItem } from '../import/agentComments';
 import { previewQuote } from './viewModel';
 
@@ -224,5 +225,72 @@ export class ConfirmSendModal extends Modal {
   onClose(): void {
     this.contentEl.empty();
     this.decide(false);
+  }
+}
+
+/** One row of a side-by-side comparison; either side may be empty. */
+export interface CompareRow {
+  before: string | null;
+  after: string | null;
+  kind: 'same' | 'change';
+}
+
+/**
+ * Pairs a line diff into side-by-side rows: unchanged lines face each other,
+ * and a run of removed lines faces the run of added lines that replaced it.
+ */
+export function compareRows(diff: DiffLine[]): CompareRow[] {
+  const rows: CompareRow[] = [];
+  let removed: string[] = [];
+  let added: string[] = [];
+  const flush = () => {
+    for (let i = 0; i < Math.max(removed.length, added.length); i++) {
+      rows.push({ before: removed[i] ?? null, after: added[i] ?? null, kind: 'change' });
+    }
+    removed = [];
+    added = [];
+  };
+  for (const line of diff) {
+    if (line.kind === 'remove') removed.push(line.text);
+    else if (line.kind === 'add') added.push(line.text);
+    else {
+      flush();
+      rows.push({ before: line.text, after: line.text, kind: 'same' });
+    }
+  }
+  flush();
+  return rows;
+}
+
+/** The original and the proposed text side by side, with changed lines marked. */
+export class CompareModal extends Modal {
+  constructor(
+    app: App,
+    private readonly diff: DiffLine[],
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    this.titleEl.setText('Original vs. proposed');
+    contentEl.addClass('tg-modal', 'tg-compare-modal');
+    (this as unknown as { modalEl?: HTMLElement }).modalEl?.addClass('tg-compare-wide');
+    const grid = contentEl.createDiv({ cls: 'tg-compare' });
+    grid.createDiv({ cls: 'tg-compare-head', text: 'Original' });
+    grid.createDiv({ cls: 'tg-compare-head', text: 'Proposed' });
+    for (const row of compareRows(this.diff)) {
+      const side = (text: string | null, which: 'before' | 'after') => {
+        const cell = grid.createDiv({ cls: `tg-compare-cell tg-compare-${which}` });
+        if (row.kind === 'change') cell.addClass(text === null ? 'tg-compare-empty' : which === 'before' ? 'tg-compare-removed' : 'tg-compare-added');
+        cell.setText(text ?? '');
+      };
+      side(row.before, 'before');
+      side(row.after, 'after');
+    }
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }

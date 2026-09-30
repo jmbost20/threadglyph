@@ -1,4 +1,5 @@
-import { ItemView, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, Scope, type WorkspaceLeaf } from 'obsidian';
+import { CompareModal } from './modals';
 import { renderProposal, type ProposalView } from './proposalView';
 
 export const VIEW_TYPE_AGENT = 'threadglyph-agent';
@@ -36,6 +37,7 @@ export interface ChatActions {
 export class AgentView extends ItemView {
   private state: ChatState = { noteName: null, target: null, via: null, turns: [], running: false, proposals: {} };
   private draft = '';
+  private submit: (() => void) | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -58,6 +60,13 @@ export class AgentView extends ItemView {
 
   async onOpen(): Promise<void> {
     this.contentEl.addClass('tg-panel', 'tg-chat');
+    // Claimed here so Obsidian's editor Cmd+Enter (toggle checkbox) never takes it.
+    this.scope = new Scope(this.app.scope);
+    this.scope.register(['Mod'], 'Enter', () => {
+      if (document.activeElement?.classList.contains('tg-chat-input') !== true || !this.submit) return true;
+      this.submit();
+      return false;
+    });
     this.render();
   }
 
@@ -98,7 +107,8 @@ export class AgentView extends ItemView {
       el.createDiv({ cls: 'tg-message-body', text: turn.text });
       const proposal = turn.proposalKey ? this.state.proposals[turn.proposalKey] : undefined;
       if (proposal) {
-        renderProposal(el, proposal, () => this.actions.accept(proposal.key), () => this.actions.reject(proposal.key));
+        renderProposal(el, proposal, () => this.actions.accept(proposal.key), () => this.actions.reject(proposal.key),
+          () => proposal.diff && new CompareModal(this.app, proposal.diff).open());
       }
     }
     if (this.state.running) log.createDiv({ cls: 'tg-ai-title', text: 'Asking the agent…' });
@@ -108,7 +118,11 @@ export class AgentView extends ItemView {
     if (this.state.via) composer.createDiv({ cls: 'tg-ai-note', text: this.state.via });
     const input = composer.createEl('textarea', {
       cls: 'tg-input tg-chat-input',
-      attr: { rows: '3', placeholder: this.state.noteName ? 'What should the agent do?' : 'Open a note first', 'aria-label': 'Message the agent' },
+      attr: {
+        rows: '3',
+        placeholder: this.state.noteName ? 'What should the agent do? (⌘↩ to send)' : 'Open a note first',
+        'aria-label': 'Message the agent',
+      },
     });
     input.value = this.draft;
     input.disabled = !this.state.noteName;
@@ -130,8 +144,10 @@ export class AgentView extends ItemView {
     const send = buttons.createEl('button', { cls: 'tg-button mod-cta', text: 'Send' });
     send.disabled = this.state.running || !this.state.noteName;
     send.onclick = submit;
+    this.submit = submit;
+    // Enter makes a new line; Cmd/Ctrl+Enter sends, as in comment boxes.
     input.onkeydown = (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing) {
         e.preventDefault();
         submit();
       }

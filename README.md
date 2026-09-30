@@ -15,9 +15,9 @@ Status: 0.2.0 pilot candidate (stages 1–7), desktop only. See [docs/implementa
 
 ## Quick AI and filtering
 
-Write a question with a complete `@Local` mention, then press **Enter** to post it and open the preview. Press **Enter** again to send. **Shift+Enter** inserts a newline; Cmd/Ctrl+Enter also submits. **Escape** leaves Ask AI and returns to the passage without deleting the posted question. A disk save already in progress cannot be cancelled.
+Every comment box works the same way: **⌘↩ posts**, and **Enter makes a new line**, even with an @mention. Posting `@Local …` (or `@Agent …`) opens the Ask AI preview. There, **Enter or ⌘↩ sends** with the defaults. The preview is a small tree: **What to send**, **Model** and **Exact text** start collapsed. **↑/↓** move between rows, **→** opens one, and moving onto an option chooses it. **Esc** or **Cancel** before the answer arrives cancels the whole request and removes the comment that asked. That comment can be restored from *Deleted comments*. The panel handles ⌘↩ and ⌘⇧⌫ itself, so Obsidian's editor shortcuts (⌘↩ toggles a checkbox) can't take them while the panel has focus.
 
-The default includes **the selected passage, the thread, and the containing section**. The exact-text preview starts expanded; scope choices show character counts for instructions and request text (not image bytes or provider formatting). An unavailable anchor never causes an unrelated section to be guessed.
+The default includes **the selected passage, the thread, and the containing section**. Open **Exact text** to see everything that will be sent; scope choices show character counts for instructions and request text (not image bytes or provider formatting). An unavailable anchor never causes an unrelated section to be guessed.
 
 Below **Open / Resolved / All**, expand **Custom filters** for agent, comment age, and an inclusive local date range. All selected predicates must match the same comment. These filters are local to the panel and do not change stored threads.
 

@@ -30,7 +30,8 @@ export class AgentSuggest extends EditorSuggest<AgentSuggestion> {
     const doc = editor.getValue();
     const before = doc.slice(doc.lastIndexOf('\n', offset - 1) + 1, offset);
     const typed = /(?:^|\s)@(\w*)$/.exec(before);
-    if (!typed || !'agent'.startsWith(typed[1].toLowerCase())) return null;
+    // From "@a" on: a bare "@" stays with other plugins' menus (e.g. Inline Comments' members).
+    if (!typed?.[1] || !'agent'.startsWith(typed[1].toLowerCase())) return null;
     return { start: editor.offsetToPos(offset - typed[1].length - 1), end: cursor, query: typed[1] };
   }
 
