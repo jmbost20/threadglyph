@@ -204,3 +204,20 @@ Owner request: let the local agent act on notes (sort a checkbox's children, gen
 - The chat's target is taken at send time (selection, or the section at the cursor); it is named in the chat log.
 - Search is plain word counting over at most 2,000 notes.
 - Small local models may produce edits whose `old` does not match. These are refused with the reason shown.
+
+## September 30 — A more realistic sandbox
+
+Owner request: bring the production plugins and shortcuts into the sandbox, organize test data, and add a copy of today's daily note.
+
+- `npm run sandbox:pull` (`scripts/sandbox-pull-production.mjs`) **reads** the real vault and writes only inside the sandbox. `scripts/sandbox-lib.mjs` checks every write path and refuses the real vault. The script copies:
+  - the 18 plugins with their settings, and the same 12 enabled, plus Threadglyph;
+  - core plugins, appearance, CSS snippets and property types;
+  - the templates folder;
+  - hotkeys, merged;
+  - today's daily note, as `Test data/Daily notes/<date>.md`. An existing copy is kept unless `--refresh-daily` is passed.
+- **Changes in the sandbox copies only:**
+  - Obsidian Sync and Publish are off.
+  - Inline Comments' `autoDispatchOnMention` is off, and its Gemini agent loses `cloudConsent`, so daily-note text is never sent on its own.
+  - Threadglyph's sandbox keys win conflicts: ⌘/ over `inline-comments:add-inline-comment`, and ⌘⇧/ over `app:toggle-right-sidebar`.
+- **Layout:** samples now live in `Test data/Threadglyph samples/`, and the owner's own test notes in `Test data/My test notes/`. New notes and attachments go to `Test data/Inbox` and `Test data/Attachments`. Moves update the thread and anchor paths (56 threads kept).
+- The sandbox is outside the repository, so the daily-note copy is never committed. Repository fixtures stay synthetic.

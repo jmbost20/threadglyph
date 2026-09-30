@@ -37,7 +37,7 @@ The folder contains `main.js`, `manifest.json` and `styles.css`, plus `SHA256SUM
 
 ## Owner test script
 
-Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in the sandbox window).
+Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in the sandbox window). The sample notes named below are in `Test data/Threadglyph samples/`. `npm run sandbox:pull` adds your real plugins, hotkeys and today's daily note (in `Test data/Daily notes/`), so you can test alongside your usual setup.
 
 1. **Highlights and numbers** (`Welcome.md`): select text, press ⌘/, comment, then ⌘↩. You should see a highlight and a raised number, and the card shows the same number. A comment higher in the note renumbers in reading order. Resolving keeps the numbers.
 2. **Navigation:** ⌥⌘] and ⌥⌘[ step through threads in the note. In the panel (outside a text box), ⌘⇧→ and ⌘⇧← step through comments and highlight each passage; the keyboard stays in the panel. ⌥⌘/ inside a highlight jumps to its reply box. Clicking highlighted text shows the card without moving your cursor; clicking a badge focuses the reply box.

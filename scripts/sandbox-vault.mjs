@@ -5,20 +5,16 @@
  *
  *   npm run build && npm run sandbox [-- <vault-path>]
  */
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, rmdirSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
+import { SAMPLES, moveNote, sandboxPath } from './sandbox-lib.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const vault = resolve(process.argv[2] ?? join(homedir(), 'Developer', 'threadglyph-sandbox-vault'));
-
-if (vault.includes("Jonah's Space")) {
-  console.error('Refusing to touch the live vault. Point this script at a disposable folder.');
-  process.exit(1);
-}
+const vault = sandboxPath(process.argv[2]);
 
 const notes = {
   'Welcome.md': `# Welcome to the Threadglyph sandbox
@@ -101,8 +97,21 @@ Also {==compost the fallen leaves==}{>>user|2026-09-17 09:00|important: Shred th
 `,
 };
 
+// Samples live under Test data/ so they are easy to tell apart. Older sandboxes kept them
+// at the top level; move those (with their threads) instead of writing second copies.
+for (const name of [...Object.keys(notes), 'Sandbox sky.png', 'Attachments/Sandbox meadow.png', 'Not supported.heic']) {
+  moveNote(vault, name, `${SAMPLES}/${name}`);
+}
+for (const empty of ['Folder', 'Attachments']) {
+  try {
+    rmdirSync(join(vault, empty));
+  } catch {
+    // Not there, or the owner keeps files in it.
+  }
+}
+
 for (const [name, body] of Object.entries(notes)) {
-  const path = join(vault, name);
+  const path = join(vault, SAMPLES, name);
   mkdirSync(dirname(path), { recursive: true });
   if (!existsSync(path)) writeFileSync(path, body);
 }
@@ -113,11 +122,11 @@ const images = {
   'Attachments/Sandbox meadow.png': [80, 170, 90],
 };
 for (const [name, rgb] of Object.entries(images)) {
-  const path = join(vault, name);
+  const path = join(vault, SAMPLES, name);
   mkdirSync(dirname(path), { recursive: true });
   if (!existsSync(path)) writeFileSync(path, gradientPng(240, 140, rgb));
 }
-const heic = join(vault, 'Not supported.heic');
+const heic = join(vault, SAMPLES, 'Not supported.heic');
 if (!existsSync(heic)) writeFileSync(heic, 'placeholder, not a real HEIC file');
 
 const pluginDir = join(vault, '.obsidian', 'plugins', 'threadglyph');

@@ -14,6 +14,7 @@
     "coverage": "vitest run --coverage",
     "check": "npm run typecheck && npm run lint && npm run coverage && npm run build",
     "sandbox": "node scripts/sandbox-vault.mjs",
+    "sandbox:pull": "node scripts/sandbox-pull-production.mjs",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {

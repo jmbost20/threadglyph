@@ -42,10 +42,11 @@ npm install
 npm run check      # typecheck, lint, tests with coverage, production build
 npm run dev        # rebuild on change
 npm run sandbox    # create a disposable vault at ~/Developer/threadglyph-sandbox-vault and link the build
+npm run sandbox:pull  # copy the owner's plugins, settings, hotkeys, templates and today's daily note into it (real vault read only)
 npm run package    # pilot package in dist/ (installing it is a manual owner step, see docs/pilot.md)
 ```
 
-Open the sandbox folder in Obsidian as a vault and enable community plugins. The sandbox contains synthetic notes only; never point development tooling at a real vault.
+Open the sandbox folder in Obsidian as a vault and enable community plugins. Test notes live under `Test data/`: `Threadglyph samples/` (synthetic), `My test notes/`, and `Daily notes/`, which holds a copy of the owner's daily note from `sandbox:pull`. The sandbox sits outside this repository, so none of it is ever committed. Test fixtures in the repo stay synthetic. `sandbox:pull` only reads the real vault. In the sandbox copies it turns off Sync and Publish, and Inline Comments' auto-dispatch and Gemini cloud consent, so daily-note text never leaves the computer on its own. Never point development tooling at the real vault for writing.
 
 ## Coexistence
 
