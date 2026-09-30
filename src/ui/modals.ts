@@ -124,3 +124,105 @@ export class ConfirmDeleteModal extends Modal {
     this.contentEl.empty();
   }
 }
+
+export interface ReadPermission {
+  search: string | null;
+  notes: { name: string; path: string | null; daily: boolean }[];
+  /** e.g. "Stays on this computer" or "Sent to Google". */
+  destination: string;
+  cloud: boolean;
+}
+
+/**
+ * Asks before the agent reads other notes. Closing the dialog any way other
+ * than Allow counts as Deny, and Deny has focus, so Enter or Escape declines.
+ */
+export class ReadPermissionModal extends Modal {
+  private decided = false;
+
+  constructor(
+    app: App,
+    private readonly ask: ReadPermission,
+    private readonly onDecide: (allowed: boolean) => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    this.titleEl.setText('Let the agent read other notes?');
+    contentEl.addClass('tg-modal');
+    const list = contentEl.createEl('ul', { cls: 'tg-read-list' });
+    if (this.ask.search) {
+      list.createEl('li', { text: `Search your notes for “${this.ask.search}” (up to 3 matches; daily notes are skipped)` });
+    }
+    for (const note of this.ask.notes) {
+      const li = list.createEl('li', { text: note.path ?? `${note.name} (not found, will be skipped)` });
+      if (note.daily) li.createSpan({ cls: 'tg-read-daily', text: ' · daily note' });
+    }
+    contentEl.createEl('p', {
+      cls: this.ask.cloud ? 'tg-ai-error' : 'tg-ai-note',
+      text: this.ask.cloud
+        ? `${this.ask.destination}: the text of these notes will leave this computer.`
+        : `${this.ask.destination}.`,
+    });
+    const buttons = contentEl.createDiv({ cls: 'tg-composer-buttons' });
+    const deny = buttons.createEl('button', { cls: 'tg-button', text: 'Deny' });
+    deny.onclick = () => this.decide(false);
+    const allow = buttons.createEl('button', { cls: 'tg-button mod-cta', text: 'Allow' });
+    allow.onclick = () => this.decide(true);
+    deny.focus();
+  }
+
+  private decide(allowed: boolean): void {
+    if (this.decided) return;
+    this.decided = true;
+    this.onDecide(allowed);
+    this.close();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    this.decide(false);
+  }
+}
+
+/** Asks before an agent request goes to a cloud assistant. Cancel has focus. */
+export class ConfirmSendModal extends Modal {
+  private decided = false;
+
+  constructor(
+    app: App,
+    private readonly what: string,
+    private readonly destination: string,
+    private readonly onDecide: (send: boolean) => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    this.titleEl.setText('Send to a cloud assistant?');
+    contentEl.addClass('tg-modal');
+    contentEl.createEl('p', { text: `${this.what} will be sent. ${this.destination}.` });
+    contentEl.createEl('p', { cls: 'tg-ai-note', text: 'To keep it on this computer, choose Local as the preferred assistant in settings.' });
+    const buttons = contentEl.createDiv({ cls: 'tg-composer-buttons' });
+    const cancel = buttons.createEl('button', { cls: 'tg-button', text: 'Cancel' });
+    cancel.onclick = () => this.decide(false);
+    const send = buttons.createEl('button', { cls: 'tg-button mod-cta', text: 'Send' });
+    send.onclick = () => this.decide(true);
+    cancel.focus();
+  }
+
+  private decide(send: boolean): void {
+    if (this.decided) return;
+    this.decided = true;
+    this.onDecide(send);
+    this.close();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    this.decide(false);
+  }
+}

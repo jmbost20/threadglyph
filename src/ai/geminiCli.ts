@@ -1,5 +1,5 @@
 import type { ProcessRunner } from './claudeCli';
-import { SYSTEM_PROMPT, buildPromptText } from './prompt';
+import { buildPromptText, systemPromptFor } from './prompt';
 import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
 
 /**
@@ -67,7 +67,7 @@ export function geminiArgs(model: string, image: string | null, imageDir: string
 
 /** The request as sent on stdin: standing instructions, then the fenced note material and thread. */
 export function geminiInput(request: AiRequest): string {
-  return `${SYSTEM_PROMPT}\n\n---\n\n${buildPromptText(request)}\n`;
+  return `${systemPromptFor(request)}\n\n---\n\n${buildPromptText(request)}\n`;
 }
 
 /** The reply text from `--output-format json`, or null when the output has no answer. */

@@ -12,6 +12,8 @@ interface AiBase {
   /** Id of the assistant this request is for, e.g. `local`. */
   assistant: string;
   attempts: number;
+  /** An @Agent request: the reply may propose edits, previewed before anything changes. */
+  agent?: boolean;
 }
 
 export type AiState =
@@ -43,9 +45,11 @@ export class AiSessions {
    * to it (as a fresh request); a running request or an unadopted draft is
    * left alone.
    */
-  open(threadId: string, assistant: string): void {
+  open(threadId: string, assistant: string, agent = false): void {
     const state = this.states.get(threadId);
-    if (!state) this.states.set(threadId, { phase: 'preview', scope: 'section', assistant, attempts: 0 });
+    // An agent edits the passage's own lines by default; a question gets its section as context.
+    if (!state) this.states.set(threadId, { phase: 'preview', scope: agent ? 'anchor' : 'section', assistant, attempts: 0, ...(agent ? { agent } : {}) });
+    else if (state.phase === 'preview' && !!state.agent !== agent) this.states.set(threadId, { ...state, assistant, agent: agent || undefined });
     else if (state.assistant !== assistant) return this.setAssistant(threadId, assistant);
     this.onChange();
   }
@@ -62,7 +66,7 @@ export class AiSessions {
     const state = this.states.get(threadId);
     if (state?.phase !== 'preview' && state?.phase !== 'error') return;
     // A different assistant is a fresh request, with its own retries.
-    this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant, attempts: 0 });
+    this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant, attempts: 0, agent: state.agent });
     this.onChange();
   }
 
@@ -83,7 +87,7 @@ export class AiSessions {
   ): Promise<void> {
     const state = this.states.get(threadId);
     if (!state || !this.canSend(threadId)) return;
-    const base = { scope: state.scope, assistant: state.assistant, attempts: state.attempts + 1 };
+    const base = { scope: state.scope, assistant: state.assistant, attempts: state.attempts + 1, agent: state.agent };
     const controller = new AbortController();
     this.inFlight.set(threadId, controller);
     this.states.set(threadId, { ...base, phase: 'running' });
@@ -163,7 +167,7 @@ export class AiSessions {
     if (state?.phase === 'saving') return;
     this.inFlight.get(threadId)?.abort();
     this.inFlight.delete(threadId);
-    if (state) this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant: state.assistant, attempts: state.attempts });
+    if (state) this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant: state.assistant, attempts: state.attempts, agent: state.agent });
     this.onChange();
   }
 

@@ -740,3 +740,114 @@ body {
 .tg-deleted > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .tg-message-meta { flex-wrap: wrap; }
 .tg-panel { overflow-anchor: none; }
+
+/* ── Agent proposals ───────────────────────────────────────────────────────── */
+
+.tg-proposal {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--tg-accent-line);
+  border-radius: var(--tg-radius);
+  background: var(--background-secondary);
+}
+
+.tg-proposal-reply {
+  margin: 4px 0;
+  color: var(--text-normal);
+  white-space: pre-wrap;
+}
+
+.tg-diff {
+  margin: 6px 0;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--background-primary);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  overflow-x: auto;
+}
+
+.tg-diff-line {
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.tg-diff-sign {
+  display: inline-block;
+  width: 1.2em;
+  color: var(--text-faint);
+}
+
+.tg-diff-add {
+  background: color-mix(in srgb, var(--color-green) 16%, transparent);
+}
+
+.tg-diff-remove {
+  background: color-mix(in srgb, var(--color-red) 14%, transparent);
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.tg-diff-fold,
+.tg-diff-same {
+  color: var(--text-faint);
+}
+
+/* In the note: the text an open proposal would change is dimmed, and the change shows beneath it. */
+.tg-agent-target {
+  opacity: 0.55;
+}
+
+.tg-inline-proposal {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--tg-accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--tg-accent-soft);
+  font-size: var(--font-ui-small);
+}
+
+.tg-inline-add {
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+.tg-inline-remove {
+  color: var(--text-faint);
+  text-decoration: line-through;
+  white-space: pre-wrap;
+}
+
+.tg-inline-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+/* ── Agent chat ────────────────────────────────────────────────────────────── */
+
+.tg-chat {
+  display: flex;
+  flex-direction: column;
+}
+
+.tg-chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.tg-chat-you {
+  margin-left: 24px;
+  background: var(--tg-accent-soft);
+}
+
+.tg-chat-note {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-read-list .tg-read-daily {
+  color: var(--color-orange);
+}

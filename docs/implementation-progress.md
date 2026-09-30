@@ -166,3 +166,41 @@ Main had been red since PR #2 (Dependabot, ten dev-dependency updates) merged: `
 
 - `package.json` and `package-lock.json` restored to the last green set (commit `42c882f`); `npm ci && npm run check` passes from a clean install.
 - `.github/dependabot.yml`: `@codemirror/*` is ignored (it follows the `obsidian` package, which supplies CodeMirror at runtime), and the grouped PR now carries only minor and patch updates, so each major update (TypeScript 7, Vitest 5, ESLint 10, happy-dom 20) arrives as its own PR and must pass CI on its own.
+
+## September 30 — @agent: proposed edits, previewed before anything changes
+
+Owner request: let the local agent act on notes (sort a checkbox's children, generate a list, pull in other notes), started with `@`, previewing the change without making it. Branch `codex/embedded-agent`, stacked on PR #9.
+
+**Owner decisions (2026-09-30)**
+- **Write rule changed.** It was "the plugin never writes notes". It is now "changes a note only on an explicit Accept of a previewed diff". Accept is one editor transaction (a single ⌘Z), refused if the target text changed since the preview. `AGENTS.md` and `README.md` are updated.
+- **Surfaces:** all three, with the same `@` trigger: `@Agent` in a comment (panel), a sidebar agent chat, and inline `@agent …` in the note.
+- **Other notes:** the agent may ask to read them; a dialog asks first (Allow / Deny, Deny by default). Searches skip daily notes and the current note; named daily notes are flagged in the dialog.
+
+**Design**
+- `src/agent/`:
+  - `proposal.ts`: reply parsing. The model answers in prose plus one ```` ```threadglyph ```` JSON block with `edits: [{old, new}]` or `read: {search, notes}`. Every `old` must match exactly once; nothing is guessed.
+  - `diff.ts`: line LCS diff.
+  - `target.ts`: what may change. It is picked by scope: the list item with its children, the passage's lines, the section, or the note.
+  - `apply.ts`: builds and checks proposals; `applyProposal` makes the single transaction.
+  - `vaultRead.ts`: the permission-gated read loop, with at most 2 rounds.
+  - `inline.ts`: finds and removes an `@agent …` request line.
+  - `service.ts`: an in-memory proposal store shared by all surfaces.
+- **Prompt:** agent requests use `AGENT_SYSTEM_PROMPT` and an `<edit-target>` block. Other notes travel as fenced `<vault-note>` data. Plain `@Local` / `@Gemini` replies keep the old prompt.
+- **Privacy:**
+  - Proposals and chat turns hold note text, so they are never persisted. Thread records keep only the agent's prose; a test asserts that no proposal text or JSON reaches `threadglyph/threads/`.
+  - Chat and inline requests to a cloud assistant ask first.
+  - The panel request goes through the existing Ask AI preview, whose scope choice decides what the agent may edit.
+- **In the note:** the target text is dimmed, and a block widget below it shows the added and removed lines with Accept / Reject.
+- **Sandbox:** new synthetic notes `Agent playground.md` and `Recipes.md`. Sandbox-only shortcuts: ⌘⇧↩ runs `@agent` on the line (⌘↩ already toggles checkboxes), and ⌘⇧A opens the chat.
+
+**Evidence:** 371 tests pass (`tests/agent.test.ts`, `tests/agentPlugin.test.ts`), including:
+- no write without Accept, and Reject writes nothing;
+- stale refusal at Accept and on refresh;
+- Deny reads nothing, and searches exclude daily notes;
+- the inline request is removed only on Accept.
+
+**Known limits**
+- Proposals are lost on reload.
+- The chat's target is taken at send time (selection, or the section at the cursor); it is named in the chat log.
+- Search is plain word counting over at most 2,000 notes.
+- Small local models may produce edits whose `old` does not match. These are refused with the reason shown.

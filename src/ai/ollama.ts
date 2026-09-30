@@ -1,5 +1,5 @@
 import type { HttpFn } from './http';
-import { SYSTEM_PROMPT, buildPromptText } from './prompt';
+import { buildPromptText, systemPromptFor } from './prompt';
 import type { AiAdapter, AiRequest, AiResult } from './types';
 
 /**
@@ -66,7 +66,7 @@ export class OllamaAdapter implements AiAdapter {
       stream: false,
       // Reasoning models answer far faster without thinking, and a comment reply rarely needs it.
       think: false,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, user],
+      messages: [{ role: 'system', content: systemPromptFor(request) }, user],
     });
 
     const out = await http({ url: `${this.host}/api/chat`, method: 'POST', body, timeoutMs, signal });

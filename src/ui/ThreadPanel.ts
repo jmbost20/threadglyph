@@ -3,6 +3,7 @@ import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
 import { ConfirmDeleteModal } from './modals';
+import { renderProposal, type ProposalView } from './proposalView';
 import {
   anchorProblem,
   EMPTY_COMMENT_FILTERS,
@@ -44,7 +45,11 @@ export interface PanelState {
   filter: ThreadFilter;
   /** Enabled assistants in preference order; empty when AI is off (no AI controls are shown). */
   assistants: AssistantInfo[];
+  /** @Agent, offered in the mention menu when AI is on: proposes edits instead of replying. */
+  agent?: AssistantInfo | null;
   ai: Record<string, AiCardView>;
+  /** Agent proposals waiting for Accept or Reject, by thread id. */
+  proposals?: Record<string, ProposalView>;
 }
 
 /** An assistant as the panel shows it. */
@@ -85,6 +90,10 @@ export interface PanelActions {
   aiClose(threadId: string): void;
   /** Adds the (possibly edited) draft to the thread as an attributed AI message. */
   aiAdopt(threadId: string, body: string): Promise<boolean>;
+  /** Applies an agent proposal to the note (one undoable edit). */
+  proposalAccept(threadId: string): void;
+  /** Drops an agent proposal; the note is not touched. */
+  proposalReject(threadId: string): void;
   setFilter(filter: ThreadFilter): void;
   rerender(): void;
 }
@@ -482,6 +491,10 @@ export class ThreadPanel extends ItemView {
 
     const ai = this.state.ai[thread.id];
     if (ai) this.renderAi(card, thread.id, ai);
+    const proposal = this.state.proposals?.[thread.id];
+    if (proposal) {
+      renderProposal(card, proposal, () => this.actions.proposalAccept(thread.id), () => this.actions.proposalReject(thread.id));
+    }
 
     const footer = card.createDiv({ cls: 'tg-card-footer' });
     if (this.state.assistants.length && thread.status === 'open' && !ai) {
@@ -558,7 +571,7 @@ export class ThreadPanel extends ItemView {
 
   private renderAi(card: HTMLElement, threadId: string, ai: AiCardView): void {
     const assistant = this.state.assistants.find((a) => a.id === ai.state.assistant);
-    const name = assistant?.name ?? 'AI';
+    const name = ai.state.agent ? `Agent (${assistant?.name ?? 'AI'})` : (assistant?.name ?? 'AI');
     const box = card.createDiv({ cls: `tg-ai tg-ai-phase-${ai.state.phase}` });
     box.setAttr('aria-live', 'polite');
     const buttons = (parent: HTMLElement) => parent.createDiv({ cls: 'tg-composer-buttons' });
@@ -573,7 +586,7 @@ export class ThreadPanel extends ItemView {
 
     switch (ai.state.phase) {
       case 'preview': {
-        box.createDiv({ cls: 'tg-ai-title', text: 'Ask AI' });
+        box.createDiv({ cls: 'tg-ai-title', text: ai.state.agent ? 'Ask the agent to change the note' : 'Ask AI' });
         if (this.state.assistants.length > 1) this.renderAssistantPicker(box, threadId, ai.state.assistant);
         const where = assistant ? ` ${assistant.destination}.` : '';
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
@@ -653,7 +666,7 @@ export class ThreadPanel extends ItemView {
    * consults first, so arrows/Enter/Escape drive the menu only while it is open.
    */
   private attachMentions(input: HTMLTextAreaElement, wrap: HTMLElement): (e: KeyboardEvent) => boolean {
-    const names = this.state.assistants.map((a) => a.name);
+    const names = this.mentionables().map((a) => a.name);
     if (!names.length) return () => false;
     let menu: HTMLElement | null = null;
     let items: string[] = [];
@@ -681,7 +694,7 @@ export class ThreadPanel extends ItemView {
       menu.empty();
       items.forEach((name, i) => {
         const option = menu!.createDiv({ cls: 'tg-mention-option', text: `@${name}` });
-        const info = this.state.assistants.find((a) => a.name === name);
+        const info = this.mentionables().find((a) => a.name === name);
         if (info) option.createSpan({ cls: 'tg-mention-detail', text: info.detail });
         option.setAttr('role', 'option');
         option.setAttr('aria-selected', String(i === index));
@@ -801,7 +814,12 @@ export class ThreadPanel extends ItemView {
 
   private hasAssistantMention(body: string): boolean {
     const mentions = new Set([...body.matchAll(/(?:^|\s)@(\w+)\b/g)].map((m) => m[1].toLowerCase()));
-    return this.state.assistants.some((a) => mentions.has(a.name.toLowerCase()));
+    return this.mentionables().some((a) => mentions.has(a.name.toLowerCase()));
+  }
+
+  /** Everything the @ menu offers: the agent first, then each assistant. */
+  private mentionables(): AssistantInfo[] {
+    return this.state.agent ? [this.state.agent, ...this.state.assistants] : this.state.assistants;
   }
 
   /**

@@ -1,0 +1,91 @@
+/**
+ * The agent answers in prose plus, optionally, one fenced ```threadglyph block of
+ * JSON: either edits to the text it was given, or a request to read other notes.
+ * Nothing here touches a note; it only turns a reply into a checked proposal.
+ */
+
+export interface AgentEdit {
+  /** Exact text copied from the target; empty means "add at the end of the target". */
+  old: string;
+  new: string;
+}
+
+export interface ReadRequest {
+  search: string | null;
+  notes: string[];
+}
+
+export interface ParsedReply {
+  /** The prose, with the JSON block removed. */
+  reply: string;
+  edits: AgentEdit[];
+  read: ReadRequest | null;
+}
+
+const BLOCK = /```threadglyph[^\n]*\n([\s\S]*?)```/i;
+
+const isEdit = (e: unknown): e is AgentEdit =>
+  !!e && typeof (e as AgentEdit).old === 'string' && typeof (e as AgentEdit).new === 'string';
+
+/** Tolerant: a reply without a block, or with unreadable JSON, is just a reply. */
+export function parseAgentReply(text: string): ParsedReply {
+  const match = BLOCK.exec(text);
+  const prose = (match ? text.replace(match[0], '') : text).trim();
+  if (!match) return { reply: prose, edits: [], read: null };
+  let data: unknown;
+  try {
+    data = JSON.parse(match[1]);
+  } catch {
+    return { reply: prose || text.trim(), edits: [], read: null };
+  }
+  const raw = data as { edits?: unknown; read?: { search?: unknown; notes?: unknown } };
+  const edits = Array.isArray(raw.edits) ? raw.edits.filter(isEdit).map((e) => ({ old: e.old, new: e.new })) : [];
+  let read: ReadRequest | null = null;
+  if (raw.read && typeof raw.read === 'object') {
+    const search = typeof raw.read.search === 'string' && raw.read.search.trim() ? raw.read.search.trim() : null;
+    const notes = Array.isArray(raw.read.notes)
+      ? raw.read.notes.filter((n): n is string => typeof n === 'string' && !!n.trim()).map((n) => n.trim())
+      : [];
+    if (search || notes.length) read = { search, notes };
+  }
+  return { reply: prose, edits, read };
+}
+
+function occurrences(text: string, needle: string): number[] {
+  const found: number[] = [];
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) found.push(at);
+  return found;
+}
+
+const clip = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}…` : s).replace(/\n/g, '⏎');
+
+/** `noop` marks edits that leave the text as it was: the agent found nothing to change. */
+export type Applied = { ok: true; text: string } | { ok: false; message: string; noop?: true };
+
+/**
+ * Applies edits to `base`. Every `old` must appear exactly once and edits must
+ * not overlap; otherwise nothing is applied and the reason is returned.
+ */
+export function applyEdits(base: string, edits: AgentEdit[]): Applied {
+  if (!edits.length) return { ok: false, message: 'The agent did not propose any change.' };
+  const spans: { from: number; to: number; text: string }[] = [];
+  for (const edit of edits) {
+    if (edit.old === '') {
+      const sep = base === '' || base.endsWith('\n') || edit.new.startsWith('\n') ? '' : '\n';
+      spans.push({ from: base.length, to: base.length, text: sep + edit.new });
+      continue;
+    }
+    const at = occurrences(base, edit.old);
+    if (at.length === 0) return { ok: false, message: `The agent's edit does not match the note: “${clip(edit.old)}” is not there.` };
+    if (at.length > 1) return { ok: false, message: `The agent's edit is ambiguous: “${clip(edit.old)}” appears ${at.length} times.` };
+    spans.push({ from: at[0], to: at[0] + edit.old.length, text: edit.new });
+  }
+  spans.sort((a, b) => a.from - b.from || a.to - b.to);
+  for (let i = 1; i < spans.length; i++) {
+    if (spans[i].from < spans[i - 1].to) return { ok: false, message: 'The agent proposed overlapping edits.' };
+  }
+  let text = base;
+  for (const span of [...spans].reverse()) text = text.slice(0, span.from) + span.text + text.slice(span.to);
+  if (text === base) return { ok: false, message: 'The agent found nothing to change.', noop: true };
+  return { ok: true, text };
+}

@@ -22,19 +22,30 @@ import {
   type AiSettings,
   type AssistantId,
 } from './ai/assistants';
-import { aiPreview, buildAiRequest, type RequestInputs } from './ai/request';
+import { agentPreview, aiPreview, buildAgentRequest, buildAiRequest, type RequestInputs } from './ai/request';
+import { buildProposal } from './agent/apply';
+import { findInlineRequest, inlineTarget, type InlineRequest } from './agent/inline';
+import { agentTarget } from './agent/target';
+import { MAX_CONTEXT_CHARS } from './ai/context';
+import { parseAgentReply } from './agent/proposal';
+import { AgentProposals } from './agent/service';
+import type { Region } from './agent/target';
 import { AiSessions, type BuiltRequest, type ContextScope } from './ai/session';
-import type { AiAdapter } from './ai/types';
+import type { AiAdapter, AiContextMessage, AiRequest } from './ai/types';
 import { embedAtSelection, imageSupport, isRemote, prepareImage, type ImageEmbed } from './anchor/imageEmbed';
 import { ThreadController, type Outcome } from './controller';
 import { planImport } from './import/agentComments';
 import { EXPORTS_DIR, buildExport, exportFileName, parseExport } from './storage/backup';
 import { THREADS_DIR } from './storage/paths';
-import { ImportModal, RestoreModal } from './ui/modals';
+import { ConfirmSendModal, ImportModal, RestoreModal } from './ui/modals';
+import { AgentView, VIEW_TYPE_AGENT, type ChatActions, type ChatTurn } from './ui/AgentView';
+import { AgentSuggest } from './ui/agentSuggest';
 import { AdapterFileStore } from './storage/adapterFileStore';
 import { ThreadStore } from './storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions } from './ui/ThreadPanel';
+import { agentPreviewExtension, setAgentPreviews } from './ui/agentPreview';
 import { setThreadMarks, threadMarksExtension, type ThreadMark } from './ui/editorMarks';
+import type { ProposalView } from './ui/proposalView';
 import { imageTitlesExtension, titleRenderedImages } from './ui/imageTitles';
 import { lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks';
 import { buildThreadViews, type ThreadFilter, type ThreadView } from './ui/viewModel';
@@ -63,6 +74,9 @@ export function destination(adapter: AiAdapter): string {
 
 const aiDraftKey = (threadId: string) => `ai:${threadId}`;
 
+/** "@Agent" anywhere in a comment, as its own word. */
+export const mentionsAgent = (body: string) => /(^|\s)@agent\b/i.test(body);
+
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function cmView(view: MarkdownView): EditorView | null {
@@ -82,6 +96,14 @@ export default class ThreadglyphPlugin extends Plugin {
   /** The note the panel is showing; kept when focus moves into the panel itself. */
   private currentFile: TFile | null = null;
   private ai!: AiSessions;
+  /** Agent proposals, in memory only; nothing changes in a note until one is accepted. */
+  agents!: AgentProposals;
+  /** The text each thread's agent request was shown, to check its edits against. */
+  private readonly agentRegions = new Map<string, Region>();
+  /** The agent chat, in memory only (it holds note text). */
+  private chatTurns: ChatTurn[] = [];
+  private chatRun: AbortController | null = null;
+  private agentSeq = 0;
   /** Builds the enabled assistants from settings; replaceable so tests never start a real process. */
   adapterFactory: (settings: AiSettings) => AiAdapter[] = defaultAssistants;
   private adapterCache: { key: string; factory: unknown; adapters: AiAdapter[] } | null = null;
@@ -91,12 +113,26 @@ export default class ThreadglyphPlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
     this.ai = new AiSessions(() => void this.refresh());
+    this.agents = new AgentProposals({
+      app: this.app,
+      editorFor: (path) => this.editorFor(path),
+      refresh: () => void this.refresh(),
+    });
     this.files = new AdapterFileStore(this.app.vault.adapter);
     this.store = new ThreadStore(this.files);
     this.controller = new ThreadController(this.store, () => ({ kind: 'human', name: this.settings.authorName }));
 
     this.registerView(VIEW_TYPE_THREADGLYPH, (leaf) => new ThreadPanel(leaf, this.panelActions()));
+    this.registerView(VIEW_TYPE_AGENT, (leaf) => new AgentView(leaf, this.chatActions()));
+    this.registerEditorSuggest(new AgentSuggest(this.app, () => {
+      const info = this.agentInfo();
+      return info ? { label: '@agent', detail: `${info.detail}. Type the request, then run “Run @agent on this line”.` } : null;
+    }));
     this.registerEditorExtension(threadMarksExtension((id, source) => void this.focusThread(id, source !== 'text')));
+    this.registerEditorExtension(agentPreviewExtension({
+      accept: (key) => void this.agents.accept(key),
+      reject: (key) => this.agents.reject(key),
+    }));
     this.registerEditorExtension(imageTitlesExtension((cm, embed) => void this.commentOnImageIn(cm, embed)));
     this.registerMarkdownPostProcessor((el, ctx) => this.decorateReading(el, ctx));
 
@@ -136,6 +172,22 @@ export default class ThreadglyphPlugin extends Plugin {
       id: 'open-panel',
       name: 'Open thread panel',
       callback: () => void this.activatePanel(),
+    });
+    this.addCommand({
+      id: 'open-agent-chat',
+      name: 'Open agent chat',
+      callback: () => void this.activateChat(),
+    });
+    this.addCommand({
+      id: 'run-agent-on-line',
+      name: 'Run @agent on this line',
+      editorCheckCallback: (checking, editor, ctx) => {
+        if (!ctx.file || !this.assistants().length) return false;
+        const request = findInlineRequest(editor.getValue(), editor.posToOffset(editor.getCursor('from')));
+        if (!request) return false;
+        if (!checking) void this.runInline(editor, ctx.file, request);
+        return true;
+      },
     });
     this.addCommand({
       id: 'search-threads',
@@ -184,6 +236,8 @@ export default class ThreadglyphPlugin extends Plugin {
 
   onunload(): void {
     this.ai?.closeAll();
+    this.agents?.clear();
+    this.chatRun?.abort();
     this.scheduleRefresh.cancel();
   }
 
@@ -246,6 +300,30 @@ export default class ThreadglyphPlugin extends Plugin {
         return false;
       }
     };
+    /**
+     * Saves an agent answer: its prose goes into the thread; its edits become an
+     * in-memory proposal (never saved, since it holds note text).
+     */
+    const publishAgent = (id: string) => async (assistant: string, body: string, edited: boolean): Promise<boolean> => {
+      const parsed = parseAgentReply(body);
+      const region = this.agentRegions.get(id);
+      const thread = this.store.get(id);
+      const built = region && thread && parsed.edits.length ? buildProposal(thread.notePath, region, parsed) : null;
+      // Edits that change nothing are just an answer: "it is already in order".
+      if (thread && built && !(!built.ok && built.noop)) {
+        this.agents.set({
+          key: id,
+          source: 'thread',
+          notePath: thread.notePath,
+          reply: '',
+          proposal: built.ok ? built.proposal : null,
+          error: built.ok ? null : built.message,
+        });
+      }
+      const text = parsed.reply || (built?.ok === false && built.noop ? built.message : parsed.edits.length ? 'Proposed a change to the note.' : body.trim());
+      const name = `${this.findAssistant(assistant)?.name ?? assistant} (agent)`;
+      return attempt(() => c.addAiReply(id, name, text, edited));
+    };
     return {
       drafts: c.drafts,
       editing: c.editing,
@@ -255,7 +333,7 @@ export default class ThreadglyphPlugin extends Plugin {
           if (result.ok && result.thread) {
             this.focusedThreadId = result.thread.id;
             const mentioned = this.mentionedAssistant(body);
-            if (mentioned) this.ai.open(result.thread.id, mentioned.id);
+            if (mentioned) this.ai.open(result.thread.id, mentioned.adapter.id, mentioned.agent);
           }
           return result;
         }),
@@ -267,7 +345,7 @@ export default class ThreadglyphPlugin extends Plugin {
         attempt(async () => {
           const result = await c.reply(id, body);
           const mentioned = result.ok ? this.mentionedAssistant(body) : null;
-          if (mentioned) this.ai.open(id, mentioned.id);
+          if (mentioned) this.ai.open(id, mentioned.adapter.id, mentioned.agent);
           return result;
         }),
       startEdit: (id, messageId) => {
@@ -304,6 +382,10 @@ export default class ThreadglyphPlugin extends Plugin {
         if (!this.assistants().length) return;
         // An edit of the previous answer must not stand in for the new one.
         c.drafts.delete(aiDraftKey(id));
+        if (this.ai.get(id)?.agent) {
+          void this.ai.send(id, (assistant) => this.agentAssistant(id, assistant), (scope) => this.buildAgentThreadRequest(id, scope), publishAgent(id));
+          return;
+        }
         void this.ai.send(
           id, (assistant) => this.findAssistant(assistant), (scope) => this.buildRequest(id, scope),
           (assistant, body, edited) => attempt(() => c.addAiReply(id, this.findAssistant(assistant)?.name ?? assistant, body, edited)),
@@ -317,8 +399,10 @@ export default class ThreadglyphPlugin extends Plugin {
         c.drafts.delete(aiDraftKey(id));
         this.ai.close(id);
       },
-      aiAdopt: (id, body) => this.ai.adopt(id, body, (assistant, text, edited) =>
+      aiAdopt: (id, body) => this.ai.adopt(id, body, this.ai.get(id)?.agent ? publishAgent(id) : (assistant, text, edited) =>
         attempt(() => c.addAiReply(id, this.findAssistant(assistant)?.name ?? assistant, text, edited))),
+      proposalAccept: (id) => void this.agents.accept(id),
+      proposalReject: (id) => this.agents.reject(id),
       imageSrc: (path) => {
         const file = this.app.vault.getAbstractFileByPath(path);
         return file instanceof TFile ? this.app.vault.getResourcePath(file) : null;
@@ -370,6 +454,7 @@ export default class ThreadglyphPlugin extends Plugin {
     const note = file instanceof TFile ? file : null;
 
     await this.updateEditorMarks();
+    this.updateChats(note);
 
     const panels = this.panels();
     if (!panels.length) return;
@@ -383,6 +468,7 @@ export default class ThreadglyphPlugin extends Plugin {
       focusedThreadId: this.focusedThreadId,
       filter: this.filter,
       assistants: this.assistants().map((a) => ({ id: a.id, name: a.name, detail: a.detail, destination: destination(a) })),
+      agent: this.agentInfo(),
     };
     if (!this.loaded || !note) {
       for (const panel of panels) {
@@ -403,7 +489,12 @@ export default class ThreadglyphPlugin extends Plugin {
     const pending = this.controller.pending?.notePath === note.path ? this.controller.pending : null;
     const pendingQuote = pending?.anchor.quote ?? null;
     const pendingImagePath = pending?.anchor.imagePath ?? null;
-    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath, ai });
+    const proposals: Record<string, ProposalView> = {};
+    for (const entry of this.agents.forNote(note.path)) {
+      const shown = entry.source === 'thread' ? this.agents.view(entry.key) : null;
+      if (shown) proposals[entry.key] = shown;
+    }
+    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath, ai, proposals });
   }
 
   // ── AI ──────────────────────────────────────────────────────────────────────
@@ -421,14 +512,223 @@ export default class ThreadglyphPlugin extends Plugin {
     return this.assistants().find((a) => a.id === id) ?? null;
   }
 
-  /** The first enabled assistant a comment @-mentions, e.g. "@Local" or "@Gemini". */
-  private mentionedAssistant(body: string): AiAdapter | null {
+  /**
+   * The first enabled assistant a comment @-mentions, e.g. "@Local" or "@Gemini".
+   * "@Agent" asks for proposed edits, through the named assistant or the preferred one.
+   */
+  private mentionedAssistant(body: string): { adapter: AiAdapter; agent: boolean } | null {
     let first: { adapter: AiAdapter; at: number } | null = null;
     for (const adapter of this.assistants()) {
       const at = body.search(new RegExp(String.raw`(^|\s)@${escapeRegExp(adapter.name)}\b`, 'i'));
       if (at !== -1 && (!first || at < first.at)) first = { adapter, at };
     }
-    return first?.adapter ?? null;
+    const agent = mentionsAgent(body);
+    const adapter = first?.adapter ?? (agent ? preferredAssistant(this.assistants(), this.settings.defaultAssistant) : null);
+    return adapter ? { adapter, agent } : null;
+  }
+
+  /** @Agent as the mention menu shows it; null while AI is off. */
+  private agentInfo() {
+    const via = preferredAssistant(this.assistants(), this.settings.defaultAssistant);
+    return via ? { id: 'agent', name: 'Agent', detail: `proposes edits · via ${via.name}`, destination: destination(via) } : null;
+  }
+
+  /** The assistant for a thread's agent request, able to ask to read other notes. */
+  private agentAssistant(threadId: string, assistant: string): AiAdapter | null {
+    const adapter = this.findAssistant(assistant);
+    const notePath = this.store.get(threadId)?.notePath ?? '';
+    return adapter && this.agents.agentAdapter(adapter, destination(adapter), notePath);
+  }
+
+  /** The assistant a chat or inline request names ("@Gemini …"), else the preferred one. */
+  private pickAgentAssistant(text: string): AiAdapter | null {
+    return this.mentionedAssistant(text)?.adapter ?? preferredAssistant(this.assistants(), this.settings.defaultAssistant);
+  }
+
+  /**
+   * One agent request outside a thread (chat or inline). An answer with edits
+   * becomes a proposal under `key`; the note is not touched.
+   */
+  private async askAgent(o: {
+    key: string;
+    source: 'chat' | 'inline';
+    file: TFile;
+    region: Region;
+    base: string;
+    instruction: string;
+    history: AiContextMessage[];
+    adapter: AiAdapter;
+    signal: AbortSignal;
+  }): Promise<{ text: string; proposed: boolean }> {
+    if (o.base.length > MAX_CONTEXT_CHARS) {
+      return { text: `${o.region.label} is too long for the agent (over ${MAX_CONTEXT_CHARS.toLocaleString('en-US')} characters). Select less text.`, proposed: false };
+    }
+    if (o.adapter.egress === 'cloud') {
+      const what = `${o.region.label} of “${o.file.basename}” (${o.base.length.toLocaleString('en-US')} characters) and your request`;
+      const send = await new Promise<boolean>((done) => new ConfirmSendModal(this.app, what, destination(o.adapter), done).open());
+      if (!send) return { text: 'Not sent.', proposed: false };
+    }
+    const request: AiRequest = {
+      noteName: o.file.basename,
+      quote: null,
+      image: null,
+      context: null,
+      target: { label: o.region.label, text: o.base },
+      messages: [...o.history, { author: this.settings.authorName, origin: 'human', body: o.instruction }],
+    };
+    let result;
+    try {
+      result = await this.agents.agentAdapter(o.adapter, destination(o.adapter), o.file.path).ask(request, o.signal);
+    } catch (err) {
+      result = { ok: false as const, kind: 'failed' as const, message: (err as Error).message };
+    }
+    if (!result.ok) return { text: result.kind === 'cancelled' ? 'Cancelled.' : `${o.adapter.name} could not answer: ${result.message}`, proposed: false };
+    const parsed = parseAgentReply(result.text);
+    if (!parsed.edits.length) return { text: parsed.reply || result.text.trim(), proposed: false };
+    const built = buildProposal(o.file.path, o.region, parsed, o.base);
+    if (!built.ok && built.noop) return { text: parsed.reply ? `${parsed.reply} (${built.message})` : built.message, proposed: false };
+    this.agents.set({
+      key: o.key,
+      source: o.source,
+      notePath: o.file.path,
+      reply: '',
+      proposal: built.ok ? built.proposal : null,
+      error: built.ok ? null : built.message,
+    });
+    return { text: parsed.reply || 'Proposed a change.', proposed: true };
+  }
+
+  /** Runs the "@agent …" request on the cursor's line; its proposal appears under the text it would change. */
+  private async runInline(editor: Editor, file: TFile, request: InlineRequest): Promise<void> {
+    if (!request.instruction) {
+      new Notice('Type what the agent should do after @agent, then run this again.');
+      return;
+    }
+    const adapter = this.pickAgentAssistant(request.instruction);
+    if (!adapter) return;
+    const { region, base } = inlineTarget(editor.getValue(), request);
+    new Notice(`Asking ${adapter.name} (${destination(adapter).toLowerCase()})…`);
+    const outcome = await this.askAgent({
+      key: `inline:${++this.agentSeq}`,
+      source: 'inline',
+      file,
+      region,
+      base,
+      instruction: request.instruction,
+      history: [],
+      adapter,
+      signal: new AbortController().signal,
+    });
+    new Notice(outcome.proposed ? `${outcome.text}\nAccept or Reject it below the text in the note.` : outcome.text);
+    await this.refresh();
+  }
+
+  // ── Agent chat ──────────────────────────────────────────────────────────────
+
+  private chatViews(): AgentView[] {
+    return this.app.workspace
+      .getLeavesOfType(VIEW_TYPE_AGENT)
+      .map((leaf) => leaf.view)
+      .filter((view): view is AgentView => view instanceof AgentView);
+  }
+
+  async activateChat(): Promise<AgentView | null> {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_AGENT)[0];
+    const leaf = existing ?? this.app.workspace.getRightLeaf(false);
+    if (!leaf) return null;
+    if (!existing) await leaf.setViewState({ type: VIEW_TYPE_AGENT, active: true });
+    await this.app.workspace.revealLeaf(leaf);
+    await this.refresh();
+    const view = leaf.view instanceof AgentView ? leaf.view : null;
+    view?.focusInput();
+    return view;
+  }
+
+  private updateChats(note: TFile | null): void {
+    const views = this.chatViews();
+    if (!views.length) return;
+    const via = this.pickAgentAssistant('');
+    const proposals: Record<string, ProposalView> = {};
+    for (const turn of this.chatTurns) {
+      const shown = turn.proposalKey ? this.agents.view(turn.proposalKey) : null;
+      if (shown) proposals[shown.key] = shown;
+    }
+    for (const view of views) {
+      view.update({
+        noteName: this.loaded && note ? note.basename : null,
+        target: 'your selection, or else the section around the cursor',
+        via: via ? `Answered by ${via.name} (${via.detail}) · ${destination(via)}` : 'Turn on AI in Threadglyph settings to use the agent.',
+        turns: this.chatTurns,
+        running: this.chatRun !== null,
+        proposals,
+      });
+    }
+  }
+
+  private chatActions(): ChatActions {
+    const settle = (key: string, suffix: string) => {
+      const turn = this.chatTurns.find((t) => t.proposalKey === key);
+      if (turn) turn.text = `${turn.text} — ${suffix}`;
+    };
+    return {
+      send: (text) => void this.chatSend(text),
+      cancel: () => this.chatRun?.abort(),
+      clear: () => {
+        for (const turn of this.chatTurns) if (turn.proposalKey) this.agents.reject(turn.proposalKey);
+        this.chatTurns = [];
+        void this.refresh();
+      },
+      accept: (key) => {
+        void this.agents.accept(key).then((ok) => {
+          if (ok) settle(key, 'Applied.');
+          void this.refresh();
+        });
+      },
+      reject: (key) => {
+        settle(key, 'Rejected.');
+        this.agents.reject(key);
+        void this.refresh();
+      },
+    };
+  }
+
+  private async chatSend(text: string): Promise<void> {
+    const file = this.currentFile;
+    const view = file && this.markdownViewFor(file);
+    const adapter = this.pickAgentAssistant(text);
+    if (!file || !view || !adapter) {
+      this.chatTurns.push({ role: 'note', text: adapter ? 'Open the note in an editor first.' : 'Turn on AI in Threadglyph settings first.' });
+      await this.refresh();
+      return;
+    }
+    const editor = view.editor;
+    const doc = editor.getValue();
+    const from = editor.posToOffset(editor.getCursor('from'));
+    const to = editor.posToOffset(editor.getCursor('to'));
+    const region = agentTarget(doc, from, to, from === to ? 'section' : 'anchor');
+    const history = this.chatTurns.flatMap((t): AiContextMessage[] =>
+      t.role === 'note' ? [] : [{ author: t.role === 'you' ? this.settings.authorName : 'Agent', origin: t.role === 'you' ? 'human' : 'ai', body: t.text }]);
+    this.chatTurns.push({ role: 'you', text }, { role: 'note', text: `May change: ${region.label.toLowerCase()} in “${file.basename}”` });
+    const run = new AbortController();
+    this.chatRun = run;
+    await this.refresh();
+    const key = `chat:${++this.agentSeq}`;
+    const outcome = await this.askAgent({ key, source: 'chat', file, region, base: region.text, instruction: text, history, adapter, signal: run.signal });
+    if (this.chatRun === run) this.chatRun = null;
+    this.chatTurns.push({ role: 'agent', text: outcome.text, ...(outcome.proposed ? { proposalKey: key } : {}) });
+    await this.refresh();
+  }
+
+  /** The editor showing a note, opening the note when it is not open. */
+  private async editorFor(notePath: string): Promise<Editor | null> {
+    const file = this.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) return null;
+    let view = this.markdownViewFor(file);
+    if (!view) {
+      await this.app.workspace.getLeaf(false).openFile(file);
+      view = this.markdownViewFor(file);
+    }
+    return view?.editor ?? null;
   }
 
   private requestInputs(note: TFile, doc: string, view: ThreadView): RequestInputs {
@@ -439,6 +739,7 @@ export default class ThreadglyphPlugin extends Plugin {
       thread: view.thread,
       quote: found ? doc.slice(found.from, found.to) : view.quote,
       anchorOffset: found?.from ?? null,
+      anchorEnd: found?.to ?? null,
       imagePath: view.imagePath,
     };
   }
@@ -449,7 +750,8 @@ export default class ThreadglyphPlugin extends Plugin {
     for (const view of views) {
       const state = this.ai.get(view.thread.id);
       if (!state) continue;
-      const preview = aiPreview(this.requestInputs(note, doc, view), state.scope);
+      const inputs = this.requestInputs(note, doc, view);
+      const preview = state.agent ? agentPreview(inputs, state.scope) : aiPreview(inputs, state.scope);
       cards[view.thread.id] = { state, ...preview, canSend: this.ai.canSend(view.thread.id) };
     }
     return cards;
@@ -474,6 +776,24 @@ export default class ThreadglyphPlugin extends Plugin {
     const prepared = prepareImage(imageFile.path, new Uint8Array(await this.app.vault.readBinary(imageFile)));
     if (!prepared.ok) return { ok: false, message: prepared.reason };
     return { ok: true, request: buildAiRequest(inputs, scope, prepared.image) };
+  }
+
+  /** An agent request for a thread; remembers the text it may change, to check the answer against. */
+  private async buildAgentThreadRequest(threadId: string, scope: ContextScope): Promise<BuiltRequest> {
+    const thread = this.store.get(threadId);
+    const file = thread && this.app.vault.getAbstractFileByPath(thread.notePath);
+    if (!thread || !(file instanceof TFile)) return { ok: false, message: 'The note for this thread is missing.' };
+    const doc = await this.noteText(file);
+    const [view] = buildThreadViews(
+      { forNote: () => [thread], anchorFor: (id) => this.store.anchorFor(id) },
+      file.path,
+      doc,
+      this.resolveLink,
+    );
+    const built = buildAgentRequest(this.requestInputs(file, doc, view), scope);
+    if (!built.ok) return built;
+    this.agentRegions.set(threadId, built.region);
+    return { ok: true, request: built.request };
   }
 
   /** Threads of a note with their anchors resolved against `doc`; empty until storage has loaded. */
@@ -530,7 +850,7 @@ export default class ThreadglyphPlugin extends Plugin {
         const from = at === -1 ? -1 : at + pending.anchor.prefix.length;
         if (from >= 0) marks.push({ threadId: '', from, to: from + pending.anchor.quote.length, resolved: false, pending: true });
       }
-      cm.dispatch({ effects: setThreadMarks.of(marks) });
+      cm.dispatch({ effects: [setThreadMarks.of(marks), setAgentPreviews.of(this.agents.previewMarks(view.file.path, doc))] });
     }
   }
 
@@ -771,7 +1091,11 @@ export default class ThreadglyphPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     // Switching AI off stops any running request and removes its cards; either way the panel updates now.
-    if (!this.settings.aiEnabled) this.ai?.closeAll();
+    if (!this.settings.aiEnabled) {
+      this.ai?.closeAll();
+      this.agents?.clear();
+      this.chatRun?.abort();
+    }
     await this.refresh();
   }
 }

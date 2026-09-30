@@ -30,6 +30,35 @@ The same phrase appears twice: repeat me. And again: repeat me.
 - A list item worth discussing.
 - Another item with **formatting** inside.
 `,
+  'Agent playground.md': `# Agent playground
+
+Synthetic notes for trying @agent. Nothing changes until you press Accept.
+
+## Groceries
+- [ ] Shopping list
+  - [ ] milk
+  - [ ] apples
+  - [ ] bread
+  - [ ] coffee
+
+## Weekend
+- [ ] Clean the garage @agent sort these tasks by how long they take
+  - [ ] sweep the floor
+  - [ ] sort the tool drawer
+  - [ ] fix the shelf
+
+## Ideas
+A few ideas for the reading group:
+- Short stories
+`,
+  'Recipes.md': `# Recipes
+
+## Pasta
+Boil water, salt it well, cook the pasta two minutes short of the packet time, finish in the sauce.
+
+## Pancakes
+Flour, milk, eggs, a pinch of salt. Rest the batter for ten minutes.
+`,
   'Long note.md': Array.from({ length: 400 }, (_, i) => `Paragraph ${i + 1}: synthetic filler text for scrolling tests.`).join('\n\n'),
   'Folder/Nested note.md': '# Nested\n\nRename this folder to check that threads follow.\n',
   'Unicode ü 🌿.md': '# Ünïcödé\n\nEmoji 🌿 and accents é à ü in an anchor.\n',
@@ -122,6 +151,9 @@ const defaults = {
   'threadglyph:reply-at-cursor': [{ modifiers: ['Mod', 'Alt'], key: '/' }],
   'threadglyph:next-thread': [{ modifiers: ['Mod', 'Alt'], key: ']' }],
   'threadglyph:previous-thread': [{ modifiers: ['Mod', 'Alt'], key: '[' }],
+  // Cmd+Enter already toggles checkboxes, so the inline agent takes Cmd+Shift+Enter.
+  'threadglyph:run-agent-on-line': [{ modifiers: ['Mod', 'Shift'], key: 'Enter' }],
+  'threadglyph:open-agent-chat': [{ modifiers: ['Mod', 'Shift'], key: 'A' }],
 };
 for (const [command, keys] of Object.entries(defaults)) hotkeys[command] ??= keys;
 writeFileSync(hotkeysPath, JSON.stringify(hotkeys, null, 2));
