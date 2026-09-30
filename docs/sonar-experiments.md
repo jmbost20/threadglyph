@@ -89,3 +89,8 @@ Each entry records: **problem → tool feedback → decision → changed behavio
 4. **Sessions, edge case.** An `@Gemini` reply after a failed Local request did nothing. Mentioning a different assistant now switches a failed request, not only a preview, to a fresh preview for that assistant.
 
 - **Verification:** 301 tests, typecheck, lint and build pass.
+
+
+## September 30 — AI interaction and custom filter batch
+
+Local baseline on `7b9a5f4`: 301 tests passed. The first restricted run could not bind the loopback HTTP fixture or write the dependency cache; the correctly permissioned run passed. Updated local `npm run check`: 308 passing tests, 99.76% line coverage, typecheck, lint and production build. No scan or Gitar approval is inferred from local checks. CI, Sonar and review results for this branch must be read from its own PR head, separately from PR #7.

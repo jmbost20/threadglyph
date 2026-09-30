@@ -6,11 +6,19 @@ An Obsidian plugin for editable comment threads anchored to text in your notes.
 - Threads open in a right-side panel. The passage is highlighted, with a number that matches its card, and a glyph appears in the margin.
 - Reply, **edit** any message (Edit → Save/Cancel; the prior text is kept), and resolve or reopen threads. Search the panel with ⌘F.
 - **Images:** every PNG, JPEG or WebP image gets a title pill with a **Comment** button. Image threads show a preview.
-- **Optional AI** (off by default): **Ask AI** or an @mention sends a previewed request to **Local** (Ollama on this computer, preferred), **Gemini** (Gemini CLI) or **Claude** (Claude Code). The answer comes back as an editable draft.
+- **Optional AI** (off by default): **Ask AI** or an @mention sends a previewed request to **Local** (Ollama on this computer, preferred), **Gemini** (Gemini CLI) or **Claude** (Claude Code). The answer is automatically appended to the thread with AI attribution and remains editable. A failed save keeps a recoverable draft.
 - **Agent Comments import:** turns `{==…==}{>>…<<}` comments in a note into threads, read-only.
 - **Your notes are never modified.** Threads live in separate JSON files.
 
 Status: 0.2.0 pilot candidate (stages 1–7), desktop only. See [docs/implementation-progress.md](docs/implementation-progress.md), [docs/compatibility.md](docs/compatibility.md) and [docs/pilot.md](docs/pilot.md).
+
+## Quick AI and filtering
+
+Write a question with a complete `@Local` mention, then press **Enter** to post it and open the preview. Press **Enter** again to send. **Shift+Enter** inserts a newline; Cmd/Ctrl+Enter also submits. **Escape** leaves Ask AI and returns to the passage without deleting the posted question. A disk save already in progress cannot be cancelled.
+
+The default includes **the selected passage, the thread, and the containing section**. The exact-text preview starts expanded; scope choices show character counts for instructions and request text (not image bytes or provider formatting). An unavailable anchor never causes an unrelated section to be guessed.
+
+Below **Open / Resolved / All**, expand **Custom filters** for agent, comment age, and an inclusive local date range. All selected predicates must match the same comment. These filters are local to the panel and do not change stored threads.
 
 ## Where data lives
 

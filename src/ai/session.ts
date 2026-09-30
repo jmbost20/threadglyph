@@ -17,16 +17,16 @@ interface AiBase {
 export type AiState =
   | (AiBase & { phase: 'preview' })
   | (AiBase & { phase: 'running' })
+  | (AiBase & { phase: 'saving'; text: string })
   | (AiBase & { phase: 'draft'; text: string })
   | (AiBase & { phase: 'error'; kind: AiErrorKind; message: string });
 
 export type BuiltRequest = { ok: true; request: AiRequest } | { ok: false; message: string };
 
 /**
- * Per-thread "Ask AI" state: preview → running → draft (or error). Nothing is
- * written to the thread here; a draft only becomes a message when the user
- * adopts it. A cancelled or superseded request's late answer is dropped, so a
- * retry can never produce two replies.
+ * Per-thread Ask AI state. Successful answers are saved through the caller's
+ * persistence boundary; a failed save leaves a recoverable draft. Late answers
+ * from cancelled or superseded requests are dropped.
  */
 export class AiSessions {
   private readonly states = new Map<string, AiState>();
@@ -45,7 +45,7 @@ export class AiSessions {
    */
   open(threadId: string, assistant: string): void {
     const state = this.states.get(threadId);
-    if (!state) this.states.set(threadId, { phase: 'preview', scope: 'anchor', assistant, attempts: 0 });
+    if (!state) this.states.set(threadId, { phase: 'preview', scope: 'section', assistant, attempts: 0 });
     else if (state.assistant !== assistant) return this.setAssistant(threadId, assistant);
     this.onChange();
   }
@@ -68,7 +68,7 @@ export class AiSessions {
 
   canSend(threadId: string): boolean {
     const state = this.states.get(threadId);
-    return !!state && state.phase !== 'running' && state.attempts < MAX_ATTEMPTS;
+    return !!state && state.phase !== 'running' && state.phase !== 'saving' && state.attempts < MAX_ATTEMPTS;
   }
 
   /**
@@ -79,6 +79,7 @@ export class AiSessions {
     threadId: string,
     find: (assistant: string) => AiAdapter | null,
     build: (scope: ContextScope) => Promise<BuiltRequest>,
+    publish?: (assistant: string, body: string, edited: boolean) => Promise<boolean>,
   ): Promise<void> {
     const state = this.states.get(threadId);
     if (!state || !this.canSend(threadId)) return;
@@ -90,10 +91,11 @@ export class AiSessions {
 
     const settle = (next: AiState) => {
       // A cancel, close or newer send replaced this request: its answer is discarded.
-      if (this.inFlight.get(threadId) !== controller) return;
+      if (this.inFlight.get(threadId) !== controller) return false;
       this.inFlight.delete(threadId);
       this.states.set(threadId, next);
       this.onChange();
+      return true;
     };
 
     let built: BuiltRequest;
@@ -122,14 +124,43 @@ export class AiSessions {
     } catch (err) {
       result = { ok: false as const, kind: 'failed' as const, message: `${adapter.name} failed: ${(err as Error).message}` };
     }
-    if (result.ok) settle({ ...base, phase: 'draft', text: result.text });
+    if (result.ok) {
+      const current = settle({ ...base, phase: 'draft', text: result.text });
+      if (current && publish) await this.adopt(threadId, result.text, publish);
+    }
     else if (result.kind === 'cancelled') settle({ ...base, phase: 'preview' });
     else settle({ ...base, phase: 'error', kind: result.kind, message: result.message });
+  }
+
+  /** One persistence operation at a time, including recovery after a failed auto-save. */
+  async adopt(
+    threadId: string,
+    body: string,
+    publish: (assistant: string, body: string, edited: boolean) => Promise<boolean>,
+  ): Promise<boolean> {
+    const draft = this.states.get(threadId);
+    if (draft?.phase !== 'draft' || !body.trim()) return false;
+    const saving: AiState = { ...draft, phase: 'saving' };
+    this.states.set(threadId, saving);
+    this.onChange();
+    let saved = false;
+    try {
+      saved = await publish(draft.assistant, body, body.trim() !== draft.text.trim());
+    } finally {
+      // Unloading can clear the session while the already-started disk write finishes.
+      if (this.states.get(threadId) === saving) {
+        if (saved) this.states.delete(threadId);
+        else this.states.set(threadId, draft);
+        this.onChange();
+      }
+    }
+    return saved;
   }
 
   /** Stops a running request and returns to the preview. */
   cancel(threadId: string): void {
     const state = this.states.get(threadId);
+    if (state?.phase === 'saving') return;
     this.inFlight.get(threadId)?.abort();
     this.inFlight.delete(threadId);
     if (state) this.states.set(threadId, { phase: 'preview', scope: state.scope, assistant: state.assistant, attempts: state.attempts });
@@ -138,6 +169,7 @@ export class AiSessions {
 
   /** Ends the session (discard, or after the draft was added to the thread). */
   close(threadId: string): void {
+    if (this.states.get(threadId)?.phase === 'saving') return;
     this.inFlight.get(threadId)?.abort();
     this.inFlight.delete(threadId);
     this.states.delete(threadId);

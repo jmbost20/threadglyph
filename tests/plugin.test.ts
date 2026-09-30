@@ -629,6 +629,7 @@ describe('Threadglyph plugin AI', () => {
     expect([...panelEl().querySelectorAll('.tg-ai-items li')].map((li) => li.textContent)).toEqual([
       'The passage (15 characters)',
       '1 message in this thread',
+      `The text before the first heading (${NOTE_TEXT.trimEnd().length} characters)`,
     ]);
     expect(requests).toHaveLength(0);
 
@@ -645,17 +646,14 @@ describe('Threadglyph plugin AI', () => {
       context: { label: 'The whole note', text: NOTE_TEXT.trimEnd() },
       messages: [{ author: 'Me', origin: 'human', body: 'What do you think, @claude?' }],
     });
-    expect(q<HTMLTextAreaElement>('.tg-ai textarea')?.value).toBe('A synthetic reply.');
-    expect(threads()[0].messages).toHaveLength(1);
-
-    button('Add to thread')!.click();
-    await flush();
+    expect(threads()[0].messages).toHaveLength(2);
+    expect(button('Add to thread')).toBeUndefined();
     expect(threads()[0].messages[1]).toMatchObject({ author: { kind: 'ai', name: 'Claude' }, origin: 'ai', body: 'A synthetic reply.' });
     expect(q('.tg-ai')).toBeNull();
     expect(panelEl().querySelector('.tg-origin')?.textContent).toBe('AI');
   });
 
-  it('marks a draft the user edited as AI edited, and opens from a reply mention', async () => {
+  it('retains a failed auto-save, allows editing and saves recovery with AI-edited attribution', async () => {
     await enable();
     await commentOn('worth a comment', 'First');
     const reply = q<HTMLTextAreaElement>('textarea[data-draft-key^="reply:"]')!;
@@ -663,11 +661,14 @@ describe('Threadglyph plugin AI', () => {
     reply.dispatchEvent(new Event('input'));
     button('Reply')!.click();
     await flush();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const write = vi.spyOn(app.vault.adapter, 'write').mockRejectedValue(new Error('disk full'));
     button('Send')!.click();
     await flush();
     const draft = q<HTMLTextAreaElement>('.tg-ai textarea')!;
     draft.value = 'A synthetic reply, edited by me.';
     draft.dispatchEvent(new Event('input'));
+    write.mockRestore();
     button('Add to thread')!.click();
     await flush();
     expect(threads()[0].messages.at(-1)).toMatchObject({ origin: 'ai-edited', author: { kind: 'ai' } });
@@ -684,8 +685,6 @@ describe('Threadglyph plugin AI', () => {
     await flush();
     expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('Claude is at a usage or rate limit.');
     button('Retry')!.click();
-    await flush();
-    button('Add to thread')!.click();
     await flush();
     expect(requests).toHaveLength(2);
     expect(threads()[0].messages.filter((m) => m.origin === 'ai')).toHaveLength(1);
@@ -772,6 +771,8 @@ describe('Threadglyph plugin AI', () => {
     await commentOn('worth a comment', 'Question');
     button('Ask AI')!.click();
     await flush();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const write = vi.spyOn(app.vault.adapter, 'write').mockRejectedValue(new Error('disk full'));
     answers.push({ ok: true, text: 'First answer.' }, { ok: true, text: 'Second answer.' });
     button('Send')!.click();
     await flush();
@@ -781,6 +782,7 @@ describe('Threadglyph plugin AI', () => {
     button('Retry')!.click();
     await flush();
     expect(q<HTMLTextAreaElement>('.tg-ai textarea')!.value).toBe('Second answer.');
+    write.mockRestore();
     button('Add to thread')!.click();
     await flush();
     expect(threads()[0].messages.at(-1)).toMatchObject({ body: 'Second answer.', origin: 'ai' });
@@ -788,6 +790,7 @@ describe('Threadglyph plugin AI', () => {
     // An edited draft closed from an error does not leak into the next session.
     button('Ask AI')!.click();
     await flush();
+    const secondWrite = vi.spyOn(app.vault.adapter, 'write').mockRejectedValue(new Error('disk full'));
     answers.push({ ok: true, text: 'Third answer.' }, { ok: false, kind: 'network', message: 'offline' });
     button('Send')!.click();
     await flush();
@@ -800,10 +803,12 @@ describe('Threadglyph plugin AI', () => {
     await flush();
     button('Ask AI')!.click();
     await flush();
+    secondWrite.mockRestore();
     answers.push({ ok: true, text: 'Fresh answer.' });
     button('Send')!.click();
     await flush();
-    expect(q<HTMLTextAreaElement>('.tg-ai textarea')!.value).toBe('Fresh answer.');
+    expect(threads()[0].messages.at(-1)?.body).toBe('Fresh answer.');
+    expect(requests).toHaveLength(5);
   });
 
   it('removes AI cards and stops requests when AI is switched off, and shows Ask at once when on (Gitar review on PR #5)', async () => {
@@ -963,8 +968,6 @@ describe('Threadglyph plugin with several assistants', () => {
     expect(q('.tg-ai-note')?.textContent).toBe('Local will receive the items below. Stays on this computer.');
     button('Send')!.click();
     await flush();
-    button('Add to thread')!.click();
-    await flush();
     expect(threads()[0].messages.at(-1)).toMatchObject({ author: { kind: 'ai', name: 'Local' }, body: 'Reply from Local.' });
     expect(asked).toEqual(['local']);
   });
@@ -977,7 +980,8 @@ describe('Threadglyph plugin with several assistants', () => {
     button('Send')!.click();
     await flush();
     expect(asked).toEqual(['claude']);
-    expect(q('.tg-ai-title')?.textContent).toBe('Claude · draft, not in the thread yet');
+    expect(threads()[0].messages.at(-1)?.author.name).toBe('Claude');
+    expect(q('.tg-ai')).toBeNull();
   });
 
   it('uses the first mention when several assistants are named', async () => {
@@ -1002,13 +1006,51 @@ describe('Threadglyph plugin with several assistants', () => {
 
   it('keeps the author of a draft whose assistant was switched off before adding it', async () => {
     await commentOn('worth a comment', '@Gemini hi');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const write = vi.spyOn(app.vault.adapter, 'write').mockRejectedValue(new Error('disk full'));
     button('Send')!.click();
     await flush();
     plugin.adapterFactory = (settings) => (settings.aiEnabled ? [fake('local', 'Local', 'local')] : []);
     await plugin.refresh();
     const actions = (plugin as unknown as { panelActions(): { aiAdopt(id: string, body: string): Promise<boolean> } }).panelActions();
+    write.mockRestore();
     expect(await actions.aiAdopt(threads()[0].id, 'Reply from Gemini.')).toBe(true);
     expect(threads()[0].messages.at(-1)?.author).toEqual({ kind: 'ai', name: 'gemini' });
+  });
+
+  it('sends Local with two Enter presses, previews the section, and automatically appends one reply', async () => {
+    await commentOn('worth a comment', 'Start');
+    const input = q<HTMLTextAreaElement>('textarea[data-draft-key^="reply:"]')!;
+    input.focus();
+    input.value = 'Explain this @Local';
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.dispatchEvent(new Event('input'));
+    const enter = () => new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    input.dispatchEvent(enter());
+    await flush();
+    expect(asked).toEqual([]);
+    expect(q<HTMLInputElement>('.tg-ai-scope input:checked')?.value).toBe('section');
+    expect(q<HTMLDetailsElement>('.tg-ai-exact')?.open).toBe(true);
+    const send = button('Send')!;
+    expect(document.activeElement).toBe(send);
+    send.dispatchEvent(enter());
+    send.dispatchEvent(enter());
+    await flush();
+    expect(asked).toEqual(['local']);
+    expect(threads()[0].messages).toHaveLength(3);
+    expect(threads()[0].messages.at(-1)?.origin).toBe('ai');
+    expect(q('.tg-ai')).toBeNull();
+  });
+
+  it('Escape exits the AI interaction without deleting the posted question', async () => {
+    await commentOn('worth a comment', '@Local explain');
+    const send = button('Send')!;
+    send.focus();
+    send.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await flush();
+    expect(q('.tg-ai')).toBeNull();
+    expect(asked).toEqual([]);
+    expect(threads()[0].messages[0].body).toBe('@Local explain');
   });
 
   it('describes where each assistant sends requests', () => {

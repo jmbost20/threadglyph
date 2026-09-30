@@ -132,3 +132,17 @@ Owner feedback from the first UAT pass: Local and Gemini should come before Clau
 - Anchors are exact-text: if the quoted text itself is edited, the thread becomes "missing" and needs a reattach. Fuzzy matching is a possible later improvement.
 - Reading view cannot highlight a quote that crosses a formatting boundary; the editor and the panel still show it.
 - Changes to local anchor files from outside the app are not watched: Obsidian doesn't index dot-folders, so they are only picked up on reload.
+
+
+## September 30 — AI interaction and filter feedback
+
+Branch: `codex/ai-review-ux`, isolated from the ongoing `codex/local-gemini-pilot` work. This separate UI batch is based on PR #7; review targets that branch until #7 lands.
+
+- Default preview includes passage, thread and containing section; missing anchors fall back to passage/thread instead of guessing. All three scopes show textual prompt character counts, including standing instructions. Exact text starts expanded.
+- Complete assistant mention + Enter opens preview; the next Enter sends. Preview focus survives renders; Shift+Enter remains available. Escape exits to the passage and cancels an unfinished model call, preserving posted comments.
+- Successful answers automatically append with AI attribution. A saving state prevents duplicate adoption. Disk failure preserves a recovery draft; retry-save does not call the provider again. Once a disk write starts it completes atomically.
+- Custom filters sit below the unchanged Open / Resolved / All row. Agent, recency and local creation dates match the same comment. Buttons wrap and scope labels align at the top in narrow panels. Explicit thread navigation clears filters that hide its target.
+- Baseline: 301 tests passed. Updated verification: `npm run check` passes (308 tests, 99.76% line coverage, typecheck, lint and production build). No real provider requests or live vault writes in this pass.
+- Knowledge integration remains a separate draft design; no knowledge publication or Anki functionality is claimed here.
+
+Owner sandbox validation still needed: (1) question + `@Local`, Enter, review the expanded section preview, Enter and observe one saved AI reply; (2) Escape from preview/running returns to the note without deleting the question; (3) narrow the panel and inspect button wrapping/scope separators; (4) filter AI replies by agent/date and reset. Existing edit, resolve/reopen, image-anchor and backup flows remain covered by the automated suite.

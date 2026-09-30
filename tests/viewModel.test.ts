@@ -106,3 +106,23 @@ describe('view model', () => {
     expect(new Set([draftKey.newThread('a'), draftKey.reply('a'), draftKey.edit('a', 'b')]).size).toBe(3);
   });
 });
+
+describe('custom comment filters', () => {
+  it('combines status, search, agent, recency and inclusive local dates on the same comment', () => {
+    const clock = fakeClock();
+    const thread = addReply(createThread('n.md', human, 'question', clock), ai, 'answer', clock);
+    thread.messages[0].createdAt = new Date(2026, 8, 29, 12).toISOString();
+    thread.messages[1].createdAt = new Date(2026, 8, 20, 12).toISOString();
+    const views = buildThreadViews(source([thread], []), 'n.md', doc);
+    const now = new Date(2026, 8, 30, 0).getTime();
+    const custom = { agent: ai.name, days: 0, from: '2026-09-20', to: '2026-09-20' };
+    expect(filterViews(views, 'open', 'answer', custom, now)).toHaveLength(1);
+    expect(filterViews(views, 'resolved', '', custom, now)).toHaveLength(0);
+    expect(filterViews(views, 'all', 'unmatched', custom, now)).toHaveLength(0);
+    expect(filterViews(views, 'all', '', { ...custom, days: 7 }, now)).toHaveLength(0);
+    expect(filterViews(views, 'all', '', { ...custom, from: '2026-09-29', to: '' }, now)).toHaveLength(0);
+    expect(filterViews(views, 'all', '', { ...custom, agent: '', from: '2026-09-29', to: '' }, now)).toHaveLength(1);
+    expect(filterViews(views, 'all', '', { ...custom, from: '2026-09-21' }, now)).toHaveLength(0);
+    expect(filterViews(views, 'all', '', { ...custom, from: 'invalid' }, now)).toHaveLength(0);
+  });
+});
