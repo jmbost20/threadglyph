@@ -189,7 +189,9 @@ export class ThreadPanel extends ItemView {
   private render(): void {
     const active = document.activeElement as HTMLTextAreaElement | HTMLInputElement | null;
     const focusKey = active?.closest('.tg-panel') ? active.dataset.draftKey : undefined;
-    const caret = focusKey ? [active!.selectionStart, active!.selectionEnd] : null;
+    const caret: [number | null, number | null] | null = focusKey &&
+      (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement)
+      ? [active.selectionStart, active.selectionEnd] : null;
 
     const root = this.contentEl;
     root.empty();
@@ -203,6 +205,11 @@ export class ThreadPanel extends ItemView {
       this.renderBody(root);
     }
 
+    this.restoreFocus(focusKey, caret);
+  }
+
+  private restoreFocus(focusKey: string | undefined, caret: [number | null, number | null] | null): void {
+    const root = this.contentEl;
     if (focusKey) {
       const el = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(`[data-draft-key="${CSS.escape(focusKey)}"]`);
       if (el) {
@@ -212,6 +219,11 @@ export class ThreadPanel extends ItemView {
         }
       }
     }
+    this.focusAiPreview();
+  }
+
+  private focusAiPreview(): void {
+    const root = this.contentEl;
     if (this.pendingAiFocus) {
       const id = this.pendingAiFocus.startsWith('reply:')
         ? this.pendingAiFocus.slice('reply:'.length) : this.state.focusedThreadId;
@@ -701,8 +713,8 @@ export class ThreadPanel extends ItemView {
   }
 
   private hasAssistantMention(body: string): boolean {
-    const mentions = [...body.matchAll(/(?:^|\s)@(\w+)\b/g)].map((m) => m[1].toLowerCase());
-    return this.state.assistants.some((a) => mentions.includes(a.name.toLowerCase()));
+    const mentions = new Set([...body.matchAll(/(?:^|\s)@(\w+)\b/g)].map((m) => m[1].toLowerCase()));
+    return this.state.assistants.some((a) => mentions.has(a.name.toLowerCase()));
   }
 
   /**

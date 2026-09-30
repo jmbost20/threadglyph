@@ -54,6 +54,7 @@ export function aiPreview(inputs: RequestInputs, scope: ContextScope): AiPreview
   if (request.context) items.push(`${request.context.label} (${count([...request.context.text].length, 'character')})`);
 
   const section = sectionAround(inputs.doc, inputs.anchorOffset ?? 0);
+  const sectionLabel = inputs.anchorOffset === null ? 'Section unavailable — passage and thread only' : `Also ${lower(section.label)}`;
   const total = (candidate: ContextScope) => count([...SYSTEM_PROMPT].length + [...buildPromptText(buildAiRequest(inputs, candidate, placeholder))].length, 'character');
   let exactText = `Instructions:\n${SYSTEM_PROMPT}\n\nRequest:\n${buildPromptText(request)}`;
   if (imageName) exactText = `[Attached: the image file ${imageName}]\n\n${exactText}`;
@@ -61,7 +62,7 @@ export function aiPreview(inputs: RequestInputs, scope: ContextScope): AiPreview
     items,
     scopes: [
       { scope: 'anchor', label: `${imageName ? 'Just the image and the thread' : 'Just the passage and the thread'} (${total('anchor')})` },
-      { scope: 'section', label: `${inputs.anchorOffset === null ? 'Section unavailable — passage and thread only' : `Also ${lower(section.label)}`} (${total('section')})` },
+      { scope: 'section', label: `${sectionLabel} (${total('section')})` },
       { scope: 'note', label: `Also the whole note (${total('note')})` },
     ],
     exactText,
