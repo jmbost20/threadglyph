@@ -599,6 +599,7 @@ export class ThreadPanel extends ItemView {
       }
       case 'running': {
         box.createDiv({ cls: 'tg-ai-title', text: `Asking ${name}…` });
+        if (ai.state.agent) box.createDiv({ cls: 'tg-ai-note', text: 'Rewriting a long list on a local model can take a few minutes. Nothing changes until you Accept.' });
         button(buttons(box), 'Cancel', () => this.actions.aiCancel(threadId));
         break;
       }

@@ -25,7 +25,7 @@ import {
 } from '../src/ai/geminiCli';
 import { nodeHttp, type HttpCall, type HttpFn, type HttpOutcome } from '../src/ai/http';
 import { OllamaAdapter, isCloudModel, stripThinking } from '../src/ai/ollama';
-import { SYSTEM_PROMPT } from '../src/ai/prompt';
+import { AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT } from '../src/ai/prompt';
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter, AiRequest } from '../src/ai/types';
 
@@ -153,6 +153,14 @@ describe('Local (Ollama) adapter', () => {
     expect(adapter).toMatchObject({ id: 'local', name: 'Local', detail: 'qwen3:8b', egress: 'local' });
   });
 
+  it('gives agent requests their extra time and instructions', async () => {
+    const { http, adapter } = ollama({ '/api/chat': chat('ok') });
+    await adapter.ask(request({ target: { label: 'X', text: 'y' }, extraSeconds: 90 }), live());
+    const call = http.mock.calls[0][0];
+    expect(call.timeoutMs).toBe(150_000);
+    expect(JSON.parse(call.body!).messages[0].content).toBe(AGENT_SYSTEM_PROMPT);
+  });
+
   it('refuses images for a model that cannot see, before sending anything', async () => {
     const { http, adapter } = ollama({ '/api/show': { ok: true, status: 200, text: JSON.stringify({ capabilities: ['completion'] }) } });
     const result = await adapter.ask(request({ image: PNG, quote: null }), live());
@@ -211,6 +219,12 @@ describe('Gemini CLI adapter', () => {
     const adapter = new GeminiCliAdapter({ command: '/bin/gemini', folder: '/home/.threadglyph/gemini', ownsFolder: true, model, timeoutMs: 90_000, env: { PATH: '/x' }, run, files });
     return { adapter, run, files };
   }
+
+  it('gives agent requests their extra time', async () => {
+    const { adapter, run } = gemini(outcome({ stdout: reply('ok') }));
+    await adapter.ask(request({ extraSeconds: 10 }), live());
+    expect(run.mock.calls[0][3]).toMatchObject({ timeoutMs: 100_000 });
+  });
 
   it('runs read-only with extensions off, the request on stdin, in its own folder', async () => {
     const { adapter, run, files } = gemini(outcome({ stdout: `Warning\n${reply(' Hello. ')}` }));

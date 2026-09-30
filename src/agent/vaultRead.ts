@@ -1,5 +1,5 @@
 import type { AiAdapter, AiRequest, AiResult } from '../ai/types';
-import { parseAgentReply, type ReadRequest } from './proposal';
+import { parseAgentReply, proposesChange, type ReadRequest } from './proposal';
 
 /** How much of one other note is sent, in characters. */
 export const MAX_NOTE_CHARS = 8_000;
@@ -55,7 +55,7 @@ export async function runAgent(adapter: AiAdapter, request: AiRequest, signal: A
     const result = await adapter.ask(current, signal);
     if (!result.ok) return result;
     const parsed = parseAgentReply(result.text);
-    if (!parsed.read || parsed.edits.length) return result;
+    if (!parsed.read || proposesChange(parsed)) return result;
     if (round >= MAX_READ_ROUNDS) return { ok: true, text: `${parsed.reply}\n\n(It asked to read more notes again; stopped here.)`.trim() };
     const allowed = await io.askPermission(parsed.read);
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };

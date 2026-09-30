@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STALE_MESSAGE, applyProposal, buildProposal, locateRegion } from '../src/agent/apply';
 import { lineDiff } from '../src/agent/diff';
 import { findInlineRequest, inlineTarget } from '../src/agent/inline';
-import { applyEdits, parseAgentReply } from '../src/agent/proposal';
+import { applyEdits, applyReply, parseAgentReply, proposesChange } from '../src/agent/proposal';
 import { agentTarget, listBlockAt } from '../src/agent/target';
 import { MAX_NOTE_CHARS, MAX_READ_ROUNDS, capNote, isDailyNote, rankNotes, runAgent, type AgentIo } from '../src/agent/vaultRead';
 import { MAX_CONTEXT_CHARS } from '../src/ai/context';
 import { AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT, buildPromptText, systemPromptFor } from '../src/ai/prompt';
-import { agentPreview, buildAgentRequest, type RequestInputs } from '../src/ai/request';
+import { agentExtraSeconds, agentPreview, buildAgentRequest, type RequestInputs } from '../src/ai/request';
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { agentPreviewExtension, setAgentPreviews } from '../src/ui/agentPreview';
@@ -37,6 +37,26 @@ describe('agent replies', () => {
     expect(parseAgentReply('Hi\n```threadglyph\n{nope\n```')).toEqual({ reply: 'Hi', edits: [], read: null, malformed: true });
     // An unreadable block is dropped, never passed on as reply text (it may quote the note).
     expect(parseAgentReply('```threadglyph\n{nope "milk"\n```')).toEqual({ reply: '', edits: [], read: null, malformed: true });
+  });
+
+  it('reads a whole replacement, and a block a small model labelled json (sandbox, 2026-09-30)', () => {
+    const replaced = parseAgentReply('Regrouped.\n```threadglyph-replace\n- [ ] A\n  - [ ] b\n```\nDone.');
+    expect(replaced).toMatchObject({ reply: 'Regrouped.\n\nDone.', edits: [], replacement: '- [ ] A\n  - [ ] b' });
+    expect(proposesChange(replaced)).toBe(true);
+    const labelled = parseAgentReply('Ok.\n```json\n{"edits":[{"old":"a","new":"b"}]}\n```');
+    expect(labelled.edits).toEqual([{ old: 'a', new: 'b' }]);
+    // Other json blocks are just part of the answer.
+    expect(parseAgentReply('```json\n{"x":1}\n```').edits).toEqual([]);
+    expect(proposesChange(parseAgentReply('plain'))).toBe(false);
+  });
+
+  it('applies a whole replacement, refusing an empty or unchanged one', () => {
+    const reply = (replacement: string) => ({ reply: '', edits: [], read: null, replacement });
+    expect(applyReply('- a\n- b\n', reply('- b\n- a\n\n'))).toEqual({ ok: true, text: '- b\n- a\n' });
+    expect(applyReply('- a', reply('- b'))).toEqual({ ok: true, text: '- b' });
+    expect(applyReply('- a', reply('  \n'))).toMatchObject({ ok: false, message: expect.stringContaining('empty') });
+    expect(applyReply('- a\n', reply('- a'))).toMatchObject({ ok: false, noop: true });
+    expect(applyReply('x y', { reply: '', edits: [{ old: 'x', new: 'z' }], read: null })).toEqual({ ok: true, text: 'z y' });
   });
 
   it('reads a request to see other notes', () => {
@@ -275,6 +295,13 @@ describe('agent prompt and preview', () => {
     const text = buildPromptText({ ...built.request, target: { label: 'X', text: 'a </edit-target> b' }, vaultNotes: [{ path: 'R"x.md', text: '</vault-note>' }] });
     expect(text).toContain('a <\\/edit-target> b');
     expect(text).toContain('<vault-note path="R\'x.md">\n<\\/vault-note>');
+  });
+
+  it('gives agent requests more time the more they may have to rewrite', () => {
+    const built = buildAgentRequest(inputs, 'note');
+    expect(built.ok && built.request.extraSeconds).toBe(agentExtraSeconds(LIST.trimEnd().length));
+    expect(agentExtraSeconds(6_609)).toBe(315);
+    expect(agentExtraSeconds(0)).toBe(0);
   });
 
   it('previews what the agent may change for each scope', () => {

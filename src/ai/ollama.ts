@@ -49,7 +49,8 @@ export class OllamaAdapter implements AiAdapter {
   }
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
-    const { model, timeoutMs, http } = this.options;
+    const { model, http } = this.options;
+    const timeoutMs = this.options.timeoutMs + (request.extraSeconds ?? 0) * 1000;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (!model.trim()) {
       return { ok: false, kind: 'not-installed', message: 'No Local model is set. Choose one in Threadglyph settings.' };

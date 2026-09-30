@@ -146,7 +146,8 @@ export class GeminiCliAdapter implements AiAdapter {
   }
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
-    const { command, folder, ownsFolder, model, timeoutMs, env, run, files } = this.options;
+    const { command, folder, ownsFolder, model, env, run, files } = this.options;
+    const timeoutMs = this.options.timeoutMs + (request.extraSeconds ?? 0) * 1000;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (ownsFolder) await files.prepareFolder(folder, `${JSON.stringify(GEMINI_FOLDER_SETTINGS, null, 2)}\n`);
 

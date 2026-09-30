@@ -140,6 +140,14 @@ describe('@Agent in a comment', () => {
     expect(notices.at(-1)).toContain('Undo');
   });
 
+  it('says a local rewrite can take minutes while it runs', async () => {
+    await commentOn('Groceries', '@Agent regroup');
+    vi.spyOn(plugin.adapterFactory(plugin.settings)[0], 'ask').mockImplementation(() => new Promise(() => {}));
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    expect(panelEl().querySelector('.tg-ai-phase-running .tg-ai-note')?.textContent).toContain('can take a few minutes');
+  });
+
   it('leaves the note untouched on Reject', async () => {
     await propose();
     buttonIn(panelEl().querySelector('.tg-proposal')!, 'Reject')!.click();
@@ -192,6 +200,19 @@ describe('@Agent in a comment', () => {
     await flush();
     expect(panelEl().querySelector('.tg-proposal .tg-ai-error')?.textContent).toContain('“bananas” is not there');
     expect([...panelEl().querySelectorAll('.tg-message')].at(-1)!.textContent).toContain('Proposed a change to the note.');
+  });
+
+  it('shows a whole-block rewrite as a proposal and applies it on Accept', async () => {
+    await commentOn('Groceries', '@Agent regroup');
+    answers.push({ ok: true, text: 'Regrouped.\n```threadglyph-replace\n- [ ] Groceries\n  - [ ] Dairy: milk\n  - [ ] Fruit: apples\n```' });
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    expect(requests[0].extraSeconds).toBe(45);
+    expect(note()).toBe(NOTE_TEXT);
+    buttonIn(panelEl().querySelector('.tg-proposal')!, 'Accept')!.click();
+    await flush();
+    expect(note()).toBe(NOTE_TEXT.replace('  - [ ] milk\n  - [ ] apples', '  - [ ] Dairy: milk\n  - [ ] Fruit: apples'));
+    expect(threadFiles().join()).not.toContain('Dairy');
   });
 
   it('treats edits that change nothing as an answer, not a proposal', async () => {

@@ -22,12 +22,12 @@ import {
   type AiSettings,
   type AssistantId,
 } from './ai/assistants';
-import { agentPreview, aiPreview, buildAgentRequest, buildAiRequest, type RequestInputs } from './ai/request';
+import { agentExtraSeconds, agentPreview, aiPreview, buildAgentRequest, buildAiRequest, type RequestInputs } from './ai/request';
 import { buildProposal, type Built } from './agent/apply';
 import { findInlineRequest, inlineTarget, type InlineRequest } from './agent/inline';
 import { agentTarget } from './agent/target';
 import { MAX_CONTEXT_CHARS } from './ai/context';
-import { parseAgentReply, type ParsedReply } from './agent/proposal';
+import { parseAgentReply, proposesChange, type ParsedReply } from './agent/proposal';
 import { AgentProposals } from './agent/service';
 import type { Region } from './agent/target';
 import { AiSessions, type BuiltRequest, type ContextScope } from './ai/session';
@@ -316,7 +316,7 @@ export default class ThreadglyphPlugin extends Plugin {
       const parsed = parseAgentReply(body);
       const region = this.agentRegions.get(id);
       const thread = this.store.get(id);
-      const built = region && thread && parsed.edits.length ? buildProposal(thread.notePath, region, parsed) : null;
+      const built = region && thread && proposesChange(parsed) ? buildProposal(thread.notePath, region, parsed) : null;
       // Edits that change nothing are just an answer: "it is already in order".
       if (thread && built && !(!built.ok && built.noop)) {
         this.agents.set({
@@ -583,6 +583,7 @@ export default class ThreadglyphPlugin extends Plugin {
       image: null,
       context: null,
       target: { label: o.region.label, text: o.base },
+      extraSeconds: agentExtraSeconds(o.base.length),
       messages: [...o.history, { author: this.settings.authorName, origin: 'human', body: o.instruction }],
     };
     let result;
@@ -593,7 +594,7 @@ export default class ThreadglyphPlugin extends Plugin {
     }
     if (!result.ok) return { text: result.kind === 'cancelled' ? 'Cancelled.' : `${o.adapter.name} could not answer: ${result.message}`, proposed: false };
     const parsed = parseAgentReply(result.text);
-    if (!parsed.edits.length) return { text: parsed.reply || agentFallback(parsed, null), proposed: false };
+    if (!proposesChange(parsed)) return { text: parsed.reply || agentFallback(parsed, null), proposed: false };
     const built = buildProposal(o.file.path, o.region, parsed, o.base);
     if (!built.ok && built.noop) return { text: parsed.reply ? `${parsed.reply} (${built.message})` : built.message, proposed: false };
     this.agents.set({

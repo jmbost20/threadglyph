@@ -19,12 +19,17 @@ export interface ParsedReply {
   /** The prose, with the JSON block removed. */
   reply: string;
   edits: AgentEdit[];
+  /** The complete new text of the target (a ```threadglyph-replace block), when the agent rewrote all of it. */
+  replacement?: string;
   read: ReadRequest | null;
   /** The block was there but unreadable; it is dropped (it may quote the note). */
   malformed?: true;
 }
 
-const BLOCK = /```threadglyph[^\n]*\n([\s\S]*?)```/i;
+const BLOCK = /```threadglyph[ \t]*\n([\s\S]*?)```/i;
+const REPLACE = /```threadglyph-replace[^\n]*\n([\s\S]*?)\n?```/i;
+/** Small models often label the block `json`; it counts when it carries our keys. */
+const JSON_BLOCK = /```json[ \t]*\n(\s*\{[\s\S]*?"(?:edits|read)"[\s\S]*?)```/i;
 
 const isEdit = (e: unknown): e is AgentEdit =>
   !!e && typeof (e as AgentEdit).old === 'string' && typeof (e as AgentEdit).new === 'string';
@@ -34,7 +39,9 @@ const isEdit = (e: unknown): e is AgentEdit =>
  * removed from the prose, even when its JSON cannot be read.
  */
 export function parseAgentReply(text: string): ParsedReply {
-  const match = BLOCK.exec(text);
+  const replace = REPLACE.exec(text);
+  if (replace) return { reply: text.replace(replace[0], '').trim(), edits: [], read: null, replacement: replace[1] };
+  const match = BLOCK.exec(text) ?? JSON_BLOCK.exec(text);
   const prose = (match ? text.replace(match[0], '') : text).trim();
   if (!match) return { reply: prose, edits: [], read: null };
   let data: unknown;
@@ -54,6 +61,19 @@ export function parseAgentReply(text: string): ParsedReply {
     if (search || notes.length) read = { search, notes };
   }
   return { reply: prose, edits, read };
+}
+
+/** Whether the reply proposes any change (edits, or a whole replacement). */
+export const proposesChange = (parsed: ParsedReply) => parsed.edits.length > 0 || parsed.replacement !== undefined;
+
+/** The agent's change applied to `base`: its whole replacement, or its edits. */
+export function applyReply(base: string, parsed: ParsedReply): Applied {
+  if (parsed.replacement === undefined) return applyEdits(base, parsed.edits);
+  // Trailing blank lines are formatting noise from the fence, not part of the note.
+  const text = parsed.replacement.replace(/\s+$/, '');
+  if (!text.trim()) return { ok: false, message: 'The agent sent an empty replacement. Nothing was changed.' };
+  if (text === base.replace(/\s+$/, '')) return { ok: false, message: 'The agent found nothing to change.', noop: true };
+  return { ok: true, text: base.endsWith('\n') ? `${text}\n` : text };
 }
 
 function occurrences(text: string, needle: string): number[] {

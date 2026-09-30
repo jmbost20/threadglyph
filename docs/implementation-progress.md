@@ -221,3 +221,11 @@ Owner request: bring the production plugins and shortcuts into the sandbox, orga
   - Threadglyph's sandbox keys win conflicts: ⌘/ over `inline-comments:add-inline-comment`, and ⌘⇧/ over `app:toggle-right-sidebar`.
 - **Layout:** samples now live in `Test data/Threadglyph samples/`, and the owner's own test notes in `Test data/My test notes/`. New notes and attachments go to `Test data/Inbox` and `Test data/Attachments`. Moves update the thread and anchor paths (56 threads kept).
 - The sandbox is outside the repository, so the daily-note copy is never committed. Repository fixtures stay synthetic.
+
+## September 30 — Agent on a real daily note (sandbox copy)
+
+The owner's first real `@Agent` request, "consolidate the cards under this item into three head bullets", timed out: `qwen3:8b did not answer within 180 seconds`. The target was the list item and its children, 6,609 characters over 127 lines. Local reproduction printed sizes and timings only, never the note text. Two causes:
+1. **Wrong fence label.** The model labelled its block ```` ```json ````, so the parser ignored it and reported no change. A `json` block carrying `edits` or `read` now counts.
+2. **The edit format was too slow for a rewrite.** Copying every line as `old` and then writing `new`, JSON-escaped, came to about 14,000 output characters in 240–310 s. The agent can now answer with a ```` ```threadglyph-replace ```` block holding the complete new target as plain Markdown. Agent requests also get extra time: 45 s per 1,000 target characters on top of the configured timeout, which gives 495 s here.
+
+**After the fix,** the same request finished in 136 s and then 103 s. The parent stayed first, there were exactly 3 head bullets, and the proposal applied. It shrank 127 lines to 61–91, so the owner should review the diff before accepting. The running box now warns that local rewrites take minutes. 381 tests pass.

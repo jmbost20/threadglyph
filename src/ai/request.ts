@@ -35,6 +35,14 @@ export function buildAiRequest(inputs: RequestInputs, scope: ContextScope, image
   };
 }
 
+/**
+ * Extra time for an agent request: a rewrite means the model writes the whole
+ * target back, and a local model writes a few hundred characters a second at best.
+ */
+export function agentExtraSeconds(targetChars: number): number {
+  return Math.ceil(targetChars / 1000) * 45;
+}
+
 export type AgentBuilt = { ok: true; request: AiRequest; region: Region } | { ok: false; message: string };
 
 /**
@@ -57,6 +65,7 @@ export function buildAgentRequest(inputs: RequestInputs, scope: ContextScope): A
       image: null,
       context: null,
       target: { label: region.label, text: region.text },
+      extraSeconds: agentExtraSeconds(region.text.length),
       messages: inputs.thread.messages.filter((m) => !m.deletedAt).map((m) => ({ author: m.author.name, origin: m.origin, body: m.body })),
     },
   };

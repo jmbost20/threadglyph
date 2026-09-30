@@ -1,6 +1,6 @@
 import type { Editor } from 'obsidian';
 import { lineDiff, type DiffLine } from './diff';
-import { applyEdits, type ParsedReply } from './proposal';
+import { applyReply, type ParsedReply } from './proposal';
 import type { Region } from './target';
 
 /**
@@ -24,7 +24,7 @@ export type Built = { ok: true; proposal: Proposal } | { ok: false; message: str
  * `region.text` unless the request line itself is removed on Accept).
  */
 export function buildProposal(notePath: string, region: Region, parsed: ParsedReply, base = region.text): Built {
-  const applied = applyEdits(base, parsed.edits);
+  const applied = applyReply(base, parsed);
   if (!applied.ok) return applied;
   return {
     ok: true,
