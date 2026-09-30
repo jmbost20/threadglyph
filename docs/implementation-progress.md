@@ -136,6 +136,8 @@ Owner feedback from the first UAT pass: Local and Gemini should come before Clau
 
 ## September 30 — AI interaction and filter feedback
 
+PR: https://github.com/jmbost20/threadglyph/pull/8
+
 Branch: `codex/ai-review-ux`, isolated from the ongoing `codex/local-gemini-pilot` work. This separate UI batch is based on PR #7; review targets that branch until #7 lands.
 
 - Default preview includes passage, thread and containing section; missing anchors fall back to passage/thread instead of guessing. All three scopes show textual prompt character counts, including standing instructions. Exact text starts expanded.
