@@ -117,6 +117,29 @@ export function moveThread(
 }
 
 /** Reversible deletion; never discard the original text or revisions. */
+/**
+ * Deletes or restores a whole thread. Deleting marks every remaining comment
+ * deleted at one moment; restoring brings back exactly those, so a comment
+ * deleted on its own earlier stays deleted.
+ */
+export function setThreadDeleted(thread: ThreadRecord, deleted: boolean, clock: Clock = systemClock): ThreadRecord {
+  if (deleted) {
+    if (thread.messages.every((m) => m.deletedAt)) return thread;
+    const at = clock.now();
+    return touch(thread, clock, { messages: thread.messages.map((m) => (m.deletedAt ? m : { ...m, deletedAt: at })) });
+  }
+  if (thread.messages.some((m) => !m.deletedAt)) return thread;
+  const last = thread.messages.reduce((max, m) => (m.deletedAt! > max ? m.deletedAt! : max), '');
+  return touch(thread, clock, {
+    messages: thread.messages.map((m) => {
+      if (m.deletedAt !== last) return m;
+      const next = { ...m };
+      delete next.deletedAt;
+      return next;
+    }),
+  });
+}
+
 export function setMessageDeleted(thread: ThreadRecord, messageId: string, deleted: boolean, clock: Clock = systemClock): ThreadRecord {
   const message = thread.messages.find((m) => m.id === messageId);
   if (!message) throw new ThreadError('That comment no longer exists.');

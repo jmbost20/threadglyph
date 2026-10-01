@@ -5,7 +5,7 @@ import { openModals } from './obsidianStub';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadController } from '../src/controller';
 import { ThreadStore } from '../src/storage/threadStore';
-import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions, type PanelState } from '../src/ui/ThreadPanel';
+import { ThreadPanel, countLabel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions, type PanelState } from '../src/ui/ThreadPanel';
 import { buildThreadViews, draftKey, type ThreadFilter } from '../src/ui/viewModel';
 import { MemoryFs, ai, fakeClock, human } from './helpers';
 import { addReply } from '../src/model/thread';
@@ -80,6 +80,7 @@ beforeEach(async () => {
       render();
     },
     setMessageDeleted: async (id, m, deleted) => { const result = await ctl.setMessageDeleted(id, m, deleted); render(); return result.ok; },
+    setThreadDeleted: async (id, deleted) => { const result = await ctl.setThreadDeleted(id, deleted); render(); return result.ok; },
     setResolved: async (id, resolved) => {
       await ctl.setResolved(id, resolved);
       render();
@@ -195,7 +196,7 @@ describe('ThreadPanel', () => {
     const thread = await createViaPanel('Original');
     const messageId = thread.messages[0].id;
 
-    q<HTMLButtonElement>('.tg-icon-button')!.click();
+    [...document.querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!.click();
     const edit = () => q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.edit(thread.id, messageId)}"]`);
     expect(edit()?.value).toBe('Original');
     type(edit()!, 'Changed');
@@ -204,7 +205,7 @@ describe('ThreadPanel', () => {
     expect(edit()).toBeNull();
     expect(q('.tg-message-body')?.textContent).toBe('Original');
 
-    q<HTMLButtonElement>('.tg-icon-button')!.click();
+    [...document.querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!.click();
     type(edit()!, 'Revised');
     button('Save')!.click();
     await flush();
@@ -217,7 +218,7 @@ describe('ThreadPanel', () => {
   it('cancelling an unchanged edit does not prompt', async () => {
     await createViaPanel('Original');
     const confirm = vi.spyOn(window, 'confirm');
-    q<HTMLButtonElement>('.tg-icon-button')!.click();
+    [...document.querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!.click();
     button('Cancel')!.click();
     expect(confirm).not.toHaveBeenCalled();
   });
@@ -385,7 +386,7 @@ describe('ThreadPanel review tools', () => {
     await threeThreads();
     expect(numbers()).toEqual(['1', '2', '3']);
     expect(qa('.tg-quote-link').map((b) => b.textContent)).toEqual(['Alpha point', 'Beta point', 'Gamma point']);
-    expect(qa('.tg-card')[0].getAttribute('aria-label')).toBe('Thread 1');
+    expect(document.getElementById(qa('.tg-card')[0].getAttribute('aria-labelledby')!)?.textContent).toBe('Thread 1');
   });
 
   it('keeps numbers stable when a thread is resolved', async () => {
@@ -397,7 +398,7 @@ describe('ThreadPanel review tools', () => {
     filter = 'all';
     render();
     expect(numbers()).toEqual(['1', '3', '2']);
-    expect(qa('.tg-card')[2].getAttribute('aria-label')).toBe('Thread 2, resolved');
+    expect(document.getElementById(qa('.tg-card')[2].getAttribute('aria-labelledby')!)?.textContent).toBe('Thread 2, resolved');
   });
 
   it('searches quotes, messages and authors, keeping focus in the search box', async () => {
@@ -1012,7 +1013,7 @@ describe('ThreadPanel keyboard shortcuts', () => {
     expect(scope().press(['Mod'], 'Enter')).toBe(true);
   });
 
-  it('Cmd+Shift+Delete on a card asks to delete its latest comment, but not while typing', async () => {
+  it('Cmd+D (or Cmd+Shift+Delete) asks to delete the latest comment from the card or its reply box, not while editing', async () => {
     const thread = await createViaPanel('First');
     await ctl.reply(thread.id, 'Latest');
     render();
@@ -1021,9 +1022,86 @@ describe('ThreadPanel keyboard shortcuts', () => {
     expect(scope().press(['Mod', 'Shift'], 'Delete')).toBe(false);
     expect(openModals.at(-1)!.contentEl.textContent).toContain('Latest');
     openModals.at(-1)!.close();
-    q<HTMLTextAreaElement>('textarea')!.focus();
-    expect(scope().press(['Mod', 'Shift'], 'Backspace')).toBe(true);
+    // From the reply box too (owner feedback 2026-10-01).
+    q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!.focus();
+    expect(scope().press(['Mod'], 'd')).toBe(false);
+    expect(openModals.at(-1)!.contentEl.textContent).toContain('Latest');
+    openModals.at(-1)!.close();
+    // A focused comment deletes that comment.
+    q<HTMLElement>(`.tg-message[data-message-id="${thread.messages[0].id}"]`)!.focus();
+    expect(scope().press(['Mod'], 'd')).toBe(false);
+    expect(openModals.at(-1)!.contentEl.textContent).toContain('First');
+    openModals.at(-1)!.close();
+    q<HTMLInputElement>('.tg-search')!.focus();
+    expect(scope().press(['Mod'], 'd')).toBe(true);
     (document.activeElement as HTMLElement).blur();
     expect(scope().press(['Mod', 'Shift'], 'Backspace')).toBe(true);
   });
+
+  it('Cmd+Shift+D or Delete thread deletes the whole thread, restorable in one step', async () => {
+    const thread = await createViaPanel('First');
+    await ctl.reply(thread.id, 'Second');
+    render();
+    q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.reply(thread.id)}"]`)!.focus();
+    expect(scope().press(['Mod', 'Shift'], 'd')).toBe(false);
+    expect(openModals.at(-1)!.titleEl.textContent).toBe('Delete this whole thread (2 comments)?');
+    [...openModals.at(-1)!.contentEl.querySelectorAll('button')].find((b) => b.textContent === 'Delete')!.click();
+    await flush();
+    expect(store.get(thread.id)!.messages.every((m) => m.deletedAt)).toBe(true);
+    expect(q('.tg-card[data-thread-id]')).toBeNull();
+    panel.update(state({ deletedThreads: [{ threadId: thread.id, preview: 'First', count: 2 }] }));
+    expect(q('.tg-deleted')!.textContent).toContain('Thread: First (2 comments)');
+    button('Restore thread')!.click();
+    await flush();
+    expect(store.get(thread.id)!.messages.some((m) => m.deletedAt)).toBe(false);
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(scope().press(['Mod', 'Shift'], 'd')).toBe(true);
+  });
+
+  it('E edits a focused comment; the Edit and Delete links sit under it, out of the Tab order', async () => {
+    const thread = await createViaPanel('Original');
+    const message = q<HTMLElement>('.tg-message')!;
+    const links = [...message.querySelectorAll<HTMLButtonElement>('.tg-message-action')];
+    expect(links.map((b) => [b.textContent, b.getAttribute('tabindex')])).toEqual([['Edit', '-1'], ['Delete', '-1']]);
+    expect(message.lastElementChild!.className).toBe('tg-message-actions');
+    message.focus();
+    message.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+    expect(q<HTMLTextAreaElement>(`textarea[data-draft-key="${draftKey.edit(thread.id, thread.messages[0].id)}"]`)).not.toBeNull();
+    links[1].click();
+    expect(openModals.at(-1)!.titleEl.textContent).toBe('Delete this comment?');
+  });
 });
+
+describe('thread list feedback (owner UAT 2026-10-01)', () => {
+  it('shows counts on the Open / Resolved / All tabs, capped at 99+', async () => {
+    const thread = await createViaPanel('One');
+    await ctl.setResolved(thread.id, true);
+    await createViaPanel('Two');
+    render();
+    expect(qa('.tg-filter-option').map((b) => [b.textContent, b.dataset.count])).toEqual([['Open', '1'], ['Resolved', '1'], ['All', '2']]);
+    expect(countLabel(99)).toBe('99');
+    expect(countLabel(100)).toBe('99+');
+  });
+
+  it('says how many threads lost their passage, and lists them first with Reattach', async () => {
+    const thread = await createViaPanel('Lost');
+    doc = 'Intro. Rewritten. Outro.\n';
+    render();
+    expect(q('.tg-header-warning')?.textContent).toBe('1 thread lost its passage and needs reattaching (shown first).');
+    expect(q('.tg-card[data-thread-id]')?.dataset.threadId).toBe(thread.id);
+    expect(button('Reattach to selection')).toBeDefined();
+  });
+
+  it('moves the keyboard into the new thread\'s reply box after posting it', async () => {
+    const thread = await createViaPanel('Hello');
+    panel.update(state({ focusedThreadId: thread.id }));
+    expect((document.activeElement as HTMLElement).dataset.draftKey).toBe(draftKey.reply(thread.id));
+    // Later selections do not steal the keyboard.
+    const other = (document.activeElement as HTMLElement);
+    other.blur();
+    panel.update(state({ focusedThreadId: null }));
+    panel.update(state({ focusedThreadId: thread.id }));
+    expect(document.activeElement).toBe(document.body);
+  });
+});
+

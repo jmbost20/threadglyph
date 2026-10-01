@@ -17,6 +17,14 @@ Status: 0.2.0 pilot candidate (stages 1–7), desktop only. See [docs/implementa
 
 Every comment box works the same way: **⌘↩ posts**, and **Enter makes a new line**, even with an @mention. Posting `@Local …` (or `@Agent …`) opens the Ask AI preview. There, **Enter or ⌘↩ sends** with the defaults. The preview is a small tree: **What to send**, **Model** and **Exact text** start collapsed. **↑/↓** move between rows, **→** opens one, and moving onto an option chooses it. **Esc** or **Cancel** before the answer arrives cancels the whole request and removes the comment that asked. That comment can be restored from *Deleted comments*. The panel handles ⌘↩ and ⌘⇧⌫ itself, so Obsidian's editor shortcuts (⌘↩ toggles a checkbox) can't take them while the panel has focus.
 
+In the panel, after posting a new thread the keyboard lands in its **reply box**. **Tab** moves comment by comment (then the reply box, then the thread's links). The Edit, Delete and Reply buttons stay out of the Tab order, with keys instead:
+- on a focused comment, **E** edits it;
+- **⌘D** deletes the focused comment, or the latest one when you're in the reply box;
+- **⌘⇧D** deletes the whole thread, from anywhere in its card. **Delete thread** at the bottom of each card does the same, and *Deleted comments* restores the thread in one step;
+- **⌘⇧→ / ⌘⇧←** (or **↑/↓** on a card) move between threads.
+
+The Open, Resolved and All tabs show counts (99+ beyond 99). Threads whose passage was deleted or rewritten are listed **first**, with **Reattach to selection**.
+
 The default includes **the selected passage, the thread, and the containing section**. Open **Exact text** to see everything that will be sent; scope choices show character counts for instructions and request text (not image bytes or provider formatting). An unavailable anchor never causes an unrelated section to be guessed.
 
 Below **Open / Resolved / All**, expand **Custom filters** for agent, comment age, and an inclusive local date range. All selected predicates must match the same comment. These filters are local to the panel and do not change stored threads.

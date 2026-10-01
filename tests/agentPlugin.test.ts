@@ -717,3 +717,19 @@ describe('the @agent ask window', () => {
     expect(notices.at(-1)).toContain('Turn on AI');
   });
 });
+
+describe('deleting a whole thread through the plugin', () => {
+  it('deletes it from Delete thread, lists it once under Deleted comments, and restores it', async () => {
+    await commentOn('Hardware', 'Buy screws');
+    const id = panelEl().querySelector<HTMLElement>('.tg-card[data-thread-id]')!.dataset.threadId!;
+    buttonIn(panelEl(), 'Delete thread')!.click();
+    expect(openModals.at(-1)!.titleEl.textContent).toBe('Delete this whole thread (1 comment)?');
+    buttonIn(openModals.at(-1)!.contentEl as HTMLElement, 'Delete')!.click();
+    await flush();
+    expect(panelEl().querySelector('.tg-card[data-thread-id]')).toBeNull();
+    expect(panelEl().querySelector('.tg-deleted')!.textContent).toContain('Thread: Buy screws (1 comment)');
+    buttonIn(panelEl(), 'Restore thread')!.click();
+    await flush();
+    expect(panelEl().querySelector(`.tg-card[data-thread-id="${id}"]`)).not.toBeNull();
+  });
+});

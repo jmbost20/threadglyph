@@ -99,13 +99,14 @@ export class ConfirmDeleteModal extends Modal {
     app: App,
     private readonly body: string,
     private readonly onConfirm: () => Promise<unknown>,
+    private readonly title = 'Delete this comment?',
   ) {
     super(app);
   }
 
   onOpen(): void {
     const { contentEl } = this;
-    this.titleEl.setText('Delete this comment?');
+    this.titleEl.setText(this.title);
     contentEl.addClass('tg-modal');
     contentEl.createEl('blockquote', { cls: 'tg-quote', text: previewQuote(this.body) });
     contentEl.createEl('p', { text: 'You can bring it back later from “Deleted comments” at the top of the panel.' });

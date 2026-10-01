@@ -277,3 +277,18 @@ The owner's first real `@Agent` request, "consolidate the cards under this item 
 ## October 1 — @agent put on hold (legacy)
 
 The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-group restructure in 34 s; Gemini 3.5 Flash was overloaded and Flash-Lite only sorted. The owner then decided to put the embedded agent on the side burner. It is **not removed**: every agent surface (the comment's Ask AI preview for `@Agent`, the `@agent` ask window, the agent chat, the `@a` menu and the two commands) now says "Legacy: @agent is on hold. For help with a comment, use @Gemini or @Local instead." Comment help continues through the `@Gemini` / `@Local` mentions.
+
+## October 1 — Owner UAT: thread layout, keyboard, delete thread, orphans
+
+**Feedback (2026-10-01)** and what was done:
+- **⌘⇧⌫ did nothing from the reply box.** This was by design, since the key was ignored inside text boxes, but the owner expects it to work there. **⌘D** (and ⌘⇧⌫) now deletes the focused comment, or the latest one from the reply box; editing a comment still keeps the keys. **⌘⇧D** deletes the whole thread from anywhere in its card. A focused comment takes **E** to edit.
+- **Not thread-like; the Delete button was big and sat before the author.** A comment now reads author · time · *edited*, then the text, then small Edit / Delete links under it on the right. Comments are separated by a thin rule. The original time is kept; *edited* shows the edit time on hover.
+- **No way to delete a thread.** **Delete thread** sits in the card footer. One write marks every remaining comment deleted, and *Deleted comments* lists the thread once with **Restore thread**. Restoring brings back exactly those comments; one deleted earlier on its own stays deleted.
+- **Two cards highlighted at once.** The remembered "current thread" (`tg-card-focused`) and the card holding keyboard focus (`:focus-within`) could differ. While focus is in the list, only the focused card is highlighted. The card's aria-label, which Obsidian showed as a "Thread 2" hover tooltip, is now a hidden label.
+- **After ⌘↩ on a new thread, focus should be in its reply box.** Done, unless an @mention opened the Ask AI preview, which keeps focus.
+- **Tab went through Delete and Edit.** Those links and the composer buttons are out of the Tab order. Tab goes card → comments → reply box → footer links → next card.
+- **No Reattach after deleting the passage.** Threads that lost their passage were sorted to the bottom, below every anchored thread. They now come first, and the header says how many need reattaching. Numbers still follow reading order.
+- **Counts on Open / Resolved / All,** capped at 99+.
+- **Tooltip storm and "note changed meanwhile" in `Agent Comments.md`:** these come from the Inline Comments plugin (pulled from production into the sandbox) reacting to its own markup. Not Threadglyph. That plugin is to be disabled before production, after its comments are imported (see the migration note).
+
+414 tests pass.

@@ -212,7 +212,7 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
   it('reports a stale edit through a notice', async () => {
     await commentOn('worth a comment', 'Mine');
     const [thread] = threads();
-    (panelEl().querySelector('.tg-icon-button') as HTMLButtonElement).click();
+    ([...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!).click();
     await flush();
     const path = files(THREADS_DIR)[0];
     const edited = { ...thread, revision: 2, messages: [{ ...thread.messages[0], body: 'Changed on phone' }] };
@@ -318,13 +318,13 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(q('.tg-card-new')).toBeNull();
 
     await commentOn('worth a comment', 'Edit me');
-    (panelEl().querySelector('.tg-icon-button') as HTMLButtonElement).click();
+    ([...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!).click();
     await flush();
     button('Cancel')!.click();
     await flush();
     expect(q('.tg-card textarea[data-draft-key^="edit:"]')).toBeNull();
 
-    (panelEl().querySelector('.tg-icon-button') as HTMLButtonElement).click();
+    ([...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!).click();
     await flush();
     const input = q<HTMLTextAreaElement>('textarea[data-draft-key^="edit:"]')!;
     input.value = 'Edited';

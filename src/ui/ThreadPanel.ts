@@ -1,4 +1,4 @@
-import { ItemView, Scope, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, Scope, type WorkspaceLeaf } from 'obsidian';
 import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
@@ -37,6 +37,8 @@ export interface PanelState {
   noteName: string;
   views: ThreadView[];
   deletedMessages?: { threadId: string; message: Message }[];
+  /** Threads whose comments were all deleted, restorable as a whole. */
+  deletedThreads?: { threadId: string; preview: string; count: number }[];
   pendingQuote: string | null;
   /** Image file of the pending selection, when the new thread is on an image. */
   pendingImagePath: string | null;
@@ -74,6 +76,8 @@ export interface PanelActions {
   saveEdit(threadId: string, messageId: string, body: string): Promise<boolean>;
   cancelEdit(threadId: string, messageId: string): void;
   setMessageDeleted(threadId: string, messageId: string, deleted: boolean): Promise<boolean>;
+  /** Deletes or restores every comment of a thread at once. */
+  setThreadDeleted(threadId: string, deleted: boolean): Promise<boolean>;
   setResolved(threadId: string, resolved: boolean): Promise<void>;
   reattach(threadId: string): Promise<void>;
   goTo(threadId: string): Promise<void>;
@@ -105,6 +109,8 @@ export interface PanelActions {
 const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.metaKey || e.ctrlKey);
 
 const SEARCH_KEY = 'search';
+/** A tab count, capped so the tabs keep their width. */
+export const countLabel = (n: number) => (n > 99 ? '99+' : String(n));
 const FILTERS: { value: ThreadFilter; label: string }[] = [
   { value: 'open', label: 'Open' },
   { value: 'resolved', label: 'Resolved' },
@@ -130,6 +136,8 @@ export class ThreadPanel extends ItemView {
   private custom: CommentFilters = { ...EMPTY_COMMENT_FILTERS };
   private customOpen = false;
   private pendingAiFocus: string | null = null;
+  /** Set when a new thread was just posted: its reply box takes focus once it appears. */
+  private replyAfterCreate = false;
   /** Set when the last render centered an Ask AI box, so the update does not scroll elsewhere. */
   private aiCentered = false;
   /** Open rows of each Ask AI preview tree, as `<threadId>:<row>`. */
@@ -170,6 +178,10 @@ export class ThreadPanel extends ItemView {
     // Claimed here so Obsidian's editor shortcuts (Cmd+Enter toggles a checkbox in the
     // note, which stays the active editor) never swallow them while the panel has focus.
     this.scope.register(['Mod'], 'Enter', () => this.submitFocused());
+    // Cmd/Ctrl+D deletes the focused comment (from the reply box, the latest one);
+    // Cmd/Ctrl+Shift+D deletes the whole thread, from anywhere in its card.
+    this.scope.register(['Mod'], 'd', () => this.deleteFocused());
+    this.scope.register(['Mod', 'Shift'], 'd', () => this.deleteFocusedThread());
     this.scope.register(['Mod', 'Shift'], 'Backspace', () => this.deleteFocused());
     this.scope.register(['Mod', 'Shift'], 'Delete', () => this.deleteFocused());
     this.render();
@@ -211,16 +223,32 @@ export class ThreadPanel extends ItemView {
     return false;
   }
 
-  /** Cmd/Ctrl+Shift+Delete: asks to delete the focused comment, or the focused card's latest one. */
+  /**
+   * Cmd/Ctrl+D (or Cmd/Ctrl+Shift+Delete): asks to delete the focused comment,
+   * or the card's latest one from anywhere else in the card, the reply box included.
+   * Not while editing a comment, where the keys belong to the text.
+   */
   deleteFocused(): boolean {
     const active = document.activeElement as HTMLElement | null;
-    if (!active || !this.contentEl.contains(active) || active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) return true;
+    if (!active || !this.contentEl.contains(active) || active instanceof HTMLInputElement) return true;
+    if (active instanceof HTMLTextAreaElement && !active.dataset.draftKey?.startsWith('reply:')) return true;
     const card = active.closest<HTMLElement>('.tg-card[data-thread-id]');
     const el = active.closest<HTMLElement>('.tg-message[data-message-id]') ?? [...(card?.querySelectorAll<HTMLElement>('.tg-message[data-message-id]') ?? [])].at(-1);
     const threadId = card?.dataset.threadId;
     const message = this.state.views.find((v) => v.thread.id === threadId)?.thread.messages.find((m) => m.id === el?.dataset.messageId);
     if (!threadId || !message) return true;
     this.confirmDelete(threadId, message);
+    return false;
+  }
+
+  /** Cmd/Ctrl+Shift+D: asks to delete the whole thread whose card has focus. */
+  deleteFocusedThread(): boolean {
+    const active = document.activeElement as HTMLElement | null;
+    const threadId = active && this.contentEl.contains(active)
+      ? active.closest<HTMLElement>('.tg-card[data-thread-id]')?.dataset.threadId : undefined;
+    const view = this.state.views.find((v) => v.thread.id === threadId);
+    if (!view) return true;
+    this.confirmDeleteThread(view);
     return false;
   }
 
@@ -247,7 +275,10 @@ export class ThreadPanel extends ItemView {
     this.render();
     if (newComposer) this.focusNewThread();
     // An opened Ask AI box was already centered on its Send button; centering the whole card would push it away.
-    else if (newFocus && state.focusedThreadId && !this.aiCentered) this.scrollToThread(state.focusedThreadId, false);
+    else if (newFocus && state.focusedThreadId && !this.aiCentered) {
+      this.scrollToThread(state.focusedThreadId, this.replyAfterCreate && !this.pendingAiFocus);
+      this.replyAfterCreate = false;
+    }
   }
 
   /**
@@ -349,6 +380,8 @@ export class ThreadPanel extends ItemView {
     if (this.state.status === 'ready') {
       const counts = resolved ? `${open} open · ${resolved} resolved` : `${open} open`;
       header.createDiv({ cls: 'tg-header-meta', text: counts });
+      const detached = this.state.views.filter((v) => v.anchor.kind !== 'found' && v.thread.status === 'open').length;
+      if (detached) header.createDiv({ cls: 'tg-header-warning', text: `${detached} thread${detached === 1 ? '' : 's'} lost ${detached === 1 ? 'its' : 'their'} passage and need${detached === 1 ? 's' : ''} reattaching (shown first).` });
     }
     if (this.state.status === 'ready') this.renderToolbar(header);
     this.renderDeleted(header);
@@ -382,8 +415,12 @@ export class ThreadPanel extends ItemView {
     };
 
     const group = bar.createDiv({ cls: 'tg-filter', attr: { role: 'group', 'aria-label': 'Show threads' } });
+    const open = this.state.views.filter((v) => v.thread.status === 'open').length;
+    const counts: Record<ThreadFilter, number> = { open, resolved: this.state.views.length - open, all: this.state.views.length };
     for (const { value, label } of FILTERS) {
       const b = group.createEl('button', { cls: 'tg-filter-option', text: label });
+      // Drawn by CSS, so the button's name stays "Open", "Resolved" or "All".
+      b.dataset.count = countLabel(counts[value]);
       const selected = this.state.filter === value;
       b.setAttr('aria-pressed', String(selected));
       if (selected) b.addClass('is-active');
@@ -426,9 +463,16 @@ export class ThreadPanel extends ItemView {
 
   private renderDeleted(root: HTMLElement): void {
     const deleted = this.state.deletedMessages ?? [];
-    if (!deleted.length) return;
+    const threads = this.state.deletedThreads ?? [];
+    if (!deleted.length && !threads.length) return;
     const details = root.createEl('details', { cls: 'tg-deleted' });
-    details.createEl('summary', { text: `Deleted comments (${deleted.length}) — Undo` });
+    details.createEl('summary', { text: `Deleted comments (${deleted.length + threads.length}) — Undo` });
+    for (const { threadId, preview, count } of threads) {
+      const row = details.createDiv();
+      row.createSpan({ text: `Thread: ${previewQuote(preview)} (${count} comment${count === 1 ? '' : 's'})` });
+      const undo = row.createEl('button', { text: 'Restore thread' });
+      undo.onclick = () => { void this.actions.setThreadDeleted(threadId, false); };
+    }
     for (const { threadId, message } of deleted) {
       const row = details.createDiv();
       row.createSpan({ text: previewQuote(message.body) });
@@ -496,7 +540,10 @@ export class ThreadPanel extends ItemView {
     // Lets a re-render keep keyboard focus on this card (panel navigation).
     card.dataset.draftKey = `card:${thread.id}`;
     card.setAttr('tabindex', '0');
-    card.setAttr('aria-label', `Thread ${view.number}${thread.status === 'resolved' ? ', resolved' : ''}`);
+    // Named by a hidden label: an aria-label would also show as a hover tooltip in Obsidian.
+    const name = card.createSpan({ cls: 'tg-sr-only', text: `Thread ${view.number}${thread.status === 'resolved' ? ', resolved' : ''}` });
+    name.id = `tg-thread-${thread.id}`;
+    card.setAttr('aria-labelledby', name.id);
     card.onkeydown = (e) => this.onCardKey(e, card, thread.id);
     if (thread.status === 'resolved') card.addClass('tg-card-resolved');
     if (thread.id === this.state.focusedThreadId) card.addClass('tg-card-focused');
@@ -549,6 +596,8 @@ export class ThreadPanel extends ItemView {
       text: thread.status === 'open' ? 'Resolve' : 'Reopen',
     });
     toggle.onclick = () => void this.actions.setResolved(thread.id, thread.status === 'open');
+    const removeThread = footer.createEl('button', { cls: 'tg-link tg-delete-thread', text: 'Delete thread', attr: { title: 'Delete the whole thread (⌘⇧D)' } });
+    removeThread.onclick = () => this.confirmDeleteThread(view);
   }
 
   /**
@@ -870,27 +919,35 @@ export class ThreadPanel extends ItemView {
     figure.createDiv({ cls: 'tg-image-name', text: name });
   }
 
+  private confirmDeleteThread(view: ThreadView): void {
+    const count = view.thread.messages.length;
+    new ConfirmDeleteModal(this.app, view.thread.messages[0]?.body ?? '', () => this.actions.setThreadDeleted(view.thread.id, true),
+      `Delete this whole thread (${count} comment${count === 1 ? '' : 's'})?`).open();
+  }
+
   private confirmDelete(threadId: string, message: Message): void {
     new ConfirmDeleteModal(this.app, message.body, () => this.actions.setMessageDeleted(threadId, message.id, true)).open();
   }
 
+  /**
+   * One comment: who and when, the text, then small Edit / Delete links under it.
+   * The comment itself takes keyboard focus (Tab moves comment to comment); the
+   * links are left out of the Tab order, with E and Cmd/Ctrl+D doing the same.
+   */
   private renderMessage(parent: HTMLElement, threadId: string, message: Message): void {
     const el = parent.createDiv({ cls: `tg-message tg-message-${message.author.kind}` });
     el.tabIndex = 0;
     el.dataset.messageId = message.id;
     el.dataset.draftKey = `message:${message.id}`;
-    el.setAttr('aria-label', `Comment from ${message.author.name}. Command Shift Delete to delete.`);
+    el.setAttr('role', 'article');
     el.onclick = (e) => {
       if (!(e.target as HTMLElement).closest('button, textarea, input')) el.focus({ preventScroll: true });
     };
     const meta = el.createDiv({ cls: 'tg-message-meta' });
-    const remove = meta.createEl('button', { cls: 'tg-delete-comment', text: 'Delete' });
-    remove.setAttr('aria-label', `Delete comment from ${message.author.name}`);
-    remove.setAttr('title', 'Delete comment (⌘⇧Delete). Recover it under Deleted comments.');
-    remove.onclick = () => this.confirmDelete(threadId, message);
     meta.createSpan({ cls: 'tg-author', text: message.author.name });
     const origin = originLabel(message);
     if (origin) meta.createSpan({ cls: 'tg-origin', text: origin });
+    // The original time stays; an edit only adds "edited", with its time on hover.
     meta.createSpan({ cls: 'tg-time', text: formatTimestamp(message.createdAt) });
     if (message.editedAt) {
       const edited = meta.createSpan({ cls: 'tg-edited', text: 'edited' });
@@ -920,12 +977,21 @@ export class ThreadPanel extends ItemView {
 
     // Plain text only: comment and model text are never interpreted as HTML.
     el.createDiv({ cls: 'tg-message-body', text: message.body });
-    const edit = meta.createEl('button', { cls: 'tg-icon-button' });
-    setIcon(edit, 'pencil');
-    edit.setAttr('aria-label', `Edit message from ${message.author.name}`);
-    edit.onclick = () => {
+    const startEdit = () => {
       this.actions.startEdit(threadId, message.id);
       this.contentEl.querySelector<HTMLTextAreaElement>(`textarea[data-draft-key="${CSS.escape(key)}"]`)?.focus();
+    };
+    const actions = el.createDiv({ cls: 'tg-message-actions' });
+    const edit = actions.createEl('button', { cls: 'tg-message-action', text: 'Edit', attr: { tabindex: '-1', title: 'Edit (E)' } });
+    edit.onclick = startEdit;
+    const remove = actions.createEl('button', { cls: 'tg-message-action', text: 'Delete', attr: { tabindex: '-1', title: 'Delete comment (⌘D)' } });
+    remove.onclick = () => this.confirmDelete(threadId, message);
+    el.onkeydown = (e) => {
+      if (e.target !== el || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        startEdit();
+      }
     };
   }
 
@@ -970,6 +1036,8 @@ export class ThreadPanel extends ItemView {
       try {
         if (await submit(input.value)) {
           this.actions.drafts.delete(key);
+          // A new thread continues in its reply box.
+          if (key.startsWith('new:')) this.replyAfterCreate = true;
           if (!key.startsWith('edit:') && this.hasAssistantMention(input.value)) this.pendingAiFocus = key;
         } else this.pendingAiFocus = null;
       } finally {
@@ -988,10 +1056,11 @@ export class ThreadPanel extends ItemView {
       : null;
 
     if (doCancel) {
-      const cancelButton = buttons.createEl('button', { cls: 'tg-button', text: 'Cancel' });
+      const cancelButton = buttons.createEl('button', { cls: 'tg-button', text: 'Cancel', attr: { tabindex: '-1', title: 'Cancel (Esc)' } });
       cancelButton.onclick = doCancel;
     }
-    const submitButton = buttons.createEl('button', { cls: 'tg-button mod-cta', text: submitLabel });
+    // Out of the Tab order: Cmd/Ctrl+Enter submits, so Tab moves on to the next comment or card.
+    const submitButton = buttons.createEl('button', { cls: 'tg-button mod-cta', text: submitLabel, attr: { tabindex: '-1', title: `${submitLabel} (⌘↩)` } });
     submitButton.onclick = () => void doSubmit();
 
     const mentionKey = this.attachMentions(input, wrap);

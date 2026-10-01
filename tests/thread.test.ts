@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addReply, createThread, editMessage, moveThread, setStatus, ThreadError } from '../src/model/thread';
+import { addReply, createThread, editMessage, moveThread, setMessageDeleted, setStatus, setThreadDeleted, ThreadError } from '../src/model/thread';
 import { ai, fakeClock, human } from './helpers';
 
 describe('thread model', () => {
@@ -66,3 +66,18 @@ describe('thread model', () => {
     expect(moveThread(t, 'b.md', clock).notePath).toBe('b.md');
   });
 });
+
+describe('deleting a whole thread', () => {
+  it('deletes every comment at once, and restores only those, not one deleted earlier', () => {
+    const clock = fakeClock();
+    let t = addReply(addReply(createThread('n.md', human, 'a', clock), human, 'b', clock), human, 'c', clock);
+    t = setMessageDeleted(t, t.messages[1].id, true, clock);
+    const gone = setThreadDeleted(t, true, clock);
+    expect(gone.messages.every((m) => m.deletedAt)).toBe(true);
+    expect(setThreadDeleted(gone, true, clock)).toBe(gone);
+    const back = setThreadDeleted(gone, false, clock);
+    expect(back.messages.map((m) => !!m.deletedAt)).toEqual([false, true, false]);
+    expect(setThreadDeleted(back, false, clock)).toBe(back);
+  });
+});
+

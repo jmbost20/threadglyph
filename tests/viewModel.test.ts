@@ -25,7 +25,7 @@ function source(threads: ThreadRecord[], anchors: TextAnchor[]) {
 }
 
 describe('view model', () => {
-  it('orders open threads by position, then resolved ones, and reports anchor states', () => {
+  it('orders detached open threads first (to reattach), then open by position, then resolved', () => {
     const clock = fakeClock();
     const early = createThread('n.md', human, 'early', clock);
     const late = createThread('n.md', human, 'late', clock);
@@ -41,9 +41,11 @@ describe('view model', () => {
       doc,
     );
 
-    expect(views.map((v) => v.thread.id)).toEqual([early.id, late.id, orphan.id, done.id]);
-    expect(views[0]).toMatchObject({ quote: 'First', anchor: { kind: 'found', from: 0, to: 5 } });
-    expect(views[2]).toMatchObject({ quote: null, anchor: { kind: 'no-anchor' } });
+    expect(views.map((v) => v.thread.id)).toEqual([orphan.id, early.id, late.id, done.id]);
+    expect(views[1]).toMatchObject({ quote: 'First', anchor: { kind: 'found', from: 0, to: 5 } });
+    expect(views[0]).toMatchObject({ quote: null, anchor: { kind: 'no-anchor' } });
+    // Numbers still follow reading order.
+    expect(views.map((v) => v.number)).toEqual([4, 1, 2, 3]);
   });
 
   it('numbers threads in reading order, independent of status, and filters and searches them', () => {

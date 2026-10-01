@@ -415,6 +415,16 @@ export default class ThreadglyphPlugin extends Plugin {
         await this.refresh();
         return ok;
       },
+      setThreadDeleted: async (id, deleted) => {
+        if (this.ai.get(id)?.phase === 'saving') {
+          new Notice('The AI reply is saving. Try deleting again in a moment.');
+          return false;
+        }
+        this.ai.close(id);
+        const ok = await attempt(() => c.setThreadDeleted(id, deleted));
+        await this.refresh();
+        return ok;
+      },
       setResolved: async (id, resolved) => {
         await attempt(() => c.setResolved(id, resolved));
         await this.refresh();
@@ -513,10 +523,15 @@ export default class ThreadglyphPlugin extends Plugin {
 
     const panels = this.panels();
     if (!panels.length) return;
-    const deletedMessages = note ? this.store.forNote(note.path).flatMap((t) =>
-      t.messages.filter((m) => m.deletedAt).map((message) => ({ threadId: t.id, message }))) : [];
+    const threads = note ? this.store.forNote(note.path) : [];
+    // A thread with every comment deleted is listed once, to restore as a whole.
+    const gone = threads.filter((t) => t.messages.every((m) => m.deletedAt));
+    const deletedMessages = threads.filter((t) => !gone.includes(t)).flatMap((t) =>
+      t.messages.filter((m) => m.deletedAt).map((message) => ({ threadId: t.id, message })));
+    const deletedThreads = gone.map((t) => ({ threadId: t.id, preview: t.messages[0]?.body ?? '', count: t.messages.length }));
     const base = {
       deletedMessages,
+      deletedThreads,
       notePath: note?.path ?? null,
       noteName: note?.basename ?? '',
       problems: this.store.loadProblems(),

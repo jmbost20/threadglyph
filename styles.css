@@ -1077,3 +1077,68 @@ body {
   max-height: 60vh;
   overflow-y: auto;
 }
+
+/* ── Threads: one highlight, comments read as a conversation ─────────────── */
+
+/* While the keyboard is in the panel, only the card holding focus is highlighted. */
+.tg-list:focus-within .tg-card-focused:not(:focus-within) {
+  border-color: var(--background-modifier-border);
+  box-shadow: none;
+}
+
+.tg-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.tg-messages .tg-message + .tg-message {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.tg-message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.tg-message-action {
+  padding: 0;
+  height: auto;
+  background: none;
+  box-shadow: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.tg-message-action:hover {
+  color: var(--text-normal);
+  text-decoration: underline;
+}
+
+.tg-message:not(:hover):not(:focus-within) .tg-message-action {
+  opacity: 0.55;
+}
+
+.tg-delete-thread {
+  color: var(--text-faint);
+}
+
+.tg-delete-thread:hover {
+  color: var(--text-error);
+}
+
+.tg-filter-option::after {
+  content: attr(data-count);
+  margin-left: 4px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}

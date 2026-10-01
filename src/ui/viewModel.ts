@@ -44,7 +44,8 @@ export function anchorState(doc: string, anchor: TextAnchor | undefined, resolve
 }
 
 /**
- * Open threads first (in document order when anchored), then resolved ones.
+ * Open threads that lost their passage first, then open threads in document
+ * order, then resolved ones.
  * Numbers follow reading order across all threads, so resolving a thread never
  * renumbers the others.
  */
@@ -70,9 +71,9 @@ export function buildThreadViews(
   const byPosition = (a: ThreadView, b: ThreadView) =>
     position(a) - position(b) || a.thread.createdAt.localeCompare(b.thread.createdAt);
   [...views].sort(byPosition).forEach((v, i) => (v.number = i + 1));
-  return views.sort(
-    (a, b) => Number(a.thread.status === 'resolved') - Number(b.thread.status === 'resolved') || byPosition(a, b),
-  );
+  // Open threads that lost their passage come first, where Reattach is seen.
+  const rank = (v: ThreadView) => (v.thread.status === 'resolved' ? 2 : v.anchor.kind === 'found' ? 1 : 0);
+  return views.sort((a, b) => rank(a) - rank(b) || byPosition(a, b));
 }
 
 /** Case-insensitive match against the quote, message bodies and author names. */
