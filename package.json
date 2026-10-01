@@ -27,7 +27,7 @@
     "happy-dom": "^20.14.5",
     "obsidian": "^1.13.1",
     "typescript": "^7.0.2",
-    "typescript-eslint": "^8.15.0",
+    "typescript-eslint": "^8.71.0",
     "vitest": "^5.0.2"
   }
 }
