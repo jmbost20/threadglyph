@@ -292,3 +292,11 @@ The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-gro
 - **Tooltip storm and "note changed meanwhile" in `Agent Comments.md`:** these come from the Inline Comments plugin (pulled from production into the sandbox) reacting to its own markup. Not Threadglyph. That plugin is to be disabled before production, after its comments are imported (see the migration note).
 
 414 tests pass.
+
+## October 1 — Production cut-over (owner request)
+
+- Owner asked to move Threadglyph into the live vault and retire Agent Comments. Installed the PR #10 build (97ea7f8) into the vault's plugins folder; the owner enables it and disables Agent Comments.
+- One-time migration, run from a local script with the plugin's own importer, anchor capture and store: 44 Agent Comments threads from 5 notes became Threadglyph threads. 12 are resolved: 9 were resolved in Agent Comments, and 3 more because their replies record a created card (`nid:`), as the owner asked. `[@Name](agent:…)` mentions became `@Name`.
+- The Agent Comments markup was removed from those notes so they read normally without that plugin; each anchor was checked to resolve to its exact passage in the cleaned note. Originals were backed up in the vault first.
+- Skipped on purpose: notes that only document the markup syntax (ADRs, templates, audit write-ups) and existing backup copies. Document Comments had no live comments left (only mentions in docs and backups).
+- Fix from the same feedback: the delete confirmation deletes on Enter even if focus landed on Cancel.
