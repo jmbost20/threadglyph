@@ -20,6 +20,17 @@ export interface PreviewActions {
   compare(key: string): void;
 }
 
+/** Unchanged lines further than this from a change fold into "…". */
+const CONTEXT = 2;
+const SIGN = { same: ' ', add: '+', remove: '−' } as const;
+
+function row(className: string, text: string): HTMLElement {
+  const el = document.createElement('div');
+  el.className = className;
+  el.textContent = text;
+  return el;
+}
+
 class ProposalWidget extends WidgetType {
   constructor(
     private readonly mark: PreviewMark,
@@ -38,20 +49,28 @@ class ProposalWidget extends WidgetType {
     box.dataset.proposal = this.mark.key;
     box.setAttribute('role', 'group');
     box.setAttribute('aria-label', 'Proposed change from the agent');
-    // The proposed version; the original is right above, dimmed. New or changed lines are highlighted.
-    const removed = this.mark.diff.filter((d) => d.kind === 'remove').length;
-    const added = this.mark.diff.filter((d) => d.kind === 'add').length;
+    // The change as a diff: removed lines struck through, added lines highlighted,
+    // unchanged stretches folded. The original is right above, dimmed.
+    const diff = this.mark.diff;
+    const removed = diff.filter((d) => d.kind === 'remove').length;
+    const added = diff.filter((d) => d.kind === 'add').length;
     const head = document.createElement('div');
     head.className = 'tg-inline-head';
-    head.textContent = `Proposed version · ${removed} line${removed === 1 ? '' : 's'} removed, ${added} added`;
+    head.textContent = `Proposed change · ${removed} line${removed === 1 ? '' : 's'} removed, ${added} added`;
     box.appendChild(head);
-    for (const line of this.mark.diff) {
-      if (line.kind === 'remove') continue;
-      const row = document.createElement('div');
-      row.className = `tg-inline-line tg-inline-${line.kind}`;
-      row.textContent = line.text || ' ';
-      box.appendChild(row);
-    }
+    const near = diff.map((_, i) => diff.slice(Math.max(0, i - CONTEXT), i + CONTEXT + 1).some((d) => d.kind !== 'same'));
+    let folded = false;
+    diff.forEach((line, i) => {
+      if (line.kind === 'same' && !near[i]) {
+        if (!folded) box.appendChild(row('tg-inline-line tg-inline-fold', '…'));
+        folded = true;
+        return;
+      }
+      folded = false;
+      const el = row(`tg-inline-line tg-inline-${line.kind}`, `${SIGN[line.kind]} ${line.text}`);
+      if (line.kind !== 'same') el.setAttribute('aria-label', `${line.kind === 'add' ? 'Added' : 'Removed'}: ${line.text}`);
+      box.appendChild(el);
+    });
     const buttons = document.createElement('div');
     buttons.className = 'tg-inline-buttons';
     const make = (text: string, cls: string, run: () => void) => {

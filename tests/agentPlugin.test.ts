@@ -7,6 +7,7 @@ import ThreadglyphPlugin, { mentionsAgent } from '../src/main';
 import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { THREADS_DIR } from '../src/storage/paths';
 import type { AgentSuggest } from '../src/ui/agentSuggest';
+import { AgentAskModal } from '../src/ui/agentAskModal';
 
 type Fake = InstanceType<typeof FakeApp>;
 type Editor = MarkdownView['editor'] & { selection: [number, number]; cm?: EditorView; transactions: unknown[][] };
@@ -27,6 +28,8 @@ let view: MarkdownView & { editor: Editor };
 let requests: AiRequest[];
 let answers: AiResult[];
 let egress: 'local' | 'cloud';
+/** While set, the assistant waits for it before answering. */
+let hold: Promise<void> | null;
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
@@ -68,6 +71,7 @@ beforeEach(async () => {
   requests = [];
   answers = [];
   egress = 'local';
+  hold = null;
   app = new FakeApp();
   app.vault.adapter.files.set(NOTE, NOTE_TEXT);
   app.vault.adapter.files.set('Recipes.md', 'Pasta: boil, salt, drain.\n');
@@ -86,6 +90,7 @@ beforeEach(async () => {
     capabilities: { text: true, images: true },
     ask: async (request) => {
       requests.push(request);
+      if (hold) await hold;
       return answers.shift() ?? { ok: true, text: 'No change needed.' };
     },
   };
@@ -466,8 +471,6 @@ describe('@agent inline in the note', () => {
 
   it('runs the request on the cursor line and shows the change under it', async () => {
     const run = command('run-agent-on-line');
-    cursorOn('Hardware');
-    expect(run.editorCheckCallback!(true, view.editor, view)).toBe(false);
     cursorOn('sort these');
     expect(run.editorCheckCallback!(true, view.editor, view)).toBe(true);
     answers.push({ ok: true, text: SORT_ANSWER });
@@ -478,7 +481,8 @@ describe('@agent inline in the note', () => {
     expect(note()).toBe(INLINE);
 
     const widget = view.editor.cm!.dom.querySelector<HTMLElement>('.tg-inline-proposal')!;
-    expect([...widget.querySelectorAll('.tg-inline-add')].map((e) => e.textContent)).toContain('- [ ] Groceries');
+    expect([...widget.querySelectorAll('.tg-inline-add')].map((e) => e.textContent)).toContain('+ - [ ] Groceries');
+    expect([...widget.querySelectorAll('.tg-inline-remove')].map((e) => e.textContent)).toContain('− - [ ] Groceries @agent sort these');
     buttonIn(widget, 'Accept')!.click();
     await flush();
     // The change is applied and the request text removed, in one edit.
@@ -513,13 +517,13 @@ describe('@agent inline in the note', () => {
     expect(notices.at(-1)).toBe('No change needed.');
   });
 
-  it('asks for an instruction after @agent', async () => {
+  it('opens the ask window on a bare @agent line', async () => {
     app.vault.adapter.files.set(NOTE, `${NOTE_TEXT}@agent\n`);
     cursorOn('@agent');
     command('run-agent-on-line').editorCheckCallback!(false, view.editor, view);
     await flush();
     expect(requests).toHaveLength(0);
-    expect(notices.at(-1)).toContain('Type what the agent should do');
+    expect(openModals.at(-1)).toBeInstanceOf(AgentAskModal);
   });
 
   it('goes ahead of other plugins\' @ menus, answering only from "@a"', () => {
@@ -531,7 +535,7 @@ describe('@agent inline in the note', () => {
     expect(suggest().onTrigger(view.editor.offsetToPos(7) as never, view.editor as never)).toBeNull();
   });
 
-  it('offers @agent while typing "@", and inserts it when chosen', () => {
+  it('offers @agent from "@a", and opens the ask window in place of the typed text', () => {
     app.vault.adapter.files.set(NOTE, 'Plan @ag');
     const s = suggest();
     const cursor = view.editor.offsetToPos(8);
@@ -540,10 +544,12 @@ describe('@agent inline in the note', () => {
     expect(s.getSuggestions()[0].label).toBe('@agent');
     const el = document.createElement('div');
     s.renderSuggestion(s.getSuggestions()[0], el);
-    expect(el.textContent).toContain('Run @agent on this line');
+    expect(el.textContent).toContain('Opens a window');
     (s as unknown as { context: unknown }).context = { editor: view.editor, start: trigger.start, end: trigger.end, query: 'ag' };
     s.selectSuggestion();
-    expect(note()).toBe('Plan @agent ');
+    // The typed "@ag" is gone, so the note is as it was; the window asks what to do.
+    expect(note()).toBe('Plan ');
+    expect(openModals.at(-1)).toBeInstanceOf(AgentAskModal);
     expect(s.onTrigger(view.editor.offsetToPos(3) as never, view.editor as never)).toBeNull();
     (s as unknown as { context: unknown }).context = null;
     s.selectSuggestion();
@@ -557,5 +563,152 @@ describe('@agent inline in the note', () => {
     expect(suggest().onTrigger(view.editor.offsetToPos(3) as never, view.editor as never)).toBeNull();
     expect(mentionsAgent('hi @Agent')).toBe(true);
     expect(mentionsAgent('me@agent.com')).toBe(false);
+  });
+});
+
+describe('the @agent ask window', () => {
+  const current = () => openModals.at(-1) as unknown as AgentAskModal;
+  const modalEl = () => current().contentEl as unknown as HTMLElement;
+  const press = () => (openModals.at(-1) as unknown as { scope: { press(m: string[], k: string): unknown } }).scope.press(['Mod'], 'Enter');
+  function open(at = 'Groceries') {
+    const offset = note().indexOf(at);
+    view.editor.selection = [offset, offset];
+    command('run-agent-on-line').editorCheckCallback!(false, view.editor, view);
+    expect(openModals.at(-1)).toBeInstanceOf(AgentAskModal);
+  }
+  function type(text: string) {
+    const input = modalEl().querySelector<HTMLTextAreaElement>('.tg-ask-input')!;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+  }
+
+  it('asks what to do, shows the change as a diff or side by side, and applies it on Accept (⌘↩)', async () => {
+    open();
+    const scopes = [...modalEl().querySelectorAll<HTMLInputElement>('input[type=radio]')];
+    expect(scopes.map((r) => r.value)).toEqual(['anchor', 'section', 'note']);
+    expect(scopes[0].checked).toBe(true);
+    expect(modalEl().textContent).toContain('The list item and everything under it (');
+    expect(modalEl().textContent).toContain('Answered by Local (qwen3:8b)');
+    // Nothing is sent without an instruction.
+    buttonIn(modalEl(), 'Ask (⌘↩)')!.click();
+    expect(requests).toHaveLength(0);
+
+    type('sort these');
+    answers.push({ ok: true, text: SORT_ANSWER });
+    press();
+    await flush();
+    expect(requests[0].target?.text).toBe('- [ ] Groceries\n  - [ ] milk\n  - [ ] apples');
+    expect(requests[0].messages.at(-1)?.body).toBe('sort these');
+    expect(modalEl().textContent).toContain('Sorted the groceries alphabetically.');
+    expect(modalEl().querySelector('.tg-diff-summary')?.textContent).toBe('1 line removed · 1 added');
+    // The proposal also waits under the text in the note.
+    expect(view.editor.cm!.dom.querySelector('.tg-inline-proposal')).not.toBeNull();
+    buttonIn(modalEl(), 'Side by side')!.click();
+    expect(modalEl().querySelectorAll('.tg-compare-removed, .tg-compare-added')).toHaveLength(2);
+    buttonIn(modalEl(), 'Changes')!.click();
+    expect(modalEl().querySelector('.tg-diff')).not.toBeNull();
+    expect(note()).toBe(NOTE_TEXT);
+
+    press();
+    await flush();
+    expect(note()).toBe(SORTED);
+    expect(openModals).toHaveLength(0);
+  });
+
+  it('can be told to change the whole section instead', async () => {
+    open();
+    modalEl().querySelector<HTMLInputElement>('input[value=section]')!.dispatchEvent(new Event('change'));
+    type('tidy');
+    buttonIn(modalEl(), 'Ask (⌘↩)')!.click();
+    await flush();
+    expect(requests[0].target?.text).toBe('# Shopping\n- [ ] Groceries\n  - [ ] milk\n  - [ ] apples\n- [ ] Hardware');
+    // A plain answer: Ask again keeps the request; Close closes.
+    expect(modalEl().textContent).toContain('No change needed.');
+    buttonIn(modalEl(), 'Ask again')!.click();
+    expect(modalEl().querySelector<HTMLTextAreaElement>('.tg-ask-input')!.value).toBe('tidy');
+    press();
+    await flush();
+    press();
+    expect(openModals).toHaveLength(0);
+  });
+
+  it('starts on the section outside a list, and drops a rejected or unreadable change', async () => {
+    open('Something else');
+    expect(modalEl().querySelector<HTMLInputElement>('input[value=section]')!.checked).toBe(true);
+    type('reword');
+    answers.push({ ok: true, text: 'Ok.\n```threadglyph\n{"edits":[{"old":"nope","new":"x"}]}\n```' });
+    press();
+    await flush();
+    expect(modalEl().querySelector('.tg-ai-error')?.textContent).toContain('is not there');
+    buttonIn(modalEl(), 'Ask again')!.click();
+    expect(plugin.agents.forNote(NOTE)).toHaveLength(0);
+    answers.push({ ok: true, text: 'Ok.\n```threadglyph\n{"edits":[{"old":"Something else.","new":"Another thing."}]}\n```' });
+    press();
+    await flush();
+    buttonIn(modalEl(), 'Reject')!.click();
+    await flush();
+    expect(openModals).toHaveLength(0);
+    expect(plugin.agents.forNote(NOTE)).toHaveLength(0);
+    expect(note()).toBe(NOTE_TEXT);
+  });
+
+  it('cancels a running request, and drops its late answer', async () => {
+    open();
+    type('sort these');
+    let release!: () => void;
+    hold = new Promise((r) => (release = r));
+    answers.push({ ok: true, text: SORT_ANSWER });
+    press();
+    await flush();
+    expect(modalEl().textContent).toContain('Asking the agent…');
+    buttonIn(modalEl(), 'Cancel')!.click();
+    expect(modalEl().querySelector('.tg-ask-input')).not.toBeNull();
+    release();
+    await flush();
+    expect(plugin.agents.forNote(NOTE)).toHaveLength(0);
+    expect(modalEl().querySelector('.tg-ask-input')).not.toBeNull();
+  });
+
+  it('keeps an open proposal in the note when closed, and reports a note that changed before Accept', async () => {
+    open();
+    type('sort these');
+    answers.push({ ok: true, text: SORT_ANSWER });
+    press();
+    await flush();
+    app.vault.adapter.files.set(NOTE, NOTE_TEXT.replace('apples', 'pears'));
+    press();
+    await flush();
+    expect(modalEl().querySelector('.tg-ai-error')?.textContent).toContain('changed since this preview');
+    current().close();
+
+    app.vault.adapter.files.set(NOTE, NOTE_TEXT);
+    open();
+    type('sort these');
+    answers.push({ ok: true, text: SORT_ANSWER });
+    press();
+    await flush();
+    current().close();
+    await plugin.refresh();
+    expect(view.editor.cm!.dom.querySelector('.tg-inline-proposal')).not.toBeNull();
+  });
+
+  it('closing while it runs cancels the request', async () => {
+    open();
+    type('sort these');
+    let release!: () => void;
+    hold = new Promise((r) => (release = r));
+    answers.push({ ok: true, text: SORT_ANSWER });
+    press();
+    await flush();
+    current().close();
+    release();
+    await flush();
+    expect(plugin.agents.forNote(NOTE)).toHaveLength(0);
+  });
+
+  it('says so when AI is off', () => {
+    plugin.settings.aiEnabled = false;
+    plugin.openAskAgent(view.editor as never, view.file as never, 0, 0);
+    expect(notices.at(-1)).toContain('Turn on AI');
   });
 });

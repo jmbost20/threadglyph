@@ -2,7 +2,7 @@ import type { PreparedImage } from '../anchor/imageEmbed';
 import type { ThreadRecord } from '../model/types';
 import { agentTarget, type Region } from '../agent/target';
 import { MAX_CONTEXT_CHARS, sectionAround, wholeNote } from './context';
-import { AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT, buildPromptText } from './prompt';
+import { SYSTEM_PROMPT, buildPromptText, systemPromptFor } from './prompt';
 import type { ContextScope } from './session';
 import type { AiRequest } from './types';
 
@@ -75,7 +75,7 @@ export function buildAgentRequest(inputs: RequestInputs, scope: ContextScope): A
 export function agentPreview(inputs: RequestInputs, scope: ContextScope): AiPreviewData {
   const size = (candidate: ContextScope) => {
     const built = buildAgentRequest(inputs, candidate);
-    return built.ok ? count([...AGENT_SYSTEM_PROMPT].length + [...buildPromptText(built.request)].length, 'character') : 'unavailable';
+    return built.ok ? count([...systemPromptFor(built.request)].length + [...buildPromptText(built.request)].length, 'character') : 'unavailable';
   };
   const built = buildAgentRequest(inputs, scope);
   const items = built.ok
@@ -92,7 +92,7 @@ export function agentPreview(inputs: RequestInputs, scope: ContextScope): AiPrev
       { scope: 'section', label: `Edit its section (${size('section')})` },
       { scope: 'note', label: `Edit the whole note (${size('note')})` },
     ],
-    exactText: built.ok ? `Instructions:\n${AGENT_SYSTEM_PROMPT}\n\nRequest:\n${buildPromptText(built.request)}` : built.message,
+    exactText: built.ok ? `Instructions:\n${systemPromptFor(built.request)}\n\nRequest:\n${buildPromptText(built.request)}` : built.message,
   };
 }
 

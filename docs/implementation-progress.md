@@ -250,3 +250,25 @@ The owner's first real `@Agent` request, "consolidate the cards under this item 
 - Diffs wrap and show "N removed · M added". **Compare** opens an Original | Proposed side-by-side view, where each removed run faces its replacement. In the note, the widget shows the proposed version, with new lines highlighted, under the dimmed original.
 - The agent chat uses the same keys: ⌘↩ sends, Enter makes a new line.
 - **Superseded tests:** "Enter posts with an @mention", "exact text starts expanded" and "Escape keeps the question" were rewritten to the new behavior, as the owner asked; they were not weakened. 392 tests pass.
+
+## October 1 — @agent window, and why the agent was not changing anything
+
+**Owner requests (2026-10-01)**
+- Choosing `@agent` inline should open a window for the instruction, separate from comments.
+- The agent still made no change, even from a comment.
+- Diffs: original vs. what will change.
+
+**Causes found** (reproduced on the sandbox copy of the daily note with qwen3:8b; only sizes and counts were printed)
+1. **Raw tabs in the JSON.** The model copied tab-indented lines into `"old"` with literal tab characters, which strict JSON rejects. The whole answer was flagged unreadable. Tabs, line breaks and carriage returns inside JSON strings are now escaped before a second parse.
+2. **Prompt cut off by Ollama.** Ollama ran the model with its default 4,096-token window, and the 127-line target plus a full rewrite needs about 5,000 tokens. Ollama silently drops the start of an over-long prompt, which is where the instructions are, so the model ignored the format rules. Agent requests now set `num_ctx` to fit the prompt plus a rewrite of the target, in 4,096-token steps up to 32,768. Ordinary comment replies keep the default.
+3. **Long quotes cannot be copied exactly.** The model's `"old"` drifted from the note after about 3,000 of its 5,000 characters. Targets over 15 lines now get a rewrite-only prompt (`threadglyph-replace`, keep every item). A `markdown`-labelled block counts as that rewrite. As a fallback, a quote of 3 or more lines whose first and last lines each appear once, with a span of 0.5–2× its length, is matched by those lines, and the proposal says so: "check the diff before accepting".
+
+**After the fixes:** the same request returns a proposal that keeps every item (136–169 s). qwen3:8b is timid on a 127-line regroup, though: it removed 7 lines and added none. qwen3:14b timed out at 495 s. Small requests on the synthetic playground took 4–17 s each: sort, add items, group into categories.
+
+**Changes**
+- **Ask window:** choosing `@agent` from the `@a` menu removes the typed `@a…` and opens the window, as does **Ask @agent here** (⌘⇧↩ in the sandbox) anywhere without a typed `@agent …` line.
+  - The window has the instruction, *It may change* (the list item, the section or the whole note, with sizes; a list item or selection is the default, otherwise the section), and who answers.
+  - ⌘↩ sends. The result is a diff with **Changes / Side by side**; ⌘↩ accepts.
+  - Cancel or closing while it runs aborts, and a late answer is dropped. Closing with a proposal open leaves it under the text in the note.
+- **In-note widget:** the widget is now a real diff (− struck in red, + in green), with unchanged lines folded.
+- **Tests:** the inline suggester and bare `@agent` tests were rewritten for the window. 405 tests pass.

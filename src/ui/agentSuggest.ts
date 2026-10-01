@@ -12,14 +12,16 @@ export interface AgentSuggestion {
 }
 
 /**
- * Typing "@" in a note offers @agent. The note is only changed by the user's
- * own typing here; running the request is a separate command.
+ * Typing "@a" in a note offers @agent. Choosing it removes the typed "@a…"
+ * (so the note is as it was) and opens the window to ask the agent.
  */
 export class AgentSuggest extends EditorSuggest<AgentSuggestion> {
   constructor(
     app: App,
     /** Null while AI is off, which hides the menu. */
     private readonly info: () => AgentSuggestion | null,
+    /** Opens the ask window for this spot in the note. */
+    private readonly onPick: (editor: Editor, at: EditorPosition) => void,
   ) {
     super(app);
   }
@@ -48,7 +50,8 @@ export class AgentSuggest extends EditorSuggest<AgentSuggestion> {
   selectSuggestion(): void {
     const context = this.context;
     if (!context) return;
-    context.editor.replaceRange('@agent ', context.start, context.end);
+    context.editor.replaceRange('', context.start, context.end);
     this.close();
+    this.onPick(context.editor, context.start);
   }
 }

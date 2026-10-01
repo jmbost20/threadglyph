@@ -262,6 +262,23 @@ export function compareRows(diff: DiffLine[]): CompareRow[] {
   return rows;
 }
 
+/** The original and the proposed text side by side, changed lines facing each other. */
+export function renderCompare(parent: HTMLElement, diff: DiffLine[]): HTMLElement {
+  const grid = parent.createDiv({ cls: 'tg-compare' });
+  grid.createDiv({ cls: 'tg-compare-head', text: 'Original' });
+  grid.createDiv({ cls: 'tg-compare-head', text: 'Proposed' });
+  for (const row of compareRows(diff)) {
+    const side = (text: string | null, which: 'before' | 'after') => {
+      const cell = grid.createDiv({ cls: `tg-compare-cell tg-compare-${which}` });
+      if (row.kind === 'change') cell.addClass(text === null ? 'tg-compare-empty' : which === 'before' ? 'tg-compare-removed' : 'tg-compare-added');
+      cell.setText(text ?? '');
+    };
+    side(row.before, 'before');
+    side(row.after, 'after');
+  }
+  return grid;
+}
+
 /** The original and the proposed text side by side, with changed lines marked. */
 export class CompareModal extends Modal {
   constructor(
@@ -276,18 +293,7 @@ export class CompareModal extends Modal {
     this.titleEl.setText('Original vs. proposed');
     contentEl.addClass('tg-modal', 'tg-compare-modal');
     (this as unknown as { modalEl?: HTMLElement }).modalEl?.addClass('tg-compare-wide');
-    const grid = contentEl.createDiv({ cls: 'tg-compare' });
-    grid.createDiv({ cls: 'tg-compare-head', text: 'Original' });
-    grid.createDiv({ cls: 'tg-compare-head', text: 'Proposed' });
-    for (const row of compareRows(this.diff)) {
-      const side = (text: string | null, which: 'before' | 'after') => {
-        const cell = grid.createDiv({ cls: `tg-compare-cell tg-compare-${which}` });
-        if (row.kind === 'change') cell.addClass(text === null ? 'tg-compare-empty' : which === 'before' ? 'tg-compare-removed' : 'tg-compare-added');
-        cell.setText(text ?? '');
-      };
-      side(row.before, 'before');
-      side(row.after, 'after');
-    }
+    renderCompare(contentEl, this.diff);
   }
 
   onClose(): void {

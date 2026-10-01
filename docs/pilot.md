@@ -47,10 +47,11 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 6. **@mentions:** type `@` in a reply. You should see Local, Gemini and Claude with their models. `@Gemini` opens the preview with Gemini chosen. When a request fails, the error offers the other assistants directly.
 7. **@agent** (`Agent playground.md`, AI on, Local preferred):
    - **In a comment:** select "Shopping list" and comment `@Agent sort the children alphabetically`, then press ↩ twice. You see a diff in the card, and the list dimmed in the note with the sorted lines under it. The note file is unchanged. **Accept** sorts it, and ⌘Z restores it. Try again, type in the list, then Accept: it is refused as stale.
-   - **Inline:** put the cursor on the "Clean the garage @agent …" line and press ⌘⇧↩. The proposal appears under the item. **Reject** leaves the line, request included, as it was. **Accept** applies it and removes the `@agent …` text.
+   - **Inline window:** at the end of "Shopping list", type `@a` and choose **@agent**. The `@a` disappears and a window opens: type "sort these alphabetically", keep *The list item and everything under it*, press ⌘↩. The window shows the diff (**Side by side** switches view) and the note shows it under the dimmed list. ⌘↩ accepts; Reject or closing leaves the note as it was (closing keeps the proposal under the text).
+   - **Typed line:** put the cursor on the "Clean the garage @agent …" line and press ⌘⇧↩. The proposal appears under the item. **Reject** leaves the line, request included, as it was. **Accept** applies it and removes the `@agent …` text.
    - **Chat:** ⌘⇧A. With the cursor under "Ideas", ask "add three more ideas". A proposal appears in the chat and in the note.
    - **Other notes:** in the chat ask "add a pasta shopping list using my Recipes note". A dialog asks to read `Recipes.md`. **Deny** sends nothing. Allow → proposal.
-   - Typing `@` in the note offers `@agent`.
+   - Typing `@a` in the note offers `@agent`; a bare `@` still reaches Inline Comments.
 8. **Import** (`Agent Comments sample.md`): run *Import Agent Comments from this note*. The preview lists 3 threads (2 messages; 1 message · resolved; 1 message). Import them, then check that the note text is byte-for-byte unchanged. Running the import again says *Nothing new to import*. Then ask Local or Gemini on an imported thread.
 9. **Backup and restore:** back up, delete one file in `threadglyph/threads/`, reload, and restore. The thread comes back and the others are reported as already existing.
 10. **Safety:** after all of the above, the only note changes are the proposals you accepted. Check with the sandbox's file history or a diff.

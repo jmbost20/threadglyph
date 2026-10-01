@@ -77,6 +77,8 @@ export const openModals: Modal[] = [];
 export class Modal {
   contentEl = document.createElement('div');
   titleEl = document.createElement('div');
+  modalEl = document.createElement('div');
+  scope = new Scope();
   constructor(public app: unknown) {}
   open() {
     document.body.append(this.titleEl, this.contentEl);

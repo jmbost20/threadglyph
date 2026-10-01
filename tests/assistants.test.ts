@@ -24,8 +24,8 @@ import {
   type GeminiFiles,
 } from '../src/ai/geminiCli';
 import { nodeHttp, type HttpCall, type HttpFn, type HttpOutcome } from '../src/ai/http';
-import { OllamaAdapter, isCloudModel, stripThinking } from '../src/ai/ollama';
-import { AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT } from '../src/ai/prompt';
+import { OLLAMA_DEFAULT_CONTEXT, OllamaAdapter, agentContextTokens, isCloudModel, stripThinking } from '../src/ai/ollama';
+import { AGENT_REWRITE_PROMPT, AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT } from '../src/ai/prompt';
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter, AiRequest } from '../src/ai/types';
 
@@ -159,6 +159,20 @@ describe('Local (Ollama) adapter', () => {
     const call = http.mock.calls[0][0];
     expect(call.timeoutMs).toBe(150_000);
     expect(JSON.parse(call.body!).messages[0].content).toBe(AGENT_SYSTEM_PROMPT);
+    // A small request keeps Ollama's own context window.
+    expect(JSON.parse(call.body!).options).toBeUndefined();
+  });
+
+  it('widens the context window for a long agent target, so the instructions are not cut off', async () => {
+    const { http, adapter } = ollama({ '/api/chat': chat('ok') });
+    const text = Array.from({ length: 200 }, (_, i) => `- [ ] item ${i} with some words`).join('\n');
+    await adapter.ask(request({ target: { label: 'X', text } }), live());
+    const body = JSON.parse(http.mock.calls[0][0].body!);
+    expect(body.options.num_ctx % OLLAMA_DEFAULT_CONTEXT).toBe(0);
+    expect(body.options.num_ctx).toBeGreaterThan(OLLAMA_DEFAULT_CONTEXT);
+    expect(body.messages[0].content).toBe(AGENT_REWRITE_PROMPT);
+    expect(agentContextTokens(request({ target: { label: 'X', text: 'x'.repeat(500_000) } }), 0)).toBe(32_768);
+    expect(agentContextTokens(request(), 50_000)).toBeNull();
   });
 
   it('refuses images for a model that cannot see, before sending anything', async () => {

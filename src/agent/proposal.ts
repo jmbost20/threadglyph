@@ -30,6 +30,38 @@ const BLOCK = /```threadglyph[ \t]*\n([\s\S]*?)```/i;
 const REPLACE = /```threadglyph-replace[^\n]*\n([\s\S]*?)\n?```/i;
 /** Small models often label the block `json`; it counts when it carries our keys. */
 const JSON_BLOCK = /```json[ \t]*\n(\s*\{[\s\S]*?"(?:edits|read)"[\s\S]*?)```/i;
+/** ...and the rewritten text `markdown`; in an agent reply, that block is the new text. */
+const MARKDOWN_BLOCK = /```(?:markdown|md)[ \t]*\n([\s\S]*?)\n?```/i;
+
+const CONTROL: Record<string, string> = { '\t': '\\t', '\n': '\\n', '\r': '\\r' };
+
+/**
+ * Small models copy tabs and line breaks into JSON strings as they are, which
+ * strict JSON forbids; this escapes them inside strings only.
+ */
+export function escapeRawControls(json: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+    if (inString && ch === '\\') {
+      out += ch + (json[i + 1] ?? '');
+      i++;
+      continue;
+    }
+    if (ch === '"') inString = !inString;
+    out += inString ? (CONTROL[ch] ?? ch) : ch;
+  }
+  return out;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return JSON.parse(escapeRawControls(text));
+  }
+}
 
 const isEdit = (e: unknown): e is AgentEdit =>
   !!e && typeof (e as AgentEdit).old === 'string' && typeof (e as AgentEdit).new === 'string';
@@ -43,12 +75,16 @@ export function parseAgentReply(text: string): ParsedReply {
   if (replace) return { reply: text.replace(replace[0], '').trim(), edits: [], read: null, replacement: replace[1] };
   const match = BLOCK.exec(text) ?? JSON_BLOCK.exec(text);
   const prose = (match ? text.replace(match[0], '') : text).trim();
-  if (!match) return { reply: prose, edits: [], read: null };
+  if (!match) {
+    const markdown = MARKDOWN_BLOCK.exec(text);
+    if (markdown) return { reply: text.replace(markdown[0], '').trim(), edits: [], read: null, replacement: markdown[1] };
+    return { reply: prose, edits: [], read: null };
+  }
   // Small models sometimes put the rewritten Markdown itself in the threadglyph block.
   if (!match[1].trim().startsWith('{')) return { reply: prose, edits: [], read: null, replacement: match[1].replace(/\n$/, '') };
   let data: unknown;
   try {
-    data = JSON.parse(match[1]);
+    data = parseJson(match[1]);
   } catch {
     return { reply: prose, edits: [], read: null, malformed: true };
   }
@@ -86,8 +122,33 @@ function occurrences(text: string, needle: string): number[] {
 
 const clip = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}…` : s).replace(/\n/g, '⏎');
 
-/** `noop` marks edits that leave the text as it was: the agent found nothing to change. */
-export type Applied = { ok: true; text: string } | { ok: false; message: string; noop?: true };
+/**
+ * `noop` marks edits that leave the text as it was: the agent found nothing to change.
+ * `loose` marks a long quote that was found by its first and last lines, not word for word.
+ */
+export type Applied = { ok: true; text: string; loose?: true } | { ok: false; message: string; noop?: true };
+
+/** Quotes shorter than this many lines must match exactly. */
+const LOOSE_MIN_LINES = 3;
+
+/**
+ * Small models cannot copy a long passage exactly. A quote of several lines whose
+ * first and last lines each appear once in `base` (in that order) stands for the
+ * lines between them, as long as that span is about as long as the quote.
+ */
+function locateLoosely(base: string, old: string): { from: number; to: number } | null {
+  const lines = old.split('\n').filter((l) => l.trim());
+  if (lines.length < LOOSE_MIN_LINES) return null;
+  const first = lines[0];
+  const last = lines[lines.length - 1];
+  const starts = occurrences(base, first);
+  const ends = occurrences(base, last);
+  if (starts.length !== 1 || ends.length !== 1 || ends[0] <= starts[0]) return null;
+  const from = starts[0];
+  const to = ends[0] + last.length;
+  const ratio = (to - from) / old.trim().length;
+  return ratio > 0.5 && ratio < 2 ? { from, to } : null;
+}
 
 /**
  * Applies edits to `base`. Every `old` must appear exactly once and edits must
@@ -96,6 +157,7 @@ export type Applied = { ok: true; text: string } | { ok: false; message: string;
 export function applyEdits(base: string, edits: AgentEdit[]): Applied {
   if (!edits.length) return { ok: false, message: 'The agent did not propose any change.' };
   const spans: { from: number; to: number; text: string }[] = [];
+  let loose = false;
   for (const edit of edits) {
     if (edit.old === '') {
       const sep = base === '' || base.endsWith('\n') || edit.new.startsWith('\n') ? '' : '\n';
@@ -103,6 +165,12 @@ export function applyEdits(base: string, edits: AgentEdit[]): Applied {
       continue;
     }
     const at = occurrences(base, edit.old);
+    const near = at.length === 0 ? locateLoosely(base, edit.old) : null;
+    if (near) {
+      loose = true;
+      spans.push({ ...near, text: edit.new });
+      continue;
+    }
     if (at.length === 0) return { ok: false, message: `The agent's edit does not match the note: “${clip(edit.old)}” is not there.` };
     if (at.length > 1) return { ok: false, message: `The agent's edit is ambiguous: “${clip(edit.old)}” appears ${at.length} times.` };
     spans.push({ from: at[0], to: at[0] + edit.old.length, text: edit.new });
@@ -114,5 +182,5 @@ export function applyEdits(base: string, edits: AgentEdit[]): Applied {
   let text = base;
   for (const span of [...spans].reverse()) text = text.slice(0, span.from) + span.text + text.slice(span.to);
   if (text === base) return { ok: false, message: 'The agent found nothing to change.', noop: true };
-  return { ok: true, text };
+  return loose ? { ok: true, text, loose: true } : { ok: true, text };
 }

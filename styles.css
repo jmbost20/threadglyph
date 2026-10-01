@@ -997,3 +997,83 @@ body {
 .tg-compare-empty {
   background: var(--background-secondary);
 }
+
+/* In-note diff: removed lines struck through in red, added in green. */
+.tg-inline-proposal .tg-inline-remove {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--color-red) 14%, transparent);
+  border-radius: 3px;
+}
+
+.tg-inline-fold {
+  color: var(--text-faint);
+}
+
+.tg-ai-caution {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
+  font-size: var(--font-ui-smaller);
+}
+
+/* ── @agent ask window ─────────────────────────────────────────────────────── */
+
+.modal.tg-ask-wide {
+  width: min(900px, 92vw);
+  max-width: 92vw;
+}
+
+.tg-ask-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-ask-input {
+  width: 100%;
+  resize: vertical;
+}
+
+.tg-ask-scopes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-ui-small);
+}
+
+.tg-ask-scopes legend {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: 2px;
+}
+
+.tg-ask-scope {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tg-ask-request {
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.tg-ask-tabs {
+  display: flex;
+  gap: 12px;
+}
+
+.tg-ask-tabs .is-active {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  text-decoration: underline;
+}
+
+.tg-ask-diff {
+  max-height: 60vh;
+  overflow-y: auto;
+}

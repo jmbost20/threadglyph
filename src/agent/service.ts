@@ -27,6 +27,8 @@ export interface AgentHost {
   refresh(): void;
 }
 
+export const LOOSE_CAUTION = 'The agent did not quote your note word for word, so this change was matched by its first and last lines. Check the diff before accepting.';
+
 /** How many notes a search looks through. */
 const SEARCH_LIMIT = 2_000;
 
@@ -51,7 +53,13 @@ export class AgentProposals {
   view(key: string): ProposalView | null {
     const entry = this.entries.get(key);
     if (!entry) return null;
-    return { key, reply: entry.reply, diff: entry.proposal?.diff ?? null, error: entry.error };
+    return {
+      key,
+      reply: entry.reply,
+      diff: entry.proposal?.diff ?? null,
+      error: entry.error,
+      caution: entry.proposal?.loose ? LOOSE_CAUTION : null,
+    };
   }
 
   /**

@@ -25,7 +25,7 @@ import {
 import { agentExtraSeconds, agentPreview, aiPreview, buildAgentRequest, buildAiRequest, type RequestInputs } from './ai/request';
 import { buildProposal, type Built } from './agent/apply';
 import { findInlineRequest, inlineTarget, type InlineRequest } from './agent/inline';
-import { agentTarget } from './agent/target';
+import { agentTarget, listBlockAt } from './agent/target';
 import { MAX_CONTEXT_CHARS } from './ai/context';
 import { parseAgentReply, proposesChange, type ParsedReply } from './agent/proposal';
 import { AgentProposals } from './agent/service';
@@ -40,6 +40,7 @@ import { THREADS_DIR } from './storage/paths';
 import { CompareModal, ConfirmSendModal, ImportModal, RestoreModal } from './ui/modals';
 import { AgentView, VIEW_TYPE_AGENT, type ChatActions, type ChatTurn } from './ui/AgentView';
 import { AgentSuggest } from './ui/agentSuggest';
+import { AgentAskModal } from './ui/agentAskModal';
 import { AdapterFileStore } from './storage/adapterFileStore';
 import { ThreadStore } from './storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions } from './ui/ThreadPanel';
@@ -134,10 +135,18 @@ export default class ThreadglyphPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_THREADGLYPH, (leaf) => new ThreadPanel(leaf, this.panelActions()));
     this.registerView(VIEW_TYPE_AGENT, (leaf) => new AgentView(leaf, this.chatActions()));
-    const agentSuggest = new AgentSuggest(this.app, () => {
-      const info = this.agentInfo();
-      return info ? { label: '@agent', detail: `${info.detail}. Type the request, then ⌘⇧↩ (Run @agent on this line).` } : null;
-    });
+    const agentSuggest = new AgentSuggest(
+      this.app,
+      () => {
+        const info = this.agentInfo();
+        return info ? { label: '@agent', detail: `${info.detail}. Opens a window to tell it what to do.` } : null;
+      },
+      (editor, at) => {
+        const file = this.app.workspace.getActiveFile();
+        const offset = editor.posToOffset(at);
+        if (file) this.openAskAgent(editor, file, offset, offset);
+      },
+    );
     this.registerEditorSuggest(agentSuggest);
     // Obsidian asks editor suggesters in order and shows only the first that answers. Go first,
     // so another plugin's "@" menu (Inline Comments) does not hide @agent; ours answers only to "@a…".
@@ -202,12 +211,17 @@ export default class ThreadglyphPlugin extends Plugin {
     });
     this.addCommand({
       id: 'run-agent-on-line',
-      name: 'Run @agent on this line',
+      name: 'Ask @agent here',
       editorCheckCallback: (checking, editor, ctx) => {
-        if (!ctx.file || !this.assistants().length) return false;
-        const request = findInlineRequest(editor.getValue(), editor.posToOffset(editor.getCursor('from')));
-        if (!request) return false;
-        if (!checking) void this.runInline(editor, ctx.file, request);
+        const file = ctx.file;
+        if (!file || !this.assistants().length) return false;
+        if (checking) return true;
+        const from = editor.posToOffset(editor.getCursor('from'));
+        const to = editor.posToOffset(editor.getCursor('to'));
+        // A typed "@agent …" line runs as written; anywhere else, the ask window opens.
+        const request = from === to ? findInlineRequest(editor.getValue(), from) : null;
+        if (request?.instruction) void this.runInline(editor, file, request);
+        else this.openAskAgent(editor, file, from, to);
         return true;
       },
     });
@@ -663,6 +677,41 @@ export default class ThreadglyphPlugin extends Plugin {
     });
     new Notice(outcome.proposed ? `${outcome.text}\nAccept or Reject it below the text in the note.` : outcome.text);
     await this.refresh();
+  }
+
+  /**
+   * The @agent window for a spot (or selection) in a note: the request, what
+   * it may change, then the proposed change as a diff with Accept / Reject.
+   */
+  openAskAgent(editor: Editor, file: TFile, from: number, to: number): void {
+    const adapter = this.pickAgentAssistant('');
+    if (!adapter) {
+      new Notice('Turn on AI in Threadglyph settings to use the agent.');
+      return;
+    }
+    const doc = editor.getValue();
+    const describe = (scope: ContextScope) => {
+      const region = agentTarget(doc, from, to, scope);
+      return { scope, label: `${region.label} (${region.text.length.toLocaleString('en-US')} characters)`, empty: !region.text.trim() };
+    };
+    const choices = (['anchor', 'section', 'note'] as const).map(describe).filter((c) => !c.empty);
+    // A list item, or a selection, is the natural target; elsewhere, its section.
+    const inList = from !== to || listBlockAt(doc, from) !== null;
+    new AgentAskModal(this.app, {
+      noteName: file.basename,
+      via: `Answered by ${adapter.name} (${adapter.detail}) · ${destination(adapter)}`,
+      scope: choices.find((c) => c.scope === (inList ? 'anchor' : 'section'))?.scope ?? choices[0]?.scope ?? 'note',
+      scopes: choices.map(({ scope, label }) => ({ scope, label })),
+      run: async (instruction, scope, signal) => {
+        const region = agentTarget(editor.getValue(), from, to, scope);
+        const key = `inline:${++this.agentSeq}`;
+        const outcome = await this.askAgent({ key, source: 'inline', file, region, base: region.text, instruction, history: [], adapter, signal });
+        await this.refresh();
+        return { text: outcome.text, proposal: outcome.proposed ? this.agents.view(key) : null };
+      },
+      accept: (key) => this.agents.accept(key),
+      reject: (key) => this.agents.reject(key),
+    }).open();
   }
 
   // ── Agent chat ──────────────────────────────────────────────────────────────

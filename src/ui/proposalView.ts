@@ -7,6 +7,8 @@ export interface ProposalView {
   diff: DiffLine[] | null;
   /** Why it cannot be applied (a mismatched edit, or the note changed). */
   error: string | null;
+  /** Something to check before accepting. */
+  caution?: string | null;
 }
 
 /** Unchanged lines further than this from a change fold into "…". */
@@ -50,6 +52,7 @@ export function renderProposal(
   box.createDiv({ cls: 'tg-ai-title', text: view.error ? 'The agent’s change can’t be applied' : 'Proposed change' });
   if (view.reply) box.createDiv({ cls: 'tg-proposal-reply', text: view.reply });
   if (view.error) box.createDiv({ cls: 'tg-ai-error', text: view.error });
+  else if (view.caution) box.createDiv({ cls: 'tg-ai-caution', text: view.caution });
   else if (view.diff) {
     renderDiff(box, view.diff);
     box.createDiv({ cls: 'tg-ai-note', text: 'Nothing has changed yet. Accept applies it as one edit; ⌘Z undoes it.' });

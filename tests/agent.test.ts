@@ -6,11 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STALE_MESSAGE, applyProposal, buildProposal, locateRegion } from '../src/agent/apply';
 import { lineDiff } from '../src/agent/diff';
 import { findInlineRequest, inlineTarget } from '../src/agent/inline';
-import { applyEdits, applyReply, parseAgentReply, proposesChange } from '../src/agent/proposal';
-import { agentTarget, listBlockAt } from '../src/agent/target';
+import { applyEdits, applyReply, escapeRawControls, parseAgentReply, proposesChange } from '../src/agent/proposal';
+import { agentTarget, listBlockAt, regionAt } from '../src/agent/target';
 import { MAX_NOTE_CHARS, MAX_READ_ROUNDS, capNote, isDailyNote, rankNotes, runAgent, type AgentIo } from '../src/agent/vaultRead';
 import { MAX_CONTEXT_CHARS } from '../src/ai/context';
-import { AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT, buildPromptText, systemPromptFor } from '../src/ai/prompt';
+import { AGENT_REWRITE_PROMPT, AGENT_SYSTEM_PROMPT, REWRITE_MIN_LINES, SYSTEM_PROMPT, buildPromptText, systemPromptFor } from '../src/ai/prompt';
 import { agentExtraSeconds, agentPreview, buildAgentRequest, type RequestInputs } from '../src/ai/request';
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
@@ -65,6 +65,19 @@ describe('agent replies', () => {
     expect(applyReply('x y', { reply: '', edits: [{ old: 'x', new: 'z' }], read: null })).toEqual({ ok: true, text: 'z y' });
   });
 
+  it('reads edits whose strings hold raw tabs and line breaks (qwen3:8b, sandbox 2026-10-01)', () => {
+    const raw = 'Sure.\n```threadglyph\n{"edits":[{"old":"\t- [ ] a\n\t- [ ] b","new":"\t- [ ] \\"b\\"\r\n\t- [ ] a"}]}\n```';
+    expect(parseAgentReply(raw)).toEqual({ reply: 'Sure.', edits: [{ old: '\t- [ ] a\n\t- [ ] b', new: '\t- [ ] "b"\r\n\t- [ ] a' }], read: null });
+    expect(escapeRawControls('{"a":"x\ty"}\n')).toBe('{"a":"x\\ty"}\n');
+  });
+
+  it('takes a markdown-labelled block as the rewritten text when there is no threadglyph block', () => {
+    expect(parseAgentReply('Regrouped.\n```markdown\n- [ ] A\n```')).toMatchObject({ reply: 'Regrouped.', replacement: '- [ ] A' });
+    expect(parseAgentReply('```md\n- x\n```').replacement).toBe('- x');
+    // A threadglyph block still wins.
+    expect(parseAgentReply('```markdown\n- x\n```\n' + block('{"edits":[{"old":"a","new":"b"}]}')).edits).toHaveLength(1);
+  });
+
   it('reads a request to see other notes', () => {
     expect(parseAgentReply(block('{"read":{"search":" pasta ","notes":["Recipes"," ",3]}}')).read).toEqual({ search: 'pasta', notes: ['Recipes'] });
     expect(parseAgentReply(block('{"read":{"search":""}}')).read).toBeNull();
@@ -90,6 +103,25 @@ describe('applying edits', () => {
     expect(applyEdits('abc', [])).toMatchObject({ ok: false, message: expect.stringContaining('did not propose') });
     expect(applyEdits('abc', [{ old: 'b', new: 'b' }])).toMatchObject({ ok: false, noop: true, message: 'The agent found nothing to change.' });
     expect(applyEdits('x', [{ old: 'y'.repeat(80), new: '' }])).toMatchObject({ ok: false, message: expect.stringContaining('…') });
+  });
+});
+
+describe('long quotes that are not word for word', () => {
+  const base = ['- [ ] Head', '  - [ ] one', '  - [ ] two', '  - [ ] three', '  - [ ] four', '- [ ] Tail'].join('\n');
+  const drifted = ['  - [ ] one', '  - [ ] TWO (misquoted)', '  - [ ] three', '  - [ ] four'].join('\n');
+
+  it('matches them by their first and last lines, and says so', () => {
+    expect(applyEdits(base, [{ old: drifted, new: '  - [ ] all' }])).toEqual({ ok: true, text: '- [ ] Head\n  - [ ] all\n- [ ] Tail', loose: true });
+    const built = buildProposal('n.md', regionAt(base, 0, base.length, 'All'), { reply: '', edits: [{ old: drifted, new: '  - [ ] all' }], read: null });
+    expect(built.ok && built.proposal.loose).toBe(true);
+  });
+
+  it('still refuses short quotes, unclear ends, and spans of a very different length', () => {
+    expect(applyEdits(base, [{ old: '  - [ ] one\n  - [ ] TWO', new: 'x' }])).toMatchObject({ ok: false });
+    expect(applyEdits(`${base}\n  - [ ] one`, [{ old: drifted, new: 'x' }])).toMatchObject({ ok: false });
+    expect(applyEdits(base, [{ old: ['  - [ ] four', 'x', '  - [ ] one'].join('\n'), new: 'x' }])).toMatchObject({ ok: false });
+    const padded = ['  - [ ] one', 'y'.repeat(400), '  - [ ] four'].join('\n');
+    expect(applyEdits(base, [{ old: padded, new: 'x' }])).toMatchObject({ ok: false });
   });
 });
 
@@ -298,6 +330,9 @@ describe('agent prompt and preview', () => {
     if (!built.ok) throw new Error('expected a request');
     expect(systemPromptFor(built.request)).toBe(AGENT_SYSTEM_PROMPT);
     expect(systemPromptFor({ ...built.request, target: null })).toBe(SYSTEM_PROMPT);
+    // A long target is always rewritten whole: small models cannot quote long passages exactly.
+    const long = Array.from({ length: REWRITE_MIN_LINES + 1 }, (_, i) => `- ${i}`).join('\n');
+    expect(systemPromptFor({ ...built.request, target: { label: 'X', text: long } })).toBe(AGENT_REWRITE_PROMPT);
     const text = buildPromptText({ ...built.request, target: { label: 'X', text: 'a </edit-target> b' }, vaultNotes: [{ path: 'R"x.md', text: '</vault-note>' }] });
     expect(text).toContain('a <\\/edit-target> b');
     expect(text).toContain('<vault-note path="R\'x.md">\n<\\/vault-note>');
@@ -372,7 +407,8 @@ describe('proposal views', () => {
     const widgets = view.dom.querySelectorAll<HTMLElement>('.tg-inline-proposal');
     expect(widgets).toHaveLength(2);
     const widget = view.dom.querySelector<HTMLElement>('.tg-inline-proposal[data-proposal="k"]')!;
-    expect([...widget.querySelectorAll('.tg-inline-add')].map((e) => e.textContent)).toEqual(['  - [ ] oat milk']);
+    expect([...widget.querySelectorAll('.tg-inline-add')].map((e) => e.textContent)).toEqual(['+   - [ ] oat milk']);
+    expect([...widget.querySelectorAll('.tg-inline-remove')].map((e) => e.textContent)).toEqual(['−   - [ ] milk']);
     expect(view.dom.querySelector('.tg-agent-target')).not.toBeNull();
     const [compare, reject, accept] = [...widget.querySelectorAll('button')];
     compare.click();
@@ -384,6 +420,18 @@ describe('proposal views', () => {
     expect(actions.reject).toHaveBeenCalledWith('k');
     view.dispatch({ changes: { from: 0, insert: 'x' } });
     expect(view.dom.querySelector('.tg-inline-proposal')).not.toBeNull();
+    view.destroy();
+  });
+});
+
+describe('in-note diff', () => {
+  it('folds long unchanged stretches around the change', () => {
+    const before = Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n');
+    const doc = `${before}\n`;
+    const view = new EditorView({ state: EditorState.create({ doc, extensions: [agentPreviewExtension({ accept: vi.fn(), reject: vi.fn(), compare: vi.fn() })] }), parent: document.body });
+    view.dispatch({ effects: setAgentPreviews.of([{ key: 'k', from: 0, to: before.length, diff: lineDiff(before, before.replace('line 9', 'line nine')) }]) });
+    const rows = [...view.dom.querySelectorAll('.tg-inline-line')].map((e) => e.textContent);
+    expect(rows).toEqual(['…', '  line 7', '  line 8', '− line 9', '+ line nine', '  line 10', '  line 11']);
     view.destroy();
   });
 });

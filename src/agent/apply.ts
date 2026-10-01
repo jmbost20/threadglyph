@@ -15,6 +15,8 @@ export interface Proposal {
   result: string;
   reply: string;
   diff: DiffLine[];
+  /** The agent's quote of the note was not word for word; it was matched by its first and last lines. */
+  loose?: boolean;
 }
 
 export type Built = { ok: true; proposal: Proposal } | { ok: false; message: string; noop?: true };
@@ -28,7 +30,14 @@ export function buildProposal(notePath: string, region: Region, parsed: ParsedRe
   if (!applied.ok) return applied;
   return {
     ok: true,
-    proposal: { notePath, region, result: applied.text, reply: parsed.reply, diff: lineDiff(region.text, applied.text) },
+    proposal: {
+      notePath,
+      region,
+      result: applied.text,
+      reply: parsed.reply,
+      diff: lineDiff(region.text, applied.text),
+      ...(applied.loose ? { loose: true } : {}),
+    },
   };
 }
 
