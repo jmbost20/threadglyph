@@ -528,7 +528,12 @@ export default class ThreadglyphPlugin extends Plugin {
     const gone = threads.filter((t) => t.messages.every((m) => m.deletedAt));
     const deletedMessages = threads.filter((t) => !gone.includes(t)).flatMap((t) =>
       t.messages.filter((m) => m.deletedAt).map((message) => ({ threadId: t.id, message })));
-    const deletedThreads = gone.map((t) => ({ threadId: t.id, preview: t.messages[0]?.body ?? '', count: t.messages.length }));
+    // Restore brings back the comments deleted with the thread (the latest deletion), so count and preview those.
+    const deletedThreads = gone.map((t) => {
+      const last = t.messages.reduce((max, m) => (m.deletedAt! > max ? m.deletedAt! : max), '');
+      const restored = t.messages.filter((m) => m.deletedAt === last);
+      return { threadId: t.id, preview: restored[0]?.body ?? '', count: restored.length };
+    });
     const base = {
       deletedMessages,
       deletedThreads,

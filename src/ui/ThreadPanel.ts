@@ -273,12 +273,13 @@ export class ThreadPanel extends ItemView {
     this.state = state;
     this.aiCentered = false;
     this.render();
+    // Used by the first update after posting (the new thread is already the focused one), then dropped.
+    const toReply = this.replyAfterCreate && !this.pendingAiFocus && !!state.focusedThreadId;
+    this.replyAfterCreate = false;
     if (newComposer) this.focusNewThread();
+    else if (toReply) this.scrollToThread(state.focusedThreadId!, true);
     // An opened Ask AI box was already centered on its Send button; centering the whole card would push it away.
-    else if (newFocus && state.focusedThreadId && !this.aiCentered) {
-      this.scrollToThread(state.focusedThreadId, this.replyAfterCreate && !this.pendingAiFocus);
-      this.replyAfterCreate = false;
-    }
+    else if (newFocus && state.focusedThreadId && !this.aiCentered) this.scrollToThread(state.focusedThreadId, false);
   }
 
   /**

@@ -1093,8 +1093,11 @@ describe('thread list feedback (owner UAT 2026-10-01)', () => {
   });
 
   it('moves the keyboard into the new thread\'s reply box after posting it', async () => {
+    // As in the plugin: a posted thread becomes the focused one before the panel re-renders.
+    const rerender = actions.rerender;
+    actions.rerender = () => panel.update(state({ focusedThreadId: store.forNote(note).at(-1)?.id ?? null }));
     const thread = await createViaPanel('Hello');
-    panel.update(state({ focusedThreadId: thread.id }));
+    actions.rerender = rerender;
     expect((document.activeElement as HTMLElement).dataset.draftKey).toBe(draftKey.reply(thread.id));
     // Later selections do not steal the keyboard.
     const other = (document.activeElement as HTMLElement);
@@ -1102,6 +1105,11 @@ describe('thread list feedback (owner UAT 2026-10-01)', () => {
     panel.update(state({ focusedThreadId: null }));
     panel.update(state({ focusedThreadId: thread.id }));
     expect(document.activeElement).toBe(document.body);
+    // The flag is used once, even when the post's first update has no thread to focus (Gitar on #10).
+    await createViaPanel('Again');
+    panel.update(state({ focusedThreadId: null }));
+    panel.update(state({ focusedThreadId: thread.id }));
+    expect(document.activeElement?.closest('textarea')).toBeNull();
   });
 });
 

@@ -125,3 +125,9 @@ PR: https://github.com/jmbost20/threadglyph/pull/10 (stacked on #9). First commi
   1. **A rewrite was cut off at a code fence inside it.** The lazy fence regexes ended a `threadglyph-replace` block at the first ```` ``` ```` inside the rewritten text, so the rest would have been deleted on Accept. Fenced blocks are now found by a line scanner: the block ends at a bare fence at least as long as its opening one, and fenced blocks nested inside it are skipped. A rewrite cut off before its closing fence is refused as unreadable, never applied. Test: "keeps code blocks inside a rewrite…".
   2. **The `json` fallback could span two blocks.** It now takes the first `json` block whose own body carries `edits` or `read`. Test: "takes the json block that carries edits…".
   3. **The sandbox daily-note copy ignored the configured format.** `dailyNoteName` formats `YYYY`, `YY`, `MM`, `M`, `DD`, `D` and `[literals]`, including folders such as `YYYY/MM/…`. Any other token skips the copy with a message instead of guessing. The owner's vault uses the default `YYYY-MM-DD`.
+
+### PR #10 on `1d88717` (UAT: thread layout, delete thread)
+
+- CI, Sonar and Gitar checks passed. Gitar requested changes with 2 new findings; both were accepted and fixed with tests:
+  1. **A stale "focus the reply box" flag could steal focus later.** It is now used by the first update after posting and then dropped.
+  2. **The deleted-thread row counted and previewed comments that Restore won't bring back** (one deleted earlier on its own). It now counts and previews only the comments deleted with the thread.

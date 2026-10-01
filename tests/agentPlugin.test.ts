@@ -732,4 +732,21 @@ describe('deleting a whole thread through the plugin', () => {
     await flush();
     expect(panelEl().querySelector(`.tg-card[data-thread-id="${id}"]`)).not.toBeNull();
   });
+
+  it('counts and previews only the comments Restore brings back (Gitar on #10)', async () => {
+    await commentOn('Hardware', 'Old note');
+    const card = () => panelEl().querySelector<HTMLElement>('.tg-card[data-thread-id]')!;
+    const reply = card().querySelector<HTMLTextAreaElement>('textarea')!;
+    reply.value = 'Keep this';
+    reply.dispatchEvent(new Event('input'));
+    buttonIn(card(), 'Reply')!.click();
+    await flush();
+    buttonIn(card().querySelector<HTMLElement>('.tg-message')!, 'Delete')!.click();
+    buttonIn(openModals.at(-1)!.contentEl as HTMLElement, 'Delete')!.click();
+    await flush();
+    buttonIn(panelEl(), 'Delete thread')!.click();
+    buttonIn(openModals.at(-1)!.contentEl as HTMLElement, 'Delete')!.click();
+    await flush();
+    expect(panelEl().querySelector('.tg-deleted')!.textContent).toContain('Thread: Keep this (1 comment)');
+  });
 });
