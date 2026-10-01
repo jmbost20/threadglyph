@@ -1,6 +1,6 @@
 import { ItemView, Scope, type WorkspaceLeaf } from 'obsidian';
 import { CompareModal } from './modals';
-import { renderProposal, type ProposalView } from './proposalView';
+import { AGENT_LEGACY_NOTE, renderProposal, type ProposalView } from './proposalView';
 
 export const VIEW_TYPE_AGENT = 'threadglyph-agent';
 
@@ -94,6 +94,7 @@ export class AgentView extends ItemView {
       clear.onclick = () => this.actions.clear();
     }
 
+    root.createDiv({ cls: 'tg-ai-caution tg-legacy', text: AGENT_LEGACY_NOTE });
     const log = root.createDiv({ cls: 'tg-chat-log', attr: { 'aria-live': 'polite' } });
     if (!this.state.turns.length) {
       log.createDiv({

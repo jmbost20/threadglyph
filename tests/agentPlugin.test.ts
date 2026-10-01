@@ -8,6 +8,7 @@ import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { THREADS_DIR } from '../src/storage/paths';
 import type { AgentSuggest } from '../src/ui/agentSuggest';
 import { AgentAskModal } from '../src/ui/agentAskModal';
+import { AGENT_LEGACY_NOTE } from '../src/ui/proposalView';
 
 type Fake = InstanceType<typeof FakeApp>;
 type Editor = MarkdownView['editor'] & { selection: [number, number]; cm?: EditorView; transactions: unknown[][] };
@@ -113,6 +114,7 @@ describe('@Agent in a comment', () => {
   async function propose() {
     await commentOn('Groceries', '@Agent sort the children alphabetically');
     expect(panelEl().querySelector('.tg-ai-title')?.textContent).toBe('Ask the agent to change the note');
+    expect(panelEl().querySelector('.tg-legacy')?.textContent).toBe(AGENT_LEGACY_NOTE);
     panelEl().querySelector<HTMLElement>('.tg-ai-group[data-row="scope"]')!.click();
     expect(panelEl().querySelector('.tg-ai-items li')?.textContent).toBe(
       'The text it may change: the list item and everything under it (43 characters)');
@@ -237,6 +239,7 @@ describe('@Agent in a comment', () => {
 
     await command('open-agent-chat').callback!();
     await flush();
+    expect(chatEl().querySelector('.tg-legacy')?.textContent).toBe(AGENT_LEGACY_NOTE);
     const input = chatEl().querySelector<HTMLTextAreaElement>('.tg-chat-input')!;
     view.editor.selection = [note().indexOf('milk'), note().indexOf('milk')];
     answers.push({ ok: true, text: 'Fine as is.\n```threadglyph\n{"edits":[{"old":"milk","new":"milk"}]}\n```' });
@@ -545,6 +548,7 @@ describe('@agent inline in the note', () => {
     const el = document.createElement('div');
     s.renderSuggestion(s.getSuggestions()[0], el);
     expect(el.textContent).toContain('Opens a window');
+    expect(el.textContent).toContain('Legacy');
     (s as unknown as { context: unknown }).context = { editor: view.editor, start: trigger.start, end: trigger.end, query: 'ag' };
     s.selectSuggestion();
     // The typed "@ag" is gone, so the note is as it was; the window asks what to do.
@@ -587,6 +591,7 @@ describe('the @agent ask window', () => {
     const scopes = [...modalEl().querySelectorAll<HTMLInputElement>('input[type=radio]')];
     expect(scopes.map((r) => r.value)).toEqual(['anchor', 'section', 'note']);
     expect(scopes[0].checked).toBe(true);
+    expect(modalEl().querySelector('.tg-legacy')?.textContent).toBe(AGENT_LEGACY_NOTE);
     expect(modalEl().textContent).toContain('The list item and everything under it (');
     expect(modalEl().textContent).toContain('Answered by Local (qwen3:8b)');
     // Nothing is sent without an instruction.

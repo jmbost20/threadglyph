@@ -273,3 +273,7 @@ The owner's first real `@Agent` request, "consolidate the cards under this item 
 - **In-note widget:** the widget is now a real diff (− struck in red, + in green), with unchanged lines folded.
 - **Tests:** the inline suggester and bare `@agent` tests were rewritten for the window.
 - **Gitar follow-up:** fenced blocks are now found by a line scanner, so a rewrite holding code is not cut short and a cut-off rewrite is refused. The `json` fallback stays within one block, and the sandbox pull honors the daily-note format (see `docs/sonar-experiments.md`). 407 tests pass.
+
+## October 1 — @agent put on hold (legacy)
+
+The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-group restructure in 34 s; Gemini 3.5 Flash was overloaded and Flash-Lite only sorted. The owner then decided to put the embedded agent on the side burner. It is **not removed**: every agent surface (the comment's Ask AI preview for `@Agent`, the `@agent` ask window, the agent chat, the `@a` menu and the two commands) now says "Legacy: @agent is on hold. For help with a comment, use @Gemini or @Local instead." Comment help continues through the `@Gemini` / `@Local` mentions.

@@ -3,7 +3,7 @@ import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
 import { CompareModal, ConfirmDeleteModal } from './modals';
-import { renderProposal, type ProposalView } from './proposalView';
+import { AGENT_LEGACY_NOTE, renderProposal, type ProposalView } from './proposalView';
 import {
   anchorProblem,
   EMPTY_COMMENT_FILTERS,
@@ -708,6 +708,7 @@ export class ThreadPanel extends ItemView {
     switch (ai.state.phase) {
       case 'preview': {
         box.createDiv({ cls: 'tg-ai-title', text: ai.state.agent ? 'Ask the agent to change the note' : 'Ask AI' });
+        if (ai.state.agent) box.createDiv({ cls: 'tg-ai-caution tg-legacy', text: AGENT_LEGACY_NOTE });
         const where = assistant ? ` ${assistant.destination}.` : '';
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
         box.createDiv({ cls: 'tg-ai-note tg-ai-keys', text: 'Enter sends · ↑↓ move · → opens · Esc cancels and removes the question' });

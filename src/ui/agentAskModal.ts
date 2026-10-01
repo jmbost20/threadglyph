@@ -1,7 +1,7 @@
 import { Modal, type App } from 'obsidian';
 import type { ContextScope } from '../ai/session';
 import { renderCompare } from './modals';
-import { renderDiff, type ProposalView } from './proposalView';
+import { AGENT_LEGACY_NOTE, renderDiff, type ProposalView } from './proposalView';
 
 /** One choice of what the agent may change, e.g. "This list item and everything under it (240 characters)". */
 export interface AskScope {
@@ -79,6 +79,7 @@ export class AgentAskModal extends Modal {
   }
 
   private renderAsk(el: HTMLElement): void {
+    el.createDiv({ cls: 'tg-ai-caution tg-legacy', text: AGENT_LEGACY_NOTE });
     const input = el.createEl('textarea', {
       cls: 'tg-input tg-ask-input',
       attr: { rows: '3', placeholder: 'What should the agent do? e.g. “sort these”, “add a list of next steps”', 'aria-label': 'What should the agent do?' },

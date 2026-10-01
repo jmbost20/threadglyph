@@ -139,7 +139,7 @@ export default class ThreadglyphPlugin extends Plugin {
       this.app,
       () => {
         const info = this.agentInfo();
-        return info ? { label: '@agent', detail: `${info.detail}. Opens a window to tell it what to do.` } : null;
+        return info ? { label: '@agent', detail: `Legacy (on hold; use @Gemini or @Local). ${info.detail}. Opens a window to tell it what to do.` } : null;
       },
       (editor, at) => {
         const file = this.app.workspace.getActiveFile();
@@ -206,12 +206,12 @@ export default class ThreadglyphPlugin extends Plugin {
     });
     this.addCommand({
       id: 'open-agent-chat',
-      name: 'Open agent chat',
+      name: 'Open agent chat (legacy)',
       callback: () => void this.activateChat(),
     });
     this.addCommand({
       id: 'run-agent-on-line',
-      name: 'Ask @agent here',
+      name: 'Ask @agent here (legacy)',
       editorCheckCallback: (checking, editor, ctx) => {
         const file = ctx.file;
         if (!file || !this.assistants().length) return false;

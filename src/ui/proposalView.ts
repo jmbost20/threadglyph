@@ -11,6 +11,9 @@ export interface ProposalView {
   caution?: string | null;
 }
 
+/** Shown wherever @agent appears: it still works, but is on hold (owner decision 2026-10-01). */
+export const AGENT_LEGACY_NOTE = 'Legacy: @agent is on hold. For help with a comment, use @Gemini or @Local instead.';
+
 /** Unchanged lines further than this from a change fold into "…". */
 const CONTEXT = 2;
 
