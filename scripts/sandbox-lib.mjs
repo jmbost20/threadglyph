@@ -69,3 +69,28 @@ export function moveNote(vault, from, to) {
 }
 
 export const rel = (vault, path) => relative(vault, path);
+
+/**
+ * A daily note's file name (without .md) for `date` in Obsidian's daily-note
+ * `format`, which may hold folders ("YYYY/MM/YYYY-MM-DD"). Handles the common
+ * tokens; any other letters outside [brackets] return null, so nothing guesses.
+ */
+export function dailyNoteName(format, date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const tokens = {
+    YYYY: String(date.getFullYear()),
+    YY: String(date.getFullYear()).slice(-2),
+    MM: pad(date.getMonth() + 1),
+    M: String(date.getMonth() + 1),
+    DD: pad(date.getDate()),
+    D: String(date.getDate()),
+  };
+  let unsupported = false;
+  const name = (format || 'YYYY-MM-DD').replace(/\[([^\]]*)\]|YYYY|YY|MM|M|DD|D|[A-Za-z]+/g, (token, literal) => {
+    if (literal !== undefined) return literal;
+    if (token in tokens) return tokens[token];
+    unsupported = true;
+    return token;
+  });
+  return unsupported ? null : name;
+}

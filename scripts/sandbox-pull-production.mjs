@@ -16,7 +16,7 @@
  */
 import { cpSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PRODUCTION_VAULT, TEST_DATA, inside, sandboxPath, writeInside } from './sandbox-lib.mjs';
+import { PRODUCTION_VAULT, TEST_DATA, dailyNoteName, inside, sandboxPath, writeInside } from './sandbox-lib.mjs';
 
 const args = process.argv.slice(2);
 const vault = sandboxPath(args.find((a) => !a.startsWith('--')));
@@ -104,11 +104,12 @@ report.push(`${Object.keys(merged).length} production hotkeys copied` +
   (displaced.length ? `; Threadglyph keeps its keys over ${displaced.join(', ')}` : ''));
 
 // ── Today's daily note, as test data ──────────────────────────────────────────
-const today = new Date();
-const stamp = [today.getFullYear(), today.getMonth() + 1, today.getDate()].map((n) => String(n).padStart(2, '0')).join('-');
+const stamp = dailyNoteName(daily.format, new Date());
 const dailyFolder = (daily.folder ?? '').replace(/^\/+/, '');
-const dailyTarget = `${TEST_DATA}/Daily notes/${stamp}.md`;
-if (existsSync(inside(vault, dailyTarget)) && !refreshDaily) {
+const dailyTarget = stamp && `${TEST_DATA}/Daily notes/${stamp}.md`;
+if (!stamp) {
+  report.push(`Daily-note format "${daily.format}" is not supported here; no daily note copied`);
+} else if (existsSync(inside(vault, dailyTarget)) && !refreshDaily) {
   report.push(`Kept the sandbox copy of ${stamp}.md (use --refresh-daily to copy it again)`);
 } else if (copy(join(dailyFolder, `${stamp}.md`), dailyTarget)) {
   report.push(`Today's daily note copied to ${dailyTarget}`);

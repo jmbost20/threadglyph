@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { STALE_MESSAGE, applyProposal, buildProposal, locateRegion } from '../src/agent/apply';
 import { lineDiff } from '../src/agent/diff';
 import { findInlineRequest, inlineTarget } from '../src/agent/inline';
-import { applyEdits, applyReply, escapeRawControls, parseAgentReply, proposesChange } from '../src/agent/proposal';
+import { applyEdits, applyReply, escapeRawControls, fencedBlocks, parseAgentReply, proposesChange } from '../src/agent/proposal';
 import { agentTarget, listBlockAt, regionAt } from '../src/agent/target';
 import { MAX_NOTE_CHARS, MAX_READ_ROUNDS, capNote, isDailyNote, rankNotes, runAgent, type AgentIo } from '../src/agent/vaultRead';
 import { MAX_CONTEXT_CHARS } from '../src/ai/context';
@@ -76,6 +76,20 @@ describe('agent replies', () => {
     expect(parseAgentReply('```md\n- x\n```').replacement).toBe('- x');
     // A threadglyph block still wins.
     expect(parseAgentReply('```markdown\n- x\n```\n' + block('{"edits":[{"old":"a","new":"b"}]}')).edits).toHaveLength(1);
+  });
+
+  it('keeps code blocks inside a rewrite, and never takes a cut-off rewrite (Gitar on #10)', () => {
+    const rewrite = 'Done.\n```threadglyph-replace\n- [ ] Script\n  ```sh\n  ls\n  ```\n- [ ] Tail\n```\nBye.';
+    expect(parseAgentReply(rewrite)).toEqual({ reply: 'Done.\n\nBye.', edits: [], read: null, replacement: '- [ ] Script\n  ```sh\n  ls\n  ```\n- [ ] Tail' });
+    expect(parseAgentReply('Cut.\n```threadglyph-replace\n- [ ] A\n- [ ] B')).toEqual({ reply: 'Cut.', edits: [], read: null, malformed: true });
+    expect(parseAgentReply('Cut.\n```threadglyph\n{"edits":[{"old":"a"')).toEqual({ reply: 'Cut.', edits: [], read: null, malformed: true });
+    expect(fencedBlocks('````md\n```\nx\n````')).toEqual([{ lang: 'md', body: '```\nx', raw: '````md\n```\nx\n````', closed: true }]);
+  });
+
+  it('takes the json block that carries edits, not one before it (Gitar on #10)', () => {
+    const reply = 'Ok.\n```json\n{"x":1}\n```\nThen:\n```json\n{"edits":[{"old":"a","new":"b"}]}\n```';
+    expect(parseAgentReply(reply)).toEqual({ reply: 'Ok.\n```json\n{"x":1}\n```\nThen:', edits: [{ old: 'a', new: 'b' }], read: null });
+    expect(parseAgentReply('See:\n```js\nlet a = 1;\n```')).toEqual({ reply: 'See:\n```js\nlet a = 1;\n```', edits: [], read: null });
   });
 
   it('reads a request to see other notes', () => {

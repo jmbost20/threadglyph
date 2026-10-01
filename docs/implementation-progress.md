@@ -271,4 +271,5 @@ The owner's first real `@Agent` request, "consolidate the cards under this item 
   - ⌘↩ sends. The result is a diff with **Changes / Side by side**; ⌘↩ accepts.
   - Cancel or closing while it runs aborts, and a late answer is dropped. Closing with a proposal open leaves it under the text in the note.
 - **In-note widget:** the widget is now a real diff (− struck in red, + in green), with unchanged lines folded.
-- **Tests:** the inline suggester and bare `@agent` tests were rewritten for the window. 405 tests pass.
+- **Tests:** the inline suggester and bare `@agent` tests were rewritten for the window.
+- **Gitar follow-up:** fenced blocks are now found by a line scanner, so a rewrite holding code is not cut short and a cut-off rewrite is refused. The `json` fallback stays within one block, and the sandbox pull honors the daily-note format (see `docs/sonar-experiments.md`). 407 tests pass.

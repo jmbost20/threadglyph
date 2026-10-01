@@ -26,12 +26,54 @@ export interface ParsedReply {
   malformed?: true;
 }
 
-const BLOCK = /```threadglyph[ \t]*\n([\s\S]*?)```/i;
-const REPLACE = /```threadglyph-replace[^\n]*\n([\s\S]*?)\n?```/i;
+export interface FencedBlock {
+  /** The language label, lower-cased ("" when there is none). */
+  lang: string;
+  body: string;
+  /** The block as it appears in the reply, fences included. */
+  raw: string;
+  /** False when the reply ended before the closing fence (a cut-off answer). */
+  closed: boolean;
+}
+
+const FENCE = /^ {0,3}(`{3,})([\w-]*)/;
+
+/**
+ * The fenced blocks of a reply, in order. A block ends at a bare fence at least
+ * as long as its opening one; fenced blocks inside it (a rewritten note may hold
+ * code) are skipped, so they do not end it early.
+ */
+export function fencedBlocks(text: string): FencedBlock[] {
+  const lines = text.split('\n');
+  const blocks: FencedBlock[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const open = FENCE.exec(lines[i]);
+    if (!open) continue;
+    let inner = 0;
+    let end = lines.length;
+    for (let j = i + 1; j < lines.length; j++) {
+      const fence = FENCE.exec(lines[j]);
+      if (!fence) continue;
+      if (fence[2]) inner++;
+      else if (inner > 0) inner--;
+      else if (fence[1].length >= open[1].length && lines[j].trim() === fence[1]) {
+        end = j;
+        break;
+      }
+    }
+    blocks.push({
+      lang: open[2].toLowerCase(),
+      body: lines.slice(i + 1, end).join('\n'),
+      raw: lines.slice(i, end + 1).join('\n'),
+      closed: end < lines.length,
+    });
+    i = end;
+  }
+  return blocks;
+}
+
 /** Small models often label the block `json`; it counts when it carries our keys. */
-const JSON_BLOCK = /```json[ \t]*\n(\s*\{[\s\S]*?"(?:edits|read)"[\s\S]*?)```/i;
-/** ...and the rewritten text `markdown`; in an agent reply, that block is the new text. */
-const MARKDOWN_BLOCK = /```(?:markdown|md)[ \t]*\n([\s\S]*?)\n?```/i;
+const OUR_KEYS = /^\s*\{[\s\S]*"(?:edits|read)"/;
 
 const CONTROL: Record<string, string> = { '\t': '\\t', '\n': '\\n', '\r': '\\r' };
 
@@ -71,20 +113,25 @@ const isEdit = (e: unknown): e is AgentEdit =>
  * removed from the prose, even when its JSON cannot be read.
  */
 export function parseAgentReply(text: string): ParsedReply {
-  const replace = REPLACE.exec(text);
-  if (replace) return { reply: text.replace(replace[0], '').trim(), edits: [], read: null, replacement: replace[1] };
-  const match = BLOCK.exec(text) ?? JSON_BLOCK.exec(text);
-  const prose = (match ? text.replace(match[0], '') : text).trim();
+  const blocks = fencedBlocks(text);
+  const without = (block: FencedBlock) => text.replace(block.raw, '').trim();
+  // A rewrite cut off before its closing fence would delete the rest of the target.
+  const rewrite = (block: FencedBlock, body: string): ParsedReply =>
+    block.closed ? { reply: without(block), edits: [], read: null, replacement: body } : { reply: without(block), edits: [], read: null, malformed: true };
+  const replace = blocks.find((b) => b.lang === 'threadglyph-replace');
+  if (replace) return rewrite(replace, replace.body);
+  const match = blocks.find((b) => b.lang === 'threadglyph') ?? blocks.find((b) => b.lang === 'json' && OUR_KEYS.test(b.body));
   if (!match) {
-    const markdown = MARKDOWN_BLOCK.exec(text);
-    if (markdown) return { reply: text.replace(markdown[0], '').trim(), edits: [], read: null, replacement: markdown[1] };
-    return { reply: prose, edits: [], read: null };
+    // ...and the rewritten text `markdown`; in an agent reply, that block is the new text.
+    const markdown = blocks.find((b) => b.lang === 'markdown' || b.lang === 'md');
+    return markdown ? rewrite(markdown, markdown.body) : { reply: text.trim(), edits: [], read: null };
   }
+  const prose = without(match);
   // Small models sometimes put the rewritten Markdown itself in the threadglyph block.
-  if (!match[1].trim().startsWith('{')) return { reply: prose, edits: [], read: null, replacement: match[1].replace(/\n$/, '') };
+  if (!match.body.trim().startsWith('{')) return rewrite(match, match.body);
   let data: unknown;
   try {
-    data = parseJson(match[1]);
+    data = parseJson(match.body);
   } catch {
     return { reply: prose, edits: [], read: null, malformed: true };
   }
