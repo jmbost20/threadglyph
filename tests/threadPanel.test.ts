@@ -892,6 +892,17 @@ it('asks before deleting a clicked comment with Command Shift Backspace, and Und
   expect(q('.tg-message-body')?.textContent).toBe('Keep recoverable');
 });
 
+it('deletes on Enter in the confirmation, even when focus moved to Cancel', async () => {
+  const thread = await createViaPanel('Enter removes');
+  button('Delete')!.click();
+  const modal = openModals[0];
+  [...modal.contentEl.querySelectorAll('button')].find((b) => b.textContent === 'Cancel')!.focus();
+  expect((modal.scope as unknown as Scope & { press(m: string[], k: string): unknown }).press([], 'Enter')).toBe(false);
+  await flush();
+  expect(openModals).toHaveLength(0);
+  expect(store.get(thread.id)!.messages[0].deletedAt).toBeTruthy();
+});
+
 it('keeps the comment when the delete confirmation is cancelled', async () => {
   const thread = await createViaPanel('Stay put');
   button('Delete')!.click();

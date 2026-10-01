@@ -114,12 +114,20 @@ export class ConfirmDeleteModal extends Modal {
     const cancel = buttons.createEl('button', { cls: 'tg-button', text: 'Cancel' });
     cancel.onclick = () => this.close();
     const remove = buttons.createEl('button', { cls: 'tg-button mod-warning', text: 'Delete' });
-    remove.onclick = async () => {
+    const confirm = async () => {
+      if (remove.disabled) return;
       remove.disabled = true;
       await this.onConfirm();
       this.close();
     };
+    remove.onclick = confirm;
+    // Enter deletes, wherever focus landed: Obsidian may move focus after open.
+    this.scope.register([], 'Enter', () => {
+      void confirm();
+      return false;
+    });
     remove.focus();
+    window.setTimeout(() => remove.focus(), 0);
   }
 
   onClose(): void {
