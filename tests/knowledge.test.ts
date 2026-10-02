@@ -276,6 +276,7 @@ function makeHost(answers: (AiResult | ((r: AiRequest) => AiResult))[], opts: { 
     delivery: () => opts.delivery ?? null,
     clock: { now: () => '2026-10-01T12:00:00.000Z', newId: () => `id-${String(++n).padStart(4, '0')}-abcdef` },
     changed: () => void changes++,
+    enabled: () => true,
   };
   return { host, files, vaultFiles, folders, requests, thread, changes: () => changes };
 }
@@ -525,6 +526,72 @@ describe('KnowledgeCoordinator', () => {
     await c.retry(running.id);
     await settle(c);
     expect(c.get(running.id)!.state).toBe('complete');
+  });
+
+  it('stops on unload without saving the step, and the resumed job finds the object it made', async () => {
+    let release: (r: AiResult) => void = () => {};
+    const h = makeHost([]);
+    h.host.ask = () => new Promise((resolve) => {
+      release = resolve;
+    });
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input());
+    await settle(c);
+    c.stop();
+    release(objectAnswer());
+    await settle(c);
+    expect(JSON.parse(h.files.get(`${JOBS_DIR}/${job.id}.json`)!).state).toBe('running');
+    c.kick();
+    await c.enqueue(input({ messageId: 'msg-9' }));
+    expect(c.all()).toHaveLength(1);
+
+    // The object was made just before the stop; the restarted job reuses it.
+    h.vaultFiles.set('Knowledge/Objects/Eventual consistency.md', setField(renderObject({ koId: 'ko-made', proposal: proposal(), learning: 'captured', evidence: evidence() }), 'created_by', `${job.id}#1`));
+    h.host.ask = async () => objectAnswer();
+    const restarted = new KnowledgeCoordinator(h.host);
+    await restarted.load();
+    restarted.kick();
+    await settle(restarted);
+    expect(restarted.get(job.id)).toMatchObject({ state: 'complete', result: { objectPath: 'Knowledge/Objects/Eventual consistency.md' } });
+    expect([...h.vaultFiles.keys()].filter((p) => p.includes('/Objects/'))).toHaveLength(1);
+  });
+
+  it('links cards written before a restart', async () => {
+    const h = makeHost([objectAnswer(), cardsAnswer(2)]);
+    const c = new KnowledgeCoordinator(h.host);
+    let cards = 0;
+    const realCreate = h.host.vault.create;
+    h.host.vault.create = async (p, t) => {
+      if (p.includes('/Cards/') && ++cards === 2) throw new Error('disk full');
+      await realCreate(p, t);
+    };
+    const job = await c.enqueue(input({ action: 'card' }));
+    await settle(c);
+    expect(c.get(job.id)).toMatchObject({ state: 'failed', reason: 'disk full', result: { cardPaths: [expect.stringContaining('id0003')] } });
+    h.host.vault.create = realCreate;
+    await c.retry(job.id);
+    await settle(c);
+    const object = h.vaultFiles.get(c.get(job.id)!.result!.objectPath)!;
+    expect(field(object, 'card_refs')).toHaveLength(2);
+    expect(object.match(/^- \[\[Eventual consistency · /gm)).toHaveLength(2);
+  });
+
+  it('runs and reviews nothing while knowledge workflows are off', async () => {
+    let on = false;
+    const h = makeHost([objectAnswer({ match: 'Eventual consistency', confidence: 'low' })]);
+    h.host.enabled = () => on;
+    h.vaultFiles.set('Knowledge/Objects/Eventual consistency.md', renderObject({ koId: 'ko-old', proposal: proposal(), learning: 'captured', evidence: evidence() }));
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input());
+    await settle(c);
+    expect(c.get(job.id)!.state).toBe('queued');
+    on = true;
+    c.kick();
+    await settle(c);
+    expect(c.get(job.id)!.state).toBe('needs-review');
+    on = false;
+    await c.review(job.id, { kind: 'new', title: 'X', essence: 'Y' });
+    expect(c.get(job.id)!.state).toBe('needs-review');
   });
 
   it('runs an edited request again as a new revision', async () => {

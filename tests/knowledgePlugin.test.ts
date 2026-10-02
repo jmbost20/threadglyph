@@ -314,6 +314,33 @@ describe('knowledge workflows in the plugin', () => {
     expect(plugin.knowledge.all()[0].state).toBe('canceled');
   });
 
+  it('hides and refuses knowledge actions after the feature is turned off', async () => {
+    await enable();
+    app.vault.adapter.dirs.add('Knowledge/Objects');
+    app.vault.adapter.files.set('Knowledge/Objects/Eventual consistency.md', '---\ntitle: Eventual consistency\n---\n');
+    answers = [objectAnswer()];
+    await commentOn('Replicas converge', '@knowledge');
+    const id = plugin.knowledge.all()[0].id;
+    expect(plugin.knowledge.get(id)!.state).toBe('needs-review');
+    plugin.settings.knowledgeEnabled = false;
+    await plugin.refresh();
+    expect(q('.tg-knowledge')).toBeNull();
+    expect(command('knowledge-review').checkCallback!(true)).toBe(false);
+    plugin.openKnowledgeReview(id);
+    plugin.openKnowledgeQueue();
+    expect(openModals).toHaveLength(0);
+    const actions = (plugin as unknown as { panelActions(): { knowledgeRetry(id: string): void; knowledgeRerun(id: string): void } }).panelActions();
+    actions.knowledgeRetry(id);
+    actions.knowledgeRerun(id);
+    await flush();
+    expect(plugin.knowledge.get(id)!.state).toBe('needs-review');
+  });
+
+  it('stops the coordinator on unload', () => {
+    plugin.onunload();
+    expect((plugin.knowledge as unknown as { stopped: boolean }).stopped).toBe(true);
+  });
+
   it('never writes outside the knowledge folder', async () => {
     const vault = (plugin as unknown as { knowledgeVault(): KnowledgeVault }).knowledgeVault();
     await expect(vault.create('Reading/Week 3.md', 'x')).rejects.toThrow('Refusing to write outside Knowledge/');

@@ -159,6 +159,7 @@ export default class ThreadglyphPlugin extends Plugin {
       delivery: () => (this.settings.ankiDelivery ? new AnkiConnect(nodeHttp, this.settings.ankiUrl, this.settings.ankiNoteType) : null),
       clock: systemClock,
       changed: () => this.scheduleRefresh(),
+      enabled: () => this.settings.knowledgeEnabled,
     });
 
     this.registerView(VIEW_TYPE_THREADGLYPH, (leaf) => new ThreadPanel(leaf, this.panelActions()));
@@ -305,7 +306,7 @@ export default class ThreadglyphPlugin extends Plugin {
       id: 'knowledge-review',
       name: 'Knowledge: review the next request',
       checkCallback: (checking) => {
-        const next = this.knowledge.all().find((j) => j.state === 'needs-review');
+        const next = this.settings.knowledgeEnabled ? this.knowledge.all().find((j) => j.state === 'needs-review') : undefined;
         if (!next) return false;
         if (!checking) this.openKnowledgeReview(next.id);
         return true;
@@ -318,6 +319,7 @@ export default class ThreadglyphPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.knowledge?.stop();
     this.ai?.closeAll();
     this.agents?.clear();
     this.chatRun?.abort();
@@ -539,7 +541,9 @@ export default class ThreadglyphPlugin extends Plugin {
       rerender: () => void this.refresh(),
       knowledgeOpen: (path) => void this.app.workspace.openLinkText(path, '', true),
       knowledgeReview: (jobId) => this.openKnowledgeReview(jobId),
-      knowledgeRetry: (jobId) => void this.knowledge.retry(jobId),
+      knowledgeRetry: (jobId) => {
+        if (this.settings.knowledgeEnabled) void this.knowledge.retry(jobId);
+      },
       knowledgeCancel: (jobId) => void this.knowledge.cancel(jobId),
       knowledgeRerun: (jobId) => void this.rerunKnowledge(jobId),
     };
@@ -637,7 +641,7 @@ export default class ThreadglyphPlugin extends Plugin {
     }
     const knowledge: Record<string, KnowledgeStatusView[]> = {};
     for (const view of views) {
-      const jobs = this.knowledge.forThread(view.thread.id);
+      const jobs = this.settings.knowledgeEnabled ? this.knowledge.forThread(view.thread.id) : [];
       if (jobs.length) knowledge[view.thread.id] = jobs.map((j) => this.knowledgeStatus(j));
     }
     for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath, ai, proposals, knowledge });
@@ -698,6 +702,7 @@ export default class ThreadglyphPlugin extends Plugin {
   }
 
   private async rerunKnowledge(jobId: string): Promise<void> {
+    if (!this.settings.knowledgeEnabled) return;
     const job = this.knowledge.get(jobId);
     const message = job && this.store.get(job.threadId)?.messages.find((m) => m.id === job.messageId);
     if (!job || !message) return;
@@ -711,11 +716,12 @@ export default class ThreadglyphPlugin extends Plugin {
 
   openKnowledgeReview(jobId: string): void {
     const job = this.knowledge.get(jobId);
-    if (!job || job.state !== 'needs-review' || !job.proposal) return;
+    if (!this.settings.knowledgeEnabled || !job || job.state !== 'needs-review' || !job.proposal) return;
     new KnowledgeReviewModal(this.app, job, (decision) => this.knowledge.review(jobId, decision), () => this.knowledge.cancel(jobId)).open();
   }
 
   openKnowledgeQueue(): void {
+    if (!this.settings.knowledgeEnabled) return;
     new KnowledgeQueueModal(
       this.app,
       () => this.knowledge.all().map((job) => ({ job, view: this.knowledgeStatus(job), noteName: job.notePath.split('/').pop()!.replace(/\.md$/, '') })),

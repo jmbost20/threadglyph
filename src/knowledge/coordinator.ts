@@ -56,6 +56,8 @@ export interface KnowledgeHost {
   delivery(): CardDelivery | null;
   clock: Clock;
   changed(): void;
+  /** Whether knowledge workflows are on; while off, nothing runs and nothing is written. */
+  enabled(): boolean;
 }
 
 export type ReviewDecision =
@@ -87,6 +89,8 @@ export class KnowledgeCoordinator {
   private readonly jobs = new Map<string, KnowledgeJob>();
   private running: { id: string; abort: AbortController } | null = null;
   private draining = false;
+  /** Set on unload: no further steps run or are saved. */
+  private stopped = false;
 
   constructor(private readonly host: KnowledgeHost) {}
 
@@ -173,7 +177,7 @@ export class KnowledgeCoordinator {
   /** The owner's choice in the review form: add to an existing object, or make a new one. */
   async review(id: string, decision: ReviewDecision): Promise<void> {
     const job = this.jobs.get(id);
-    if (!job || job.state !== 'needs-review' || !job.proposal) return;
+    if (!job || job.state !== 'needs-review' || !job.proposal || !this.host.enabled()) return;
     try {
       const next = await this.publish(job, decision.kind === 'existing'
         ? { kind: 'existing', path: decision.path }
@@ -185,9 +189,18 @@ export class KnowledgeCoordinator {
     this.kick();
   }
 
+  /**
+   * Stops for good (the plugin is unloading). The running step is abandoned
+   * unsaved; on the next load the job resumes, and finds anything it made.
+   */
+  stop(): void {
+    this.stopped = true;
+    this.running?.abort.abort();
+  }
+
   /** Starts the next ready job unless one is running. Cheap; called whenever threads change. */
   kick(): void {
-    if (this.draining) return;
+    if (this.draining || this.stopped || !this.host.enabled()) return;
     this.draining = true;
     void this.drain().finally(() => {
       this.draining = false;
@@ -196,6 +209,7 @@ export class KnowledgeCoordinator {
 
   private async drain(): Promise<void> {
     for (;;) {
+      if (this.stopped || !this.host.enabled()) return;
       const next = this.all().find((j) => j.state === 'queued' && (!j.waitForAnswer || this.host.answered(j)));
       if (!next) return;
       await this.run(next);
@@ -220,7 +234,8 @@ export class KnowledgeCoordinator {
       }
       if (!abort.signal.aborted) await this.save({ ...job, state: 'complete' });
     } catch (err) {
-      if (!abort.signal.aborted) await this.save({ ...job, state: 'failed', reason: (err as Error).message });
+      // Keep the steps saved before the error (cards already written, for example).
+      if (!abort.signal.aborted) await this.save({ ...(this.jobs.get(job.id) ?? job), state: 'failed', reason: (err as Error).message });
     } finally {
       this.running = null;
     }
@@ -256,6 +271,14 @@ export class KnowledgeCoordinator {
 
   /** Proposes the object, then publishes it, or stops for review when it may be a duplicate. */
   private async identify(job: KnowledgeJob, signal: AbortSignal): Promise<KnowledgeJob> {
+    // A run that made the object but stopped before saving finds it again instead of making a second one.
+    const request = `${job.id}#${job.revision}`;
+    for (const path of await this.host.vault.list(`${this.host.folder()}/${OBJECTS}`)) {
+      const text = await this.host.vault.read(path);
+      if (text !== null && field(text, 'created_by') === request) {
+        return this.save({ ...job, result: { objectPath: path, objectTitle: summaryOf(path, text).title, created: true, cardPaths: [], delivered: {} } });
+      }
+    }
     const all = await this.objects();
     const discussion = this.discussion(job);
     const ranked = rankCandidates(all, [job.quote ?? '', job.request, ...discussion.map((m) => m.body)].join('\n'));
@@ -317,11 +340,12 @@ export class KnowledgeCoordinator {
     }
     const folder = `${this.host.folder()}/${OBJECTS}`;
     await this.host.vault.ensureFolder(folder);
+    const request = `${job.id}#${job.revision}`;
     const base = fileSafe(target.proposal.title);
     let path = `${folder}/${base}.md`;
     for (let n = 2; (await this.host.vault.read(path)) !== null; n++) path = `${folder}/${base} ${n}.md`;
     const koId = `ko-${this.host.clock.newId().replace(/-/g, '').slice(0, 12)}`;
-    await this.host.vault.create(path, renderObject({ koId, proposal: target.proposal, learning, evidence }));
+    await this.host.vault.create(path, setField(renderObject({ koId, proposal: target.proposal, learning, evidence }), 'created_by', request));
     return { ...job, proposal: target.proposal, result: { objectPath: path, objectTitle: target.proposal.title, created: true, cardPaths: [], delivered: {} } };
   }
 
@@ -358,14 +382,14 @@ export class KnowledgeCoordinator {
       written.push(path);
       job = await this.save({ ...job, result: { ...job.result!, cardPaths: written } });
     }
-    const added = written.filter((p) => !result.cardPaths.includes(p));
-    if (added.length) {
-      await this.host.vault.process(result.objectPath, (text) => {
-        let next = addCardLinks(text, added.map(linkName));
-        for (const p of added) next = addToList(next, 'card_refs', `[[${linkName(p)}]]`);
-        return setField(next, 'learning_state', 'carded');
-      });
-    }
+    // Links every card the object does not list yet, including ones written before a restart.
+    await this.host.vault.process(result.objectPath, (text) => {
+      const missing = written.map(linkName).filter((name) => !text.includes(`[[${name}]]`));
+      if (!missing.length) return text;
+      let next = addCardLinks(text, missing);
+      for (const name of missing) next = addToList(next, 'card_refs', `[[${name}]]`);
+      return setField(next, 'learning_state', 'carded');
+    });
     return job;
   }
 
@@ -394,6 +418,7 @@ export class KnowledgeCoordinator {
   }
 
   private async save(job: KnowledgeJob): Promise<KnowledgeJob> {
+    if (this.stopped) return job;
     // A job canceled while it ran still records what it made, but stays canceled.
     const canceled = this.jobs.get(job.id)?.state === 'canceled' && job.state !== 'queued';
     const next = { ...job, ...(canceled ? { state: 'canceled' as const, reason: this.jobs.get(job.id)!.reason } : {}), updatedAt: this.host.clock.now() };
