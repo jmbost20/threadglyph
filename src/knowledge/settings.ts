@@ -50,36 +50,37 @@ export function migrateKnowledgeSettings(saved: Record<string, unknown>): Knowle
 
 const quoted = (s: string) => JSON.stringify(s);
 
+const PROPERTIES = ['properties:', '  file.name:', '    displayName: Concept', '  ko_id:', '    displayName: ID'];
+
 /**
- * An Obsidian Bases file listing the objects and the card inbox. With
- * `selected`, a first "Selected" view shows just those notes (one concept and
- * the cards made with it), which is what Open shows.
+ * The Bases file Open shows: just one concept and the cards made with it. It is
+ * a separate file the plugin rewrites, so the owner's Knowledge.base is never touched.
  */
-export function knowledgeBase(folder: string, selected: string[] = []): string {
-  const focus = selected.length
-    ? [
-        '  - type: table',
-        '    name: Selected',
-        '    filters:',
-        '      or:',
-        ...selected.map((path) => `        - file.path == ${quoted(path)}`),
-        '    order:',
-        '      - file.name',
-        '      - type',
-        '      - ko_id',
-        '      - learning_state',
-        '      - object',
-        '      - delivery',
-      ]
-    : [];
+export function selectedBase(selected: string[]): string {
   return [
-    'properties:',
-    '  file.name:',
-    '    displayName: Concept',
-    '  ko_id:',
-    '    displayName: ID',
+    ...PROPERTIES,
     'views:',
-    ...focus,
+    '  - type: table',
+    '    name: Selected',
+    '    filters:',
+    '      or:',
+    ...selected.map((path) => `        - file.path == ${quoted(path)}`),
+    '    order:',
+    '      - file.name',
+    '      - type',
+    '      - ko_id',
+    '      - learning_state',
+    '      - object',
+    '      - delivery',
+    '',
+  ].join('\n');
+}
+
+/** An Obsidian Bases file listing the objects and the card inbox; written once, then the owner's. */
+export function knowledgeBase(folder: string): string {
+  return [
+    ...PROPERTIES,
+    'views:',
     '  - type: table',
     '    name: Objects',
     '    filters:',

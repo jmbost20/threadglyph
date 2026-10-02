@@ -159,6 +159,9 @@ export class KnowledgeCoordinator {
     delete next.candidates;
     delete next.cards;
     delete next.reason;
+    // The edited comment may ask for different cards: the intake form asks again.
+    delete next.plan;
+    delete next.suggest;
     await this.save(next);
     this.kick();
   }
@@ -308,6 +311,8 @@ export class KnowledgeCoordinator {
       const retried = again.ok ? parseObjectReply(again.text) : null;
       if (retried?.ok) parsed = { ok: true, proposal: { ...retried.proposal, title: named.title } };
     }
+    // Canceled (or unloading) while asking: publish nothing.
+    if (signal.aborted) return this.save(job);
     const aliases = [...parsed.proposal.aliases, ...(named.alias ? [named.alias] : [])].filter((a, i, all) => a.toLowerCase() !== named.title.toLowerCase() && all.indexOf(a) === i);
     const proposal = { ...parsed.proposal, title: named.title, aliases };
     const matched = proposal.match ? byName(all, proposal.match) : null;

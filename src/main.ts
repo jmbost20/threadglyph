@@ -55,7 +55,7 @@ import { nodeHttp } from './ai/http';
 import { systemClock } from './model/thread';
 import { AnkiConnect } from './knowledge/anki';
 import { KnowledgeCoordinator, statusView, type KnowledgeVault } from './knowledge/coordinator';
-import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings, type KnowledgeSettings } from './knowledge/settings';
+import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings, selectedBase, type KnowledgeSettings } from './knowledge/settings';
 import { excerptAround, localSection } from './knowledge/source';
 import { requestedAction } from './knowledge/trigger';
 import type { KnowledgeJob, KnowledgeStatusView } from './knowledge/types';
@@ -739,6 +739,8 @@ export default class ThreadglyphPlugin extends Plugin {
     modal.onClose = () => {
       close();
       this.reviewOpen = false;
+      // Another request may have come to need a form while this one was open.
+      window.setTimeout(() => this.promptKnowledge(), 0);
     };
     modal.open();
   }
@@ -759,13 +761,13 @@ export default class ThreadglyphPlugin extends Plugin {
   async openInKnowledgeBase(jobId: string): Promise<void> {
     const job = this.knowledge.get(jobId);
     if (!job?.result) return;
-    const folder = this.settings.knowledgeFolder;
-    const path = `${folder}/Knowledge.base`;
-    const text = knowledgeBase(folder, [job.result.objectPath, ...job.result.cardPaths]);
+    // A separate, plugin-owned base; the owner's Knowledge.base keeps its own views.
+    const path = `${this.settings.knowledgeFolder}/Selected.base`;
+    const text = selectedBase([job.result.objectPath, ...job.result.cardPaths]);
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof TFile) await this.app.vault.process(existing, () => text);
     else await this.app.vault.create(path, text);
-    await this.app.workspace.openLinkText(`${path}#Selected`, '', true);
+    await this.app.workspace.openLinkText(path, '', true);
   }
 
   openKnowledgeQueue(): void {

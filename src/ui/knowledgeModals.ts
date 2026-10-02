@@ -96,7 +96,9 @@ export class KnowledgeReviewModal extends Modal {
     apply.onclick = doApply;
     const run = (e?: KeyboardEvent) => {
       // Enter in the essence or note box is a new line; ⌘↩ applies from anywhere.
-      if (e && !e.metaKey && !e.ctrlKey && (e.target as HTMLElement | null)?.tagName === 'TEXTAREA') return true;
+      // Plain Enter on another button (Cancel request, Later) presses that button instead.
+      const tag = (e?.target as HTMLElement | null)?.tagName;
+      if (e && !e.metaKey && !e.ctrlKey && (tag === 'TEXTAREA' || (tag === 'BUTTON' && e.target !== apply))) return true;
       void doApply();
       return false;
     };

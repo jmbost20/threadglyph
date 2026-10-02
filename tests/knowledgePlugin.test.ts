@@ -152,10 +152,15 @@ describe('knowledge workflows in the plugin', () => {
     // Open shows the knowledge base filtered to this concept and the cards made with it.
     button('Open', row)!.click();
     await flush();
-    expect(app.workspace.opened).toEqual(['Knowledge/Knowledge.base#Selected']);
-    const base = app.vault.adapter.files.get('Knowledge/Knowledge.base')!;
-    expect(base).toContain(`- file.path == "${objectPath}"`);
-    expect(base).toContain(`- file.path == "${cards[0]}"`);
+    expect(app.workspace.opened).toEqual(['Knowledge/Selected.base']);
+    const selected = app.vault.adapter.files.get('Knowledge/Selected.base')!;
+    expect(selected).toContain(`- file.path == "${objectPath}"`);
+    expect(selected).toContain(`- file.path == "${cards[0]}"`);
+    // The owner's Knowledge.base is left as it was.
+    expect(app.vault.adapter.files.get('Knowledge/Knowledge.base')).not.toContain('Selected');
+    button('Open', row)!.click();
+    await flush();
+    expect(app.workspace.opened).toHaveLength(2);
   });
 
   it('asks what cards to make when the request is unclear, and uses the choices', async () => {
@@ -174,9 +179,10 @@ describe('knowledge workflows in the plugin', () => {
     const note = intake.contentEl.querySelector<HTMLTextAreaElement>('textarea[aria-label="Anything else"]')!;
     note.value = 'step by step';
     note.dispatchEvent(new Event('input'));
-    // Enter inside a text box is a new line, not Apply.
+    // Enter inside a text box is a new line, and on Later it presses Later, not Apply.
     const press = (intake.scope as unknown as { keys: { modifiers: string[]; key: string; run: (e?: unknown) => unknown }[] }).keys.find((k) => k.key === 'Enter' && !k.modifiers.length)!;
     expect(press.run({ target: note, metaKey: false, ctrlKey: false })).toBe(true);
+    expect(press.run({ target: button('Later', intake.contentEl), metaKey: false, ctrlKey: false })).toBe(true);
     expect(openModals).toHaveLength(1);
     // Later closes it; Review on the thread brings it back.
     button('Later', intake.contentEl)!.click();
@@ -331,7 +337,7 @@ describe('knowledge workflows in the plugin', () => {
     (modal as unknown as { render(): void }).render();
     button('Open', modal.contentEl)!.click();
     await flush();
-    expect(app.workspace.opened).toEqual(['Knowledge/Knowledge.base#Selected']);
+    expect(app.workspace.opened).toEqual(['Knowledge/Selected.base']);
     modal.close();
 
     answers = [() => new Promise(() => {})];
@@ -351,6 +357,22 @@ describe('knowledge workflows in the plugin', () => {
     modal = openModals.at(-1)!;
     button('Review', modal.contentEl)!.click();
     expect(openModals.at(-1)!.titleEl.textContent).toBe('Review knowledge');
+  });
+
+  it('opens the next waiting form once the open one is closed', async () => {
+    await enable();
+    app.vault.adapter.dirs.add('Knowledge/Objects');
+    app.vault.adapter.files.set('Knowledge/Objects/Eventual consistency.md', '---\ntitle: Eventual consistency\n---\n');
+    answers = [objectAnswer(), objectAnswer()];
+    await commentOn('converge eventually', '@knowledge');
+    expect(openModals).toHaveLength(1);
+    await commentOn('Replicas', '@knowledge eventual');
+    expect(plugin.knowledge.all()[1].state).toBe('needs-review');
+    expect(openModals).toHaveLength(1);
+    button('Later', openModals[0].contentEl)!.click();
+    await flush();
+    expect(openModals).toHaveLength(1);
+    expect(openModals[0].contentEl.textContent).toContain('@knowledge eventual');
   });
 
   it('retries and cancels from the thread card', async () => {

@@ -20,7 +20,7 @@ import {
   summaryOf,
   type EvidenceEntry,
 } from '../src/knowledge/objects';
-import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings } from '../src/knowledge/settings';
+import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings, selectedBase } from '../src/knowledge/settings';
 import { instructionOf, requestedAction } from '../src/knowledge/trigger';
 import { conceptTitle, excerptAround, localSection } from '../src/knowledge/source';
 import type { KnowledgeJob, ObjectProposal } from '../src/knowledge/types';
@@ -276,10 +276,11 @@ describe('settings', () => {
     expect(migrateKnowledgeSettings({ knowledgeFolder: '//' }).knowledgeFolder).toBe('Knowledge');
     expect(knowledgeBase('K')).toContain('file.inFolder("K/Objects")');
     expect(knowledgeBase('K')).not.toContain('Selected');
-    const focused = knowledgeBase('K', ['K/Objects/Cache.md', 'K/Cards/Cache · 1.md']);
-    expect(focused.indexOf('name: Selected')).toBeLessThan(focused.indexOf('name: Objects'));
+    expect(knowledgeBase('K')).toContain('displayName: Concept');
+    const focused = selectedBase(['K/Objects/Cache.md', 'K/Cards/Cache · 1.md']);
+    expect(focused).toContain('name: Selected');
+    expect(focused).not.toContain('name: Objects');
     expect(focused).toContain('- file.path == "K/Cards/Cache · 1.md"');
-    expect(focused).toContain('displayName: Concept');
   });
 });
 
@@ -500,6 +501,34 @@ describe('KnowledgeCoordinator', () => {
     const object = h.vaultFiles.get(c.get(job.id)!.result!.objectPath)!;
     expect(field(object, 'title')).toBe('Passage');
     expect(object).toContain('A short piece of text.');
+  });
+
+  it('publishes nothing when canceled during the second ask', async () => {
+    const h = makeHost([]);
+    let calls = 0;
+    let c!: KnowledgeCoordinator;
+    let id = '';
+    h.host.ask = async () => {
+      if (++calls === 2) await c.cancel(id);
+      return objectAnswer({ title: 'Caching' });
+    };
+    c = new KnowledgeCoordinator(h.host);
+    id = (await c.enqueue(input({ quote: 'store' }))).id;
+    await settle(c);
+    expect(c.get(id)!.state).toBe('canceled');
+    expect([...h.vaultFiles.keys()].filter((p) => p.includes('/Objects/'))).toEqual([]);
+  });
+
+  it('asks for card choices again after the request is edited', async () => {
+    const h = makeHost([objectAnswer(), cardsAnswer(), objectAnswer()]);
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input({ action: 'card', quote: 'eventual', plan: PLAN }));
+    await settle(c);
+    expect(c.get(job.id)!.state).toBe('complete');
+    await c.rerun(job.id, { action: 'card', request: '@card five application cards', quote: 'eventual', context: null });
+    await settle(c);
+    expect(c.get(job.id)).toMatchObject({ state: 'needs-intake', revision: 2 });
+    expect(c.get(job.id)!.plan).toBeUndefined();
   });
 
   it('keeps the corrected name when the second answer fails, and pauses if turned off meanwhile', async () => {

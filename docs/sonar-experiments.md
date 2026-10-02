@@ -146,3 +146,15 @@ PR: https://github.com/jmbost20/threadglyph/pull/10 (stacked on #9). First commi
 - **Suggestions fixed in the next commit:**
   - evidence carries a hidden `%%threadglyph job#rev%%` mark, so a repeated run adds it once;
   - turning the feature off mid-run pauses the job (queued) instead of failing it.
+- **ff40954 (owner feedback: concept naming, intake form).** CI and Sonar passed. Gitar requested changes on 5 new findings, all valid:
+  - cancel during the second concept ask still published the object;
+  - plain Enter on Cancel or Later applied the form;
+  - Open rewrote the owner's `Knowledge.base`;
+  - Update request reused the old card plan;
+  - the next waiting form did not open after Later.
+- **Fixed in the next commit:**
+  - an aborted request publishes nothing;
+  - Enter on another button presses that button;
+  - Open uses a separate plugin-owned `Selected.base`;
+  - rerun clears the plan, so the intake form asks again;
+  - closing a form re-checks for the next one.
