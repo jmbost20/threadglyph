@@ -131,3 +131,18 @@ PR: https://github.com/jmbost20/threadglyph/pull/10 (stacked on #9). First commi
 - CI, Sonar and Gitar checks passed. Gitar requested changes with 2 new findings; both were accepted and fixed with tests:
   1. **A stale "focus the reply box" flag could steal focus later.** It is now used by the first update after posting and then dropped.
   2. **The deleted-thread row counted and previewed comments that Restore won't bring back** (one deleted earlier on its own). It now counts and previews only the comments deleted with the thread.
+
+## PR #12 — knowledge system POC (October 1)
+
+- **First pass, 4c8ef28.** CI and Sonar passed; the quality gate passed with 41 new code-smell-level issues and 0 hotspots. Gitar requested changes on 3 findings:
+  - a job still running at unload ran twice after a reload;
+  - cards written before a stop lost their links in the object;
+  - Review and Retry still worked while the feature was off.
+- **Fixed in 68bf724:**
+  - the coordinator stops on unload, and a resumed run finds the object it made (`created_by`);
+  - card links are added idempotently;
+  - every entry point checks that the feature is on.
+  - Gitar then approved (3 of 5 closed, 2 suggestions).
+- **Suggestions fixed in the next commit:**
+  - evidence carries a hidden `%%threadglyph job#rev%%` mark, so a repeated run adds it once;
+  - turning the feature off mid-run pauses the job (queued) instead of failing it.

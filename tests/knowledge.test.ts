@@ -556,6 +556,45 @@ describe('KnowledgeCoordinator', () => {
     expect([...h.vaultFiles.keys()].filter((p) => p.includes('/Objects/'))).toHaveLength(1);
   });
 
+  it('adds evidence to an existing object once, even when a run is repeated', async () => {
+    const h = makeHost([objectAnswer({ match: 'Eventual consistency', confidence: 'high' })]);
+    h.vaultFiles.set('Knowledge/Objects/Eventual consistency.md', renderObject({ koId: 'ko-old', proposal: proposal(), learning: 'captured', evidence: evidence() }));
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input());
+    await settle(c);
+    const once = h.vaultFiles.get('Knowledge/Objects/Eventual consistency.md')!;
+    expect(once).toContain(`%%threadglyph ${job.id}#1%%`);
+    // The same request published again (as after a stop just before its result was saved) changes nothing.
+    const publish = (c as unknown as { publish(j: KnowledgeJob, t: unknown): Promise<KnowledgeJob> }).publish.bind(c);
+    await publish({ ...c.get(job.id)!, result: undefined }, { kind: 'existing', path: 'Knowledge/Objects/Eventual consistency.md' });
+    expect(h.vaultFiles.get('Knowledge/Objects/Eventual consistency.md')).toBe(once);
+  });
+
+  it('pauses instead of failing when the feature is turned off mid-run', async () => {
+    let on = true;
+    const h = makeHost([]);
+    h.host.enabled = () => on;
+    h.host.ask = async () => {
+      on = false;
+      return objectAnswer();
+    };
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input({ action: 'card' }));
+    await settle(c);
+    expect(c.get(job.id)).toMatchObject({ state: 'queued', reason: 'Paused: knowledge workflows are off.' });
+    on = true;
+    const answersLeft = [objectAnswer(), cardsAnswer()];
+    h.host.ask = async () => {
+      const next = answersLeft.shift()!;
+      if (!answersLeft.length) on = false;
+      return next;
+    };
+    c.kick();
+    await settle(c);
+    expect(c.get(job.id)).toMatchObject({ state: 'queued', reason: 'Paused: knowledge workflows are off.' });
+    expect(c.get(job.id)!.result).toBeDefined();
+  });
+
   it('links cards written before a restart', async () => {
     const h = makeHost([objectAnswer(), cardsAnswer(2)]);
     const c = new KnowledgeCoordinator(h.host);

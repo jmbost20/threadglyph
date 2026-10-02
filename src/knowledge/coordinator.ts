@@ -224,13 +224,13 @@ export class KnowledgeCoordinator {
     try {
       if (!job.result) {
         job = await this.identify(job, abort.signal);
-        if (job.state === 'needs-review' || job.state === 'failed') return;
+        if (job.state !== 'running') return;
       }
       if (job.action === 'card') {
         job = await this.writeCards(job, abort.signal);
-        if (job.state === 'failed') return;
+        if (job.state !== 'running') return;
         job = await this.deliver(job, abort.signal);
-        if (job.state === 'waiting-anki' || job.state === 'failed') return;
+        if (job.state !== 'running') return;
       }
       if (!abort.signal.aborted) await this.save({ ...job, state: 'complete' });
     } catch (err) {
@@ -241,13 +241,16 @@ export class KnowledgeCoordinator {
     }
   }
 
-  private async ask(request: AiRequest, signal: AbortSignal): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  private async ask(request: AiRequest, signal: AbortSignal): Promise<{ ok: true; text: string } | { ok: false; message: string; paused?: true }> {
+    // Turned off meanwhile: the job waits, it has not failed.
+    if (!this.host.enabled()) return { ok: false, message: 'Paused: knowledge workflows are off.', paused: true };
     // Cancel frees the queue at once, even if the assistant does not stop.
     const stopped = new Promise<AiResult>((resolve) => {
       if (signal.aborted) resolve({ ok: false, kind: 'cancelled', message: 'Canceled.' });
       signal.addEventListener('abort', () => resolve({ ok: false, kind: 'cancelled', message: 'Canceled.' }), { once: true });
     });
     const out = await Promise.race([this.host.ask(request, signal), stopped]);
+    if (!this.host.enabled()) return { ok: false, message: 'Paused: knowledge workflows are off.', paused: true };
     if (!out) return { ok: false, message: 'No assistant is enabled for knowledge work. Turn on Local in Threadglyph settings.' };
     return out.ok ? out : { ok: false, message: out.message };
   }
@@ -283,7 +286,7 @@ export class KnowledgeCoordinator {
     const discussion = this.discussion(job);
     const ranked = rankCandidates(all, [job.quote ?? '', job.request, ...discussion.map((m) => m.body)].join('\n'));
     const answer = await this.ask(objectRequest(job, linkName(job.notePath), discussion, ranked), signal);
-    if (!answer.ok) return this.save({ ...job, state: 'failed', reason: answer.message });
+    if (!answer.ok) return this.save({ ...job, state: answer.paused ? 'queued' : 'failed', reason: answer.message });
     const parsed = parseObjectReply(answer.text);
     if (!parsed.ok) return this.save({ ...job, state: 'failed', reason: parsed.message });
     const proposal = parsed.proposal;
@@ -329,8 +332,11 @@ export class KnowledgeCoordinator {
     const evidence = this.evidence(job);
     const learning = this.learning(job);
     if (target.kind === 'existing') {
+      const mark = `%%threadglyph ${job.id}#${job.revision}%%`;
       await this.host.vault.process(target.path, (text) => {
-        let next = addEvidence(text, evidence, job.proposal?.keyIdeas ?? []);
+        // A resumed run that already added this evidence does not add it twice.
+        if (text.includes(mark)) return text;
+        let next = addEvidence(text, { ...evidence, mark }, job.proposal?.keyIdeas ?? []);
         next = addToList(next, 'source_refs', `[[${evidence.noteLink}]]`);
         next = setField(next, 'updated', evidence.date);
         return setField(next, 'learning_state', advance(field(next, 'learning_state'), learning));
@@ -357,7 +363,7 @@ export class KnowledgeCoordinator {
       const objectText = await this.host.vault.read(result.objectPath);
       if (objectText === null) return this.save({ ...job, state: 'failed', reason: `The object ${result.objectPath} is missing.` });
       const answer = await this.ask(cardRequest(job, result.objectPath, objectText, instructionOf(job.request)), signal);
-      if (!answer.ok) return this.save({ ...job, state: 'failed', reason: answer.message });
+      if (!answer.ok) return this.save({ ...job, state: answer.paused ? 'queued' : 'failed', reason: answer.message });
       const cards = parseCardsReply(answer.text);
       if (!cards.length) return this.save({ ...job, state: 'failed', reason: 'The assistant wrote no usable cards.' });
       drafts = cards.map((c) => ({ ...c, cardId: this.host.clock.newId().replace(/-/g, '').slice(0, 10) }));

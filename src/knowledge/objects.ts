@@ -40,11 +40,13 @@ export interface EvidenceEntry {
   quote: string | null;
   action: 'knowledge' | 'card';
   instruction: string;
+  /** A hidden Obsidian comment that identifies the request, so it is added once. */
+  mark?: string;
 }
 
 function evidenceBlock(e: EvidenceEntry): string {
   const quote = e.quote ? e.quote.trim().split('\n').map((l) => `> ${l}`).join('\n') : '> (image or no passage)';
-  return `${quote}\n\n— [[${e.noteLink}]] · thread ${e.threadId.slice(0, 8)} · ${e.date}`;
+  return `${quote}\n\n— [[${e.noteLink}]] · thread ${e.threadId.slice(0, 8)} · ${e.date}${e.mark ? ` ${e.mark}` : ''}`;
 }
 
 function historyLine(e: EvidenceEntry): string {
