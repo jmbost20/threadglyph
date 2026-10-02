@@ -17,6 +17,28 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const vault = sandboxPath(process.argv[2]);
 
 const notes = {
+  'Knowledge playground.md': `# Knowledge playground
+
+Synthetic reading for trying @knowledge and @card. Select a passage, comment with
+\`@knowledge what is this?\` or \`@card\`, and watch the status row on the thread.
+Objects appear in Knowledge/Objects, cards in Knowledge/Cards.
+
+## Caching
+
+A cache stores copies of frequently read data in faster memory, so later reads avoid
+the slower backing store. When the requested data is already there it is a cache hit;
+otherwise it is a cache miss and the data is fetched and usually kept for next time.
+
+## Consistency
+
+In an eventually consistent system, replicas may briefly disagree after a write, but
+they converge on the same value once writes stop. Strong consistency instead makes
+every read see the latest write, at the cost of extra coordination.
+
+## Browsers
+
+Browsers keep a local cache of images and scripts, so revisiting a page loads faster.
+`,
   'Welcome.md': `# Welcome to the Threadglyph sandbox
 
 Select any sentence in this note and run **Threadglyph: Comment on selection**.
@@ -143,7 +165,7 @@ for (const file of ['main.js', 'manifest.json', 'styles.css']) {
 const pluginData = join(pluginDir, 'data.json');
 if (!existsSync(pluginData)) {
   const sharedGemini = join(homedir(), '.ilc', 'gemini');
-  const settings = { aiEnabled: true, ...(existsSync(join(sharedGemini, '.env')) ? { geminiFolder: '~/.ilc/gemini' } : {}) };
+  const settings = { aiEnabled: true, knowledgeEnabled: true, ...(existsSync(join(sharedGemini, '.env')) ? { geminiFolder: '~/.ilc/gemini' } : {}) };
   writeFileSync(pluginData, JSON.stringify(settings, null, 2));
 }
 

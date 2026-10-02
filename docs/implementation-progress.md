@@ -300,3 +300,24 @@ The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-gro
 - The Agent Comments markup was removed from those notes so they read normally without that plugin; each anchor was checked to resolve to its exact passage in the cleaned note. Originals were backed up in the vault first.
 - Skipped on purpose: notes that only document the markup syntax (ADRs, templates, audit write-ups) and existing backup copies. Document Comments had no live comments left (only mentions in docs and backups).
 - Fix from the same feedback: the delete confirmation deletes on Enter even if focus landed on Cancel.
+
+## October 1 — Knowledge system POC (@knowledge / @card), sandbox only
+
+Owner request: start building the knowledge system from [[2026-09-28-threadglyph-knowledge-workflows-spec]] in the sandbox ("take a big bite"), as automated as possible, with a streamlined manual form for conflicts. The owner's instruction stands in for the spec's open K1 choice, and in part K2. Production stays untouched (owner, 2026-10-01).
+
+- **Built:** `src/knowledge/`.
+  - A trigger (owner comments only; code, quotes and inline code ignored).
+  - A durable private job queue in `.threadglyph/knowledge/jobs/`: one job per comment, resumes after restart, cancel, retry from the failed step, and Update request as a new revision.
+  - A semantic worker with two prompts (object proposal; cards from the object).
+  - Knowledge Object and card notes, with frontmatter following the upstream sketch: `ko_id`, kind, `subject_domains`, `review_state`, `source_refs`, `card_refs`, plus a new `learning_state` (captured, then discussed, then carded).
+  - Duplicate detection: word-overlap retrieval plus the model's match, with the review form for low-confidence matches and name clashes.
+  - An AnkiConnect delivery adapter, off by default. It is idempotent through a `threadglyph::<card id>` tag, and a closed Anki leaves the job waiting with **Check again**.
+- **UI:** status rows on thread cards, `@Knowledge` / `@Card` in the mention menu, a review modal, a queue modal, two commands, a settings section, and a Bases file.
+- **Deviations from the spec, to raise with the owner:**
+  - The coordinator runs inside the plugin, not as a separate process (simplest POC; jobs stop while Obsidian is closed and resume on open).
+  - Cards go into an Obsidian card inbox and, optionally, a plain Anki note type, not the existing anki-knowledge-system backends.
+  - The knowledge folder is a new `Knowledge/` tree, not the vault's `knowledge/<domain>/` structure.
+- **Live check (synthetic text, qwen3:8b):**
+  - the object proposal took 22 s, the definition card 5 s;
+  - with existing objects given, "this browser cache" matched **Cache** (high confidence), and "cache hit" stayed a new object.
+- `npm run check`: 464 tests pass, with 99.7% line coverage.

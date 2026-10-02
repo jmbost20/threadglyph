@@ -17,6 +17,7 @@ type Helpers = {
   setText(text: string): void;
   addClass(...cls: string[]): void;
   setAttr(name: string, value: string): void;
+  toggleClass(cls: string, on: boolean): void;
 };
 
 // The global HTMLElement typings for these helpers come from the real `obsidian` package.
@@ -47,6 +48,9 @@ proto.addClass = function (this: HTMLElement, ...cls: string[]) {
 };
 proto.setAttr = function (this: HTMLElement, name: string, value: string) {
   this.setAttribute(name, value);
+};
+proto.toggleClass = function (this: HTMLElement, cls: string, on: boolean) {
+  this.classList.toggle(cls, on);
 };
 
 export class WorkspaceLeaf {}
@@ -138,6 +142,10 @@ export class TFile extends TAbstractFile {
   }
 }
 
+export class TFolder extends TAbstractFile {
+  children: TAbstractFile[] = [];
+}
+
 export const notices: string[] = [];
 export class Notice {
   constructor(message: string) {
@@ -178,8 +186,30 @@ export class FakeAdapter {
 
 export class FakeVault extends Events {
   adapter = new FakeAdapter();
-  getAbstractFileByPath(path: string) {
-    return this.adapter.files.has(path) ? new TFile(path) : null;
+  getAbstractFileByPath(path: string): TAbstractFile | null {
+    if (this.adapter.files.has(path)) return new TFile(path);
+    if (!this.adapter.dirs.has(path)) return null;
+    const folder = new TFolder(path);
+    folder.children = [...this.adapter.files.keys()]
+      .filter((p) => p.startsWith(`${path}/`) && !p.slice(path.length + 1).includes('/'))
+      .map((p) => new TFile(p));
+    return folder;
+  }
+  async read(file: TFile) {
+    return this.adapter.read(file.path);
+  }
+  async create(path: string, data: string) {
+    if (this.adapter.files.has(path)) throw new Error(`File already exists: ${path}`);
+    this.adapter.files.set(path, data);
+    return new TFile(path);
+  }
+  async process(file: TFile, change: (data: string) => string) {
+    const next = change(await this.adapter.read(file.path));
+    this.adapter.files.set(file.path, next);
+    return next;
+  }
+  async createFolder(path: string) {
+    this.adapter.dirs.add(path);
   }
   async cachedRead(file: TFile) {
     return this.adapter.read(file.path);
@@ -322,6 +352,10 @@ export class FakeWorkspace extends Events {
     return new WorkspaceLeafImpl(this);
   }
   async revealLeaf() {}
+  opened: string[] = [];
+  async openLinkText(link: string) {
+    this.opened.push(link);
+  }
   getActiveFile() {
     return this.activeFile;
   }

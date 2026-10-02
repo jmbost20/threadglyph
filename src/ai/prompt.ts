@@ -61,6 +61,7 @@ export const REWRITE_MIN_LINES = 15;
 
 /** The standing instructions for a request: the agent's when it may propose edits. */
 export function systemPromptFor(request: AiRequest): string {
+  if (request.system) return request.system;
   if (!request.target) return SYSTEM_PROMPT;
   return request.target.text.split('\n').length > REWRITE_MIN_LINES ? AGENT_REWRITE_PROMPT : AGENT_SYSTEM_PROMPT;
 }

@@ -9,6 +9,7 @@ import { addReply } from '../src/model/thread';
 import type { ThreadRecord } from '../src/model/types';
 import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { DEFAULT_AI_SETTINGS } from '../src/ai/assistants';
+import { DEFAULT_KNOWLEDGE_SETTINGS } from '../src/knowledge/settings';
 import { ANCHORS_DIR, THREADS_DIR } from '../src/storage/paths';
 
 type Fake = InstanceType<typeof FakeApp>;
@@ -484,7 +485,7 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     input.dispatchEvent(new Event('input'));
     await flush();
     expect(plugin.settings.authorName).toBe('Jonah');
-    expect((plugin as unknown as { data: unknown }).data).toEqual({ ...DEFAULT_AI_SETTINGS, authorName: 'Jonah' });
+    expect((plugin as unknown as { data: unknown }).data).toEqual({ ...DEFAULT_AI_SETTINGS, ...DEFAULT_KNOWLEDGE_SETTINGS, authorName: 'Jonah' });
     input.value = '   ';
     input.dispatchEvent(new Event('input'));
     await flush();

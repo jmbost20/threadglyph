@@ -35,6 +35,8 @@ export interface AiRequest {
   target?: { label: string; text: string } | null;
   /** Other notes the user allowed the agent to read. */
   vaultNotes?: { path: string; text: string }[];
+  /** Standing instructions for a non-chat job (knowledge workflows); replaces the default system prompt. */
+  system?: string;
   /** Extra seconds on top of the configured timeout, for requests that must write a lot (agent rewrites). */
   extraSeconds?: number;
 }

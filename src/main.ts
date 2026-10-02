@@ -7,6 +7,7 @@ import {
   Setting,
   TAbstractFile,
   TFile,
+  TFolder,
   debounce,
   type App,
   type Editor,
@@ -50,14 +51,24 @@ import type { ProposalView } from './ui/proposalView';
 import { imageTitlesExtension, titleRenderedImages } from './ui/imageTitles';
 import { lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks';
 import { buildThreadViews, type ThreadFilter, type ThreadView } from './ui/viewModel';
+import { nodeHttp } from './ai/http';
+import { systemClock } from './model/thread';
+import { sectionAround } from './ai/context';
+import { AnkiConnect } from './knowledge/anki';
+import { KnowledgeCoordinator, statusView, type KnowledgeVault } from './knowledge/coordinator';
+import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings, type KnowledgeSettings } from './knowledge/settings';
+import { requestedAction } from './knowledge/trigger';
+import type { KnowledgeJob, KnowledgeStatusView } from './knowledge/types';
+import { KnowledgeQueueModal, KnowledgeReviewModal } from './ui/knowledgeModals';
 
-interface ThreadglyphSettings extends AiSettings {
+interface ThreadglyphSettings extends AiSettings, KnowledgeSettings {
   authorName: string;
 }
 
 const DEFAULT_SETTINGS: ThreadglyphSettings = {
   authorName: 'Me',
   ...DEFAULT_AI_SETTINGS,
+  ...DEFAULT_KNOWLEDGE_SETTINGS,
 };
 
 const ASSISTANT_LABELS: Record<AssistantId, string> = {
@@ -120,6 +131,8 @@ export default class ThreadglyphPlugin extends Plugin {
   private adapterCache: { key: string; factory: unknown; adapters: AiAdapter[] } | null = null;
 
   private readonly scheduleRefresh = debounce(() => void this.refresh(), 300, true);
+  /** Knowledge and card jobs; runs only while knowledge workflows are on. */
+  knowledge!: KnowledgeCoordinator;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -132,6 +145,21 @@ export default class ThreadglyphPlugin extends Plugin {
     this.files = new AdapterFileStore(this.app.vault.adapter);
     this.store = new ThreadStore(this.files);
     this.controller = new ThreadController(this.store, () => ({ kind: 'human', name: this.settings.authorName }));
+    this.knowledge = new KnowledgeCoordinator({
+      jobs: this.files,
+      vault: this.knowledgeVault(),
+      folder: () => this.settings.knowledgeFolder,
+      deck: () => this.settings.ankiDeck,
+      ask: (request, signal) => {
+        const adapter = this.settings.knowledgeEnabled ? this.findAssistant(this.settings.knowledgeAssistant) : null;
+        return adapter ? adapter.ask(request, signal) : Promise.resolve(null);
+      },
+      thread: (id) => this.store.get(id),
+      answered: (job) => this.answered(job),
+      delivery: () => (this.settings.ankiDelivery ? new AnkiConnect(nodeHttp, this.settings.ankiUrl, this.settings.ankiNoteType) : null),
+      clock: systemClock,
+      changed: () => this.scheduleRefresh(),
+    });
 
     this.registerView(VIEW_TYPE_THREADGLYPH, (leaf) => new ThreadPanel(leaf, this.panelActions()));
     this.registerView(VIEW_TYPE_AGENT, (leaf) => new AgentView(leaf, this.chatActions()));
@@ -264,6 +292,25 @@ export default class ThreadglyphPlugin extends Plugin {
         );
       }),
     );
+    this.addCommand({
+      id: 'knowledge-queue',
+      name: 'Knowledge: show queue',
+      checkCallback: (checking) => {
+        if (!this.settings.knowledgeEnabled) return false;
+        if (!checking) this.openKnowledgeQueue();
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'knowledge-review',
+      name: 'Knowledge: review the next request',
+      checkCallback: (checking) => {
+        const next = this.knowledge.all().find((j) => j.state === 'needs-review');
+        if (!next) return false;
+        if (!checking) this.openKnowledgeReview(next.id);
+        return true;
+      },
+    });
     this.addRibbonIcon('message-square-text', 'Open Threadglyph', () => void this.activatePanel());
     this.addSettingTab(new ThreadglyphSettingTab(this.app, this));
 
@@ -279,7 +326,9 @@ export default class ThreadglyphPlugin extends Plugin {
 
   private async start(): Promise<void> {
     await this.store.loadAll();
+    await this.knowledge.load();
     this.loaded = true;
+    if (this.settings.knowledgeEnabled) this.knowledge.kick();
 
     const isThreadFile = (file: TAbstractFile) => file.path.startsWith(`${THREADS_DIR}/`);
     const onThreadFile = async (file: TAbstractFile) => {
@@ -378,6 +427,7 @@ export default class ThreadglyphPlugin extends Plugin {
               this.ai.open(result.thread.id, mentioned.adapter.id, mentioned.agent);
               this.aiQuestions.set(result.thread.id, result.thread.messages[0].id);
             }
+            await this.queueKnowledge(result.thread.id, result.thread.messages[0].id, body, !!mentioned);
           }
           return result;
         }),
@@ -394,13 +444,21 @@ export default class ThreadglyphPlugin extends Plugin {
             const question = this.store.get(id)?.messages.at(-1);
             if (question) this.aiQuestions.set(id, question.id);
           }
+          const posted = result.ok ? this.store.get(id)?.messages.at(-1) : undefined;
+          if (posted) await this.queueKnowledge(id, posted.id, body, !!mentioned);
           return result;
         }),
       startEdit: (id, messageId) => {
         c.startEdit(id, messageId);
         void this.refresh();
       },
-      saveEdit: (id, messageId, body) => attempt(() => c.saveEdit(id, messageId, body)),
+      saveEdit: (id, messageId, body) =>
+        attempt(async () => {
+          const result = await c.saveEdit(id, messageId, body);
+          // Adding @knowledge or @card in an edit is a request; editing an existing request only marks it changed.
+          if (result.ok && !this.knowledge.forThread(id).some((j) => j.messageId === messageId)) await this.queueKnowledge(id, messageId, body, false);
+          return result;
+        }),
       cancelEdit: (id, messageId) => {
         c.cancelEdit(id, messageId);
         void this.refresh();
@@ -479,6 +537,11 @@ export default class ThreadglyphPlugin extends Plugin {
         void this.refresh();
       },
       rerender: () => void this.refresh(),
+      knowledgeOpen: (path) => void this.app.workspace.openLinkText(path, '', true),
+      knowledgeReview: (jobId) => this.openKnowledgeReview(jobId),
+      knowledgeRetry: (jobId) => void this.knowledge.retry(jobId),
+      knowledgeCancel: (jobId) => void this.knowledge.cancel(jobId),
+      knowledgeRerun: (jobId) => void this.rerunKnowledge(jobId),
     };
   }
 
@@ -513,6 +576,8 @@ export default class ThreadglyphPlugin extends Plugin {
   }
 
   async refresh(): Promise<void> {
+    // A job waiting for an assistant's answer may be ready now.
+    if (this.loaded && this.settings.knowledgeEnabled) this.knowledge.kick();
     const active = this.app.workspace.getActiveFile();
     if (active?.extension === 'md') this.currentFile = active;
     const file = this.currentFile && this.app.vault.getAbstractFileByPath(this.currentFile.path);
@@ -544,6 +609,7 @@ export default class ThreadglyphPlugin extends Plugin {
       filter: this.filter,
       assistants: this.assistants().map((a) => ({ id: a.id, name: a.name, detail: a.detail, destination: destination(a) })),
       agent: this.agentInfo(),
+      knowledgeActions: this.knowledgeActions(),
     };
     if (!this.loaded || !note) {
       for (const panel of panels) {
@@ -569,7 +635,141 @@ export default class ThreadglyphPlugin extends Plugin {
       const shown = entry.source === 'thread' ? this.agents.view(entry.key) : null;
       if (shown) proposals[entry.key] = shown;
     }
-    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath, ai, proposals });
+    const knowledge: Record<string, KnowledgeStatusView[]> = {};
+    for (const view of views) {
+      const jobs = this.knowledge.forThread(view.thread.id);
+      if (jobs.length) knowledge[view.thread.id] = jobs.map((j) => this.knowledgeStatus(j));
+    }
+    for (const panel of panels) panel.update({ ...base, status: 'ready', views, pendingQuote, pendingImagePath, ai, proposals, knowledge });
+  }
+
+  // ── Knowledge workflows ─────────────────────────────────────────────────────
+
+  /** @Knowledge and @Card in the mention menu, while knowledge workflows are on. */
+  private knowledgeActions() {
+    if (!this.settings.knowledgeEnabled) return [];
+    const via = this.findAssistant(this.settings.knowledgeAssistant);
+    const by = via ? ` · by ${via.name}, ${destination(via).toLowerCase()}` : ' · turn on an assistant first';
+    return [
+      { id: 'knowledge', name: 'Knowledge', detail: `adds this to your knowledge${by}`, destination: '' },
+      { id: 'card', name: 'Card', detail: `knowledge, then flashcards from it${by}`, destination: '' },
+    ];
+  }
+
+  /**
+   * Makes a knowledge job when an owner comment asks for one. The passage and
+   * its section are captured now, so later edits to the note do not change the request.
+   */
+  private async queueKnowledge(threadId: string, messageId: string, body: string, waitForAnswer: boolean): Promise<void> {
+    if (!this.settings.knowledgeEnabled) return;
+    const action = requestedAction(body);
+    const thread = this.store.get(threadId);
+    if (!action || !thread) return;
+    const captured = await this.capture(threadId);
+    await this.knowledge.enqueue({ action, threadId, messageId, notePath: thread.notePath, request: body, waitForAnswer, ...captured });
+    new Notice(action === 'card' ? 'Threadglyph: queued for knowledge and cards.' : 'Threadglyph: queued for your knowledge.');
+  }
+
+  /** The thread's passage and the section around it, as they are now. */
+  private async capture(threadId: string): Promise<{ quote: string | null; context: { label: string; text: string } | null }> {
+    const thread = this.store.get(threadId);
+    const file = thread && this.app.vault.getAbstractFileByPath(thread.notePath);
+    if (!thread || !(file instanceof TFile)) return { quote: null, context: null };
+    const doc = await this.noteText(file);
+    const [view] = buildThreadViews({ forNote: () => [thread], anchorFor: (id) => this.store.anchorFor(id) }, file.path, doc, this.resolveLink);
+    const quote = view?.quote ?? this.store.anchorFor(threadId)?.quote ?? null;
+    const context = view?.anchor.kind === 'found' ? sectionAround(doc, view.anchor.from) : null;
+    return { quote, context };
+  }
+
+  /** A job that also asked an assistant waits for its answer, or for that request to be closed. */
+  private answered(job: KnowledgeJob): boolean {
+    if (this.ai.get(job.threadId)) {
+      const messages = this.store.get(job.threadId)?.messages ?? [];
+      const at = messages.findIndex((m) => m.id === job.messageId);
+      return messages.slice(at + 1).some((m) => m.author.kind === 'ai');
+    }
+    return true;
+  }
+
+  private knowledgeStatus(job: KnowledgeJob): KnowledgeStatusView {
+    const message = this.store.get(job.threadId)?.messages.find((m) => m.id === job.messageId);
+    return statusView(job, message && !message.deletedAt ? message.body : null);
+  }
+
+  private async rerunKnowledge(jobId: string): Promise<void> {
+    const job = this.knowledge.get(jobId);
+    const message = job && this.store.get(job.threadId)?.messages.find((m) => m.id === job.messageId);
+    if (!job || !message) return;
+    const action = requestedAction(message.body);
+    if (!action) {
+      new Notice('That comment no longer says @knowledge or @card.');
+      return;
+    }
+    await this.knowledge.rerun(jobId, { action, request: message.body, ...(await this.capture(job.threadId)) });
+  }
+
+  openKnowledgeReview(jobId: string): void {
+    const job = this.knowledge.get(jobId);
+    if (!job || job.state !== 'needs-review' || !job.proposal) return;
+    new KnowledgeReviewModal(this.app, job, (decision) => this.knowledge.review(jobId, decision), () => this.knowledge.cancel(jobId)).open();
+  }
+
+  openKnowledgeQueue(): void {
+    new KnowledgeQueueModal(
+      this.app,
+      () => this.knowledge.all().map((job) => ({ job, view: this.knowledgeStatus(job), noteName: job.notePath.split('/').pop()!.replace(/\.md$/, '') })),
+      {
+        open: (path) => void this.app.workspace.openLinkText(path, '', true),
+        review: (jobId) => this.openKnowledgeReview(jobId),
+        retry: (jobId) => this.knowledge.retry(jobId),
+        cancel: (jobId) => this.knowledge.cancel(jobId),
+      },
+    ).open();
+  }
+
+  /** Vault access for the coordinator, refusing any path outside the knowledge folder. */
+  private knowledgeVault(): KnowledgeVault {
+    const vault = this.app.vault;
+    const inside = (path: string) => {
+      const root = `${this.settings.knowledgeFolder}/`;
+      if (!path.startsWith(root)) throw new Error(`Refusing to write outside ${root}: ${path}`);
+    };
+    const fileAt = (path: string) => {
+      const file = vault.getAbstractFileByPath(path);
+      return file instanceof TFile ? file : null;
+    };
+    return {
+      list: async (folder) => {
+        const dir = vault.getAbstractFileByPath(folder);
+        return dir instanceof TFolder ? dir.children.filter((f): f is TFile => f instanceof TFile && f.extension === 'md').map((f) => f.path) : [];
+      },
+      read: async (path) => {
+        const file = fileAt(path);
+        return file ? vault.read(file) : null;
+      },
+      create: async (path, text) => {
+        inside(path);
+        await vault.create(path, text);
+      },
+      process: async (path, change) => {
+        inside(path);
+        const file = fileAt(path);
+        if (!file) throw new Error(`${path} is missing.`);
+        await vault.process(file, change);
+      },
+      ensureFolder: async (path) => {
+        inside(`${path}/`);
+        let at = '';
+        for (const part of path.split('/')) {
+          at = at ? `${at}/${part}` : part;
+          if (!vault.getAbstractFileByPath(at)) await vault.createFolder(at);
+        }
+        // The first knowledge folder also gets a Bases view of the objects and the card inbox.
+        const base = `${this.settings.knowledgeFolder}/Knowledge.base`;
+        if (!vault.getAbstractFileByPath(base)) await vault.create(base, knowledgeBase(this.settings.knowledgeFolder));
+      },
+    };
   }
 
   // ── AI ──────────────────────────────────────────────────────────────────────
@@ -1196,7 +1396,7 @@ export default class ThreadglyphPlugin extends Plugin {
   async loadSettings(): Promise<void> {
     const saved = ((await this.loadData()) ?? {}) as Record<string, unknown>;
     const authorName = typeof saved.authorName === 'string' ? saved.authorName : DEFAULT_SETTINGS.authorName;
-    this.settings = { ...migrateAiSettings(saved), authorName };
+    this.settings = { ...migrateAiSettings(saved), ...migrateKnowledgeSettings(saved), authorName };
   }
 
   async saveSettings(): Promise<void> {
@@ -1312,6 +1512,48 @@ class ThreadglyphSettingTab extends PluginSettingTab {
     text('Timeout (seconds)', 'How long to wait for a reply before giving up.', () => String(s.aiTimeoutSeconds), (v) => {
       const seconds = Number.parseInt(v, 10);
       s.aiTimeoutSeconds = Number.isFinite(seconds) && seconds >= 10 ? seconds : DEFAULT_SETTINGS.aiTimeoutSeconds;
+    });
+
+    new Setting(this.containerEl).setName('Knowledge (preview)').setHeading();
+    new Setting(this.containerEl)
+      .setName('Knowledge workflows')
+      .setDesc(
+        'A comment that says @knowledge adds the passage to a Knowledge Object; @card also writes flashcards from that object. ' +
+          'Work runs in the background, without a preview, and writes only inside the knowledge folder.',
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(s.knowledgeEnabled).onChange(async (value) => {
+          s.knowledgeEnabled = value;
+          await save();
+        }),
+      );
+    text('Knowledge folder', 'Objects go in <folder>/Objects, cards in <folder>/Cards.', () => s.knowledgeFolder, (v) => {
+      s.knowledgeFolder = v.replace(/^\/+|\/+$/g, '') || DEFAULT_KNOWLEDGE_SETTINGS.knowledgeFolder;
+    });
+    new Setting(this.containerEl)
+      .setName('Knowledge assistant')
+      .setDesc('Who writes objects and cards. Gemini and Claude send the passage and thread to the cloud without a preview.')
+      .addDropdown((dropdown) => {
+        for (const id of ASSISTANT_IDS) dropdown.addOption(id, ASSISTANT_LABELS[id]);
+        dropdown.setValue(s.knowledgeAssistant).onChange(async (value) => {
+          s.knowledgeAssistant = value as AssistantId;
+          await save();
+        });
+      });
+    new Setting(this.containerEl)
+      .setName('Send cards to Anki')
+      .setDesc('Through AnkiConnect, into the deck below. Off: cards stay in the card inbox in Obsidian.')
+      .addToggle((toggle) =>
+        toggle.setValue(s.ankiDelivery).onChange(async (value) => {
+          s.ankiDelivery = value;
+          await save();
+        }),
+      );
+    text('Anki deck', `Default ${DEFAULT_KNOWLEDGE_SETTINGS.ankiDeck}.`, () => s.ankiDeck, (v) => {
+      s.ankiDeck = v || DEFAULT_KNOWLEDGE_SETTINGS.ankiDeck;
+    });
+    text('Anki note type', 'Needs Front and Back fields.', () => s.ankiNoteType, (v) => {
+      s.ankiNoteType = v || DEFAULT_KNOWLEDGE_SETTINGS.ankiNoteType;
     });
   }
 }

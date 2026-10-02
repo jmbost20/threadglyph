@@ -1,5 +1,6 @@
 import { ItemView, Scope, type WorkspaceLeaf } from 'obsidian';
 import type { AiState, ContextScope } from '../ai/session';
+import type { KnowledgeStatusView } from '../knowledge/types';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
 import { CompareModal, ConfirmDeleteModal } from './modals';
@@ -52,6 +53,10 @@ export interface PanelState {
   ai: Record<string, AiCardView>;
   /** Agent proposals waiting for Accept or Reject, by thread id. */
   proposals?: Record<string, ProposalView>;
+  /** @Knowledge and @Card, offered in the mention menu when knowledge workflows are on. */
+  knowledgeActions?: AssistantInfo[];
+  /** Knowledge and card jobs, by thread id. */
+  knowledge?: Record<string, KnowledgeStatusView[]>;
 }
 
 /** An assistant as the panel shows it. */
@@ -104,6 +109,14 @@ export interface PanelActions {
   proposalReject(threadId: string): void;
   setFilter(filter: ThreadFilter): void;
   rerender(): void;
+  /** Opens a Knowledge Object or card note. */
+  knowledgeOpen?(path: string): void;
+  /** Opens the review form of a job that may duplicate an existing object. */
+  knowledgeReview?(jobId: string): void;
+  knowledgeRetry?(jobId: string): void;
+  knowledgeCancel?(jobId: string): void;
+  /** Runs an edited request again. */
+  knowledgeRerun?(jobId: string): void;
 }
 
 const isSubmit = (e: KeyboardEvent) => e.key === 'Enter' && (e.metaKey || e.ctrlKey);
@@ -587,6 +600,9 @@ export class ThreadPanel extends ItemView {
         () => proposal.diff && new CompareModal(this.app, proposal.diff).open());
     }
 
+    const jobs = this.state.knowledge?.[thread.id];
+    if (jobs?.length) this.renderKnowledge(card, jobs);
+
     const footer = card.createDiv({ cls: 'tg-card-footer' });
     if (this.state.assistants.length && thread.status === 'open' && !ai) {
       const ask = footer.createEl('button', { cls: 'tg-link tg-ask', text: 'Ask AI' });
@@ -839,7 +855,7 @@ export class ThreadPanel extends ItemView {
    * consults first, so arrows/Enter/Escape drive the menu only while it is open.
    */
   private attachMentions(input: HTMLTextAreaElement, wrap: HTMLElement): (e: KeyboardEvent) => boolean {
-    const names = this.mentionables().map((a) => a.name);
+    const names = this.menuEntries().map((a) => a.name);
     if (!names.length) return () => false;
     let menu: HTMLElement | null = null;
     let items: string[] = [];
@@ -867,7 +883,7 @@ export class ThreadPanel extends ItemView {
       menu.empty();
       items.forEach((name, i) => {
         const option = menu!.createDiv({ cls: 'tg-mention-option', text: `@${name}` });
-        const info = this.mentionables().find((a) => a.name === name);
+        const info = this.menuEntries().find((a) => a.name === name);
         if (info) option.createSpan({ cls: 'tg-mention-detail', text: info.detail });
         option.setAttr('role', 'option');
         option.setAttr('aria-selected', String(i === index));
@@ -999,6 +1015,41 @@ export class ThreadPanel extends ItemView {
   private hasAssistantMention(body: string): boolean {
     const mentions = new Set([...body.matchAll(/(?:^|\s)@(\w+)\b/g)].map((m) => m[1].toLowerCase()));
     return this.mentionables().some((a) => mentions.has(a.name.toLowerCase()));
+  }
+
+  /** One row per knowledge or card job: what happened, and what can be done next. */
+  private renderKnowledge(card: HTMLElement, jobs: KnowledgeStatusView[]): void {
+    const box = card.createDiv({ cls: 'tg-knowledge' });
+    for (const job of jobs) {
+      const row = box.createDiv({ cls: `tg-knowledge-row is-${job.state}` });
+      row.createSpan({ cls: 'tg-knowledge-kind', text: job.action === 'card' ? 'Card' : 'Knowledge' });
+      row.createSpan({ cls: 'tg-knowledge-text', text: job.text });
+      const link = (text: string, run: () => void, title?: string) => {
+        const b = row.createEl('button', { cls: 'tg-link tg-knowledge-action', text, attr: title ? { title } : {} });
+        b.onclick = run;
+      };
+      const a = this.actions;
+      if (job.objectPath && a.knowledgeOpen) {
+        const path = job.objectPath;
+        link('Open', () => a.knowledgeOpen!(path), path);
+      }
+      if (job.cardPaths.length && a.knowledgeOpen) {
+        const first = job.cardPaths[0];
+        link(job.cardPaths.length > 1 ? 'Cards' : 'Card', () => a.knowledgeOpen!(first), first);
+      }
+      if (job.state === 'needs-review' && a.knowledgeReview) link('Review', () => a.knowledgeReview!(job.jobId));
+      if (job.state === 'failed' && a.knowledgeRetry) link('Retry', () => a.knowledgeRetry!(job.jobId));
+      if (job.state === 'waiting-anki' && a.knowledgeRetry) link('Check again', () => a.knowledgeRetry!(job.jobId));
+      if (['queued', 'running', 'needs-review', 'waiting-anki'].includes(job.state) && a.knowledgeCancel) link('Cancel', () => a.knowledgeCancel!(job.jobId));
+      if (job.stale && a.knowledgeRerun) {
+        link('Update request', () => a.knowledgeRerun!(job.jobId), 'The comment changed since this ran. Run it again with the new wording.');
+      }
+    }
+  }
+
+  /** Everything the @ menu offers: the agent first, then each assistant, then the knowledge actions. */
+  private menuEntries(): AssistantInfo[] {
+    return [...this.mentionables(), ...(this.state.knowledgeActions ?? [])];
   }
 
   /** Everything the @ menu offers: the agent first, then each assistant. */

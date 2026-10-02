@@ -1142,3 +1142,74 @@ body {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
 }
+
+/* Knowledge workflows: one status row per @knowledge / @card job. */
+.tg-knowledge {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.tg-knowledge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.tg-knowledge-kind {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.tg-knowledge-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tg-knowledge-row.is-failed .tg-knowledge-text,
+.tg-knowledge-row.is-needs-review .tg-knowledge-text {
+  color: var(--text-warning);
+}
+
+.tg-knowledge-row.is-complete .tg-knowledge-kind {
+  color: var(--text-success);
+}
+
+.tg-knowledge-action {
+  font-size: var(--font-ui-smaller);
+}
+
+.tg-knowledge-queue .tg-knowledge-row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tg-review-option {
+  align-items: flex-start;
+}
+
+.tg-review-title {
+  font-weight: var(--font-semibold);
+}
+
+.tg-review-detail {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.tg-review-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.tg-review-new.is-hidden {
+  display: none;
+}

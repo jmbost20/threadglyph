@@ -97,7 +97,8 @@ export function escapeRawControls(json: string): string {
   return out;
 }
 
-function parseJson(text: string): unknown {
+/** JSON.parse, retried after escaping the raw tabs and line breaks small models leave in strings. */
+export function parseJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
