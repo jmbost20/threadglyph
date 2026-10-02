@@ -321,3 +321,16 @@ Owner request: start building the knowledge system from [[2026-09-28-threadglyph
   - the object proposal took 22 s, the definition card 5 s;
   - with existing objects given, "this browser cache" matched **Cache** (high confidence), and "cache hit" stayed a new object.
 - `npm run check`: 464 tests pass, with 99.7% line coverage.
+
+### Owner feedback on the POC (October 1, evening)
+
+- **Problem:** the object took the note's name ("Knowledge playground"), not the highlighted concept.
+  - **Cause:** the note's top-level heading made the whole note the "section".
+  - **Now:**
+    - the highlight names the concept (`conceptTitle`);
+    - the model gets the highlighted sentence with the concept in **bold**, plus only the nearest sub-section (`localSection`);
+    - a drifted answer is asked once more about the concept.
+  - **Live check, qwen3:8b on the playground:** passage gives Passage, cache gives Cache, store gives Store, cache hit gives Cache Hit, replicas gives Replica, each described the way its sentence uses it.
+- **Evidence** is now the sentence(s) around the highlight, linked to `[[Note#Heading]]`.
+- **@card intake form (owner request):** one pop-up per card request, filled in from inference: the concept, new or existing, the card type, roughly how many, and a note. Unclear requests ask "Is this a concept card?". Review and intake forms open by themselves once per request, and Review reopens them.
+- **Open** writes a "Selected" view into `Knowledge.base`, filtered to the concept and the cards from the same request, and opens it. Bases has no API to highlight a row. The base names the file column "Concept" and shows `ko_id` as "ID".

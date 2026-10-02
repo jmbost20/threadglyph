@@ -48,10 +48,38 @@ export function migrateKnowledgeSettings(saved: Record<string, unknown>): Knowle
   };
 }
 
-/** An Obsidian Bases file listing the objects and the card inbox. */
-export function knowledgeBase(folder: string): string {
+const quoted = (s: string) => JSON.stringify(s);
+
+/**
+ * An Obsidian Bases file listing the objects and the card inbox. With
+ * `selected`, a first "Selected" view shows just those notes (one concept and
+ * the cards made with it), which is what Open shows.
+ */
+export function knowledgeBase(folder: string, selected: string[] = []): string {
+  const focus = selected.length
+    ? [
+        '  - type: table',
+        '    name: Selected',
+        '    filters:',
+        '      or:',
+        ...selected.map((path) => `        - file.path == ${quoted(path)}`),
+        '    order:',
+        '      - file.name',
+        '      - type',
+        '      - ko_id',
+        '      - learning_state',
+        '      - object',
+        '      - delivery',
+      ]
+    : [];
   return [
+    'properties:',
+    '  file.name:',
+    '    displayName: Concept',
+    '  ko_id:',
+    '    displayName: ID',
     'views:',
+    ...focus,
     '  - type: table',
     '    name: Objects',
     '    filters:',
@@ -59,6 +87,7 @@ export function knowledgeBase(folder: string): string {
     `        - file.inFolder("${folder}/Objects")`,
     '    order:',
     '      - file.name',
+    '      - ko_id',
     '      - kind',
     '      - learning_state',
     '      - review_state',

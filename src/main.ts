@@ -53,10 +53,10 @@ import { lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks
 import { buildThreadViews, type ThreadFilter, type ThreadView } from './ui/viewModel';
 import { nodeHttp } from './ai/http';
 import { systemClock } from './model/thread';
-import { sectionAround } from './ai/context';
 import { AnkiConnect } from './knowledge/anki';
 import { KnowledgeCoordinator, statusView, type KnowledgeVault } from './knowledge/coordinator';
 import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings, type KnowledgeSettings } from './knowledge/settings';
+import { excerptAround, localSection } from './knowledge/source';
 import { requestedAction } from './knowledge/trigger';
 import type { KnowledgeJob, KnowledgeStatusView } from './knowledge/types';
 import { KnowledgeQueueModal, KnowledgeReviewModal } from './ui/knowledgeModals';
@@ -133,6 +133,11 @@ export default class ThreadglyphPlugin extends Plugin {
   private readonly scheduleRefresh = debounce(() => void this.refresh(), 300, true);
   /** Knowledge and card jobs; runs only while knowledge workflows are on. */
   knowledge!: KnowledgeCoordinator;
+  /** Requests whose form already opened by itself (`id#revision`). */
+  private readonly prompted = new Set<string>();
+  private reviewOpen = false;
+  /** Forms open by themselves only for requests that changed since this load. */
+  private readonly startedAt = new Date().toISOString();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -158,7 +163,10 @@ export default class ThreadglyphPlugin extends Plugin {
       answered: (job) => this.answered(job),
       delivery: () => (this.settings.ankiDelivery ? new AnkiConnect(nodeHttp, this.settings.ankiUrl, this.settings.ankiNoteType) : null),
       clock: systemClock,
-      changed: () => this.scheduleRefresh(),
+      changed: () => {
+        this.scheduleRefresh();
+        this.promptKnowledge();
+      },
       enabled: () => this.settings.knowledgeEnabled,
     });
 
@@ -306,7 +314,7 @@ export default class ThreadglyphPlugin extends Plugin {
       id: 'knowledge-review',
       name: 'Knowledge: review the next request',
       checkCallback: (checking) => {
-        const next = this.settings.knowledgeEnabled ? this.knowledge.all().find((j) => j.state === 'needs-review') : undefined;
+        const next = this.settings.knowledgeEnabled ? this.knowledge.all().find((j) => j.state === 'needs-review' || j.state === 'needs-intake') : undefined;
         if (!next) return false;
         if (!checking) this.openKnowledgeReview(next.id);
         return true;
@@ -540,6 +548,7 @@ export default class ThreadglyphPlugin extends Plugin {
       },
       rerender: () => void this.refresh(),
       knowledgeOpen: (path) => void this.app.workspace.openLinkText(path, '', true),
+      knowledgeShow: (jobId) => void this.openInKnowledgeBase(jobId),
       knowledgeReview: (jobId) => this.openKnowledgeReview(jobId),
       knowledgeRetry: (jobId) => {
         if (this.settings.knowledgeEnabled) void this.knowledge.retry(jobId);
@@ -675,15 +684,21 @@ export default class ThreadglyphPlugin extends Plugin {
   }
 
   /** The thread's passage and the section around it, as they are now. */
-  private async capture(threadId: string): Promise<{ quote: string | null; context: { label: string; text: string } | null }> {
+  private async capture(threadId: string): Promise<{
+    quote: string | null;
+    context: { label: string; text: string } | null;
+    excerpt: string | null;
+    heading: string | null;
+  }> {
     const thread = this.store.get(threadId);
     const file = thread && this.app.vault.getAbstractFileByPath(thread.notePath);
-    if (!thread || !(file instanceof TFile)) return { quote: null, context: null };
+    if (!thread || !(file instanceof TFile)) return { quote: null, context: null, excerpt: null, heading: null };
     const doc = await this.noteText(file);
     const [view] = buildThreadViews({ forNote: () => [thread], anchorFor: (id) => this.store.anchorFor(id) }, file.path, doc, this.resolveLink);
     const quote = view?.quote ?? this.store.anchorFor(threadId)?.quote ?? null;
-    const context = view?.anchor.kind === 'found' ? sectionAround(doc, view.anchor.from) : null;
-    return { quote, context };
+    if (view?.anchor.kind !== 'found') return { quote, context: null, excerpt: null, heading: null };
+    const { excerpt, heading } = excerptAround(doc, view.anchor.from, view.anchor.to);
+    return { quote, context: localSection(doc, view.anchor.from), excerpt, heading };
   }
 
   /** A job that also asked an assistant waits for its answer, or for that request to be closed. */
@@ -716,8 +731,41 @@ export default class ThreadglyphPlugin extends Plugin {
 
   openKnowledgeReview(jobId: string): void {
     const job = this.knowledge.get(jobId);
-    if (!this.settings.knowledgeEnabled || !job || job.state !== 'needs-review' || !job.proposal) return;
-    new KnowledgeReviewModal(this.app, job, (decision) => this.knowledge.review(jobId, decision), () => this.knowledge.cancel(jobId)).open();
+    if (!this.settings.knowledgeEnabled || !job || (job.state !== 'needs-review' && job.state !== 'needs-intake') || !job.proposal) return;
+    this.prompted.add(`${job.id}#${job.revision}`);
+    this.reviewOpen = true;
+    const modal = new KnowledgeReviewModal(this.app, job, (decision, plan) => this.knowledge.review(jobId, decision, plan), () => this.knowledge.cancel(jobId));
+    const close = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      close();
+      this.reviewOpen = false;
+    };
+    modal.open();
+  }
+
+  /**
+   * Opens the form of a request that has just come to need the owner (a
+   * possible duplicate, or a card request's choices), once per request.
+   * Closing it leaves the Review button on the thread.
+   */
+  private promptKnowledge(): void {
+    if (this.reviewOpen || !this.settings.knowledgeEnabled) return;
+    const next = this.knowledge.all().find((j) =>
+      (j.state === 'needs-review' || j.state === 'needs-intake') && j.updatedAt >= this.startedAt && !this.prompted.has(`${j.id}#${j.revision}`));
+    if (next) this.openKnowledgeReview(next.id);
+  }
+
+  /** Opens the knowledge base on a view of just this request's concept and the cards made with it. */
+  async openInKnowledgeBase(jobId: string): Promise<void> {
+    const job = this.knowledge.get(jobId);
+    if (!job?.result) return;
+    const folder = this.settings.knowledgeFolder;
+    const path = `${folder}/Knowledge.base`;
+    const text = knowledgeBase(folder, [job.result.objectPath, ...job.result.cardPaths]);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) await this.app.vault.process(existing, () => text);
+    else await this.app.vault.create(path, text);
+    await this.app.workspace.openLinkText(`${path}#Selected`, '', true);
   }
 
   openKnowledgeQueue(): void {
@@ -726,7 +774,7 @@ export default class ThreadglyphPlugin extends Plugin {
       this.app,
       () => this.knowledge.all().map((job) => ({ job, view: this.knowledgeStatus(job), noteName: job.notePath.split('/').pop()!.replace(/\.md$/, '') })),
       {
-        open: (path) => void this.app.workspace.openLinkText(path, '', true),
+        open: (jobId) => void this.openInKnowledgeBase(jobId),
         review: (jobId) => this.openKnowledgeReview(jobId),
         retry: (jobId) => this.knowledge.retry(jobId),
         cancel: (jobId) => this.knowledge.cancel(jobId),

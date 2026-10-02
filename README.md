@@ -33,12 +33,20 @@ Below **Open / Resolved / All**, expand **Custom filters** for agent, comment ag
 
 Turn on **Settings → Knowledge workflows** to make two more mentions work in any comment:
 
-- **`@knowledge`** turns the commented passage, its section and the thread (including an assistant's answer) into a **Knowledge Object**: a note in `Knowledge/Objects/` with an Essence, Key ideas, the Evidence it came from, and a Learning history. If the object already exists, the new evidence is appended to it; the Essence and your edits are never overwritten.
-- **`@card`** does the same, then writes flashcards **from that object**, not from the raw passage. Cards come from what you read and discussed, starting with a definition card. They land in `Knowledge/Cards/` (the *card inbox*), and in Anki only when **Send cards to Anki** is on.
+- **`@knowledge`**: **the highlighted words name the concept** (a word or phrase; "caches" becomes *Cache*, never the note's or heading's name). It becomes a **Knowledge Object**, a note in `Knowledge/Objects/` with:
+  - an Essence, explained the way the source sentence uses the concept;
+  - Key ideas;
+  - Evidence: the sentence(s) around the highlight, linked to their section (`[[Note#Heading]]`);
+  - a Learning history.
+
+  If the object already exists, the new evidence is appended to it; the Essence and your edits are never overwritten.
+- **`@card`** does the same, then writes flashcards **from that object**, not from the raw passage. Cards land in `Knowledge/Cards/` (the *card inbox*), and in Anki only when **Send cards to Anki** is on.
+  - First, one **intake form** opens by itself. It is filled in from what the AI could infer: the concept name, whether it goes into an existing object, the card type (concept, application, comparison, process, fact, other) and roughly how many cards, plus a box for anything else.
+  - When the request is unclear, the form asks "Is this a concept card?". Enter accepts it.
 
 Work runs in the background, one request at a time, with the **Knowledge assistant** (Local by default, so nothing leaves the computer). A comment that also asks `@Local …` waits for that answer and includes it. Each thread shows a status row (queued, running, done, failed, needs review) with **Open**, **Retry**, **Cancel** and **Update request** (after you edit the comment).
 
-When the assistant thinks the request may be an object you already have, the job stops at **Needs review**. **Review** opens a form: add it to the existing object, or create a new one with an editable title and essence (Enter or ⌘↩ applies). **Knowledge: show queue** lists every request; **Knowledge: review the next request** opens the next review.
+When the assistant thinks the request may be an object you already have, the job stops at **Needs review**, and the form opens by itself. You can add it to the existing object, or create a new one with an editable name and essence (Enter applies). **Later** closes the form, and **Review** on the thread brings it back. **Open** on a thread shows the knowledge base filtered to that concept and the cards made with it. **Knowledge: show queue** lists every request; **Knowledge: review the next request** opens the next review.
 
 `Knowledge/Knowledge.base` is an Obsidian Bases view of the objects (kind, learning state, sources) and the card inbox. Knowledge workflows write **only inside the knowledge folder**; source notes are never changed. Jobs, which hold the quoted passage, are kept in `.threadglyph/knowledge/jobs/`.
 

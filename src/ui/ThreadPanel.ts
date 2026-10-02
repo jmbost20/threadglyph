@@ -111,6 +111,8 @@ export interface PanelActions {
   rerender(): void;
   /** Opens a Knowledge Object or card note. */
   knowledgeOpen?(path: string): void;
+  /** Opens the knowledge base filtered to a job's concept and the cards made with it. */
+  knowledgeShow?(jobId: string): void;
   /** Opens the review form of a job that may duplicate an existing object. */
   knowledgeReview?(jobId: string): void;
   knowledgeRetry?(jobId: string): void;
@@ -1029,18 +1031,14 @@ export class ThreadPanel extends ItemView {
         b.onclick = run;
       };
       const a = this.actions;
-      if (job.objectPath && a.knowledgeOpen) {
-        const path = job.objectPath;
-        link('Open', () => a.knowledgeOpen!(path), path);
+      if (job.objectPath && a.knowledgeShow) {
+        const what = job.cardPaths.length ? `the concept and its ${job.cardPaths.length === 1 ? 'card' : `${job.cardPaths.length} cards`}` : 'the concept';
+        link('Open', () => a.knowledgeShow!(job.jobId), `Show ${what} in the knowledge base`);
       }
-      if (job.cardPaths.length && a.knowledgeOpen) {
-        const first = job.cardPaths[0];
-        link(job.cardPaths.length > 1 ? 'Cards' : 'Card', () => a.knowledgeOpen!(first), first);
-      }
-      if (job.state === 'needs-review' && a.knowledgeReview) link('Review', () => a.knowledgeReview!(job.jobId));
+      if ((job.state === 'needs-review' || job.state === 'needs-intake') && a.knowledgeReview) link('Review', () => a.knowledgeReview!(job.jobId));
       if (job.state === 'failed' && a.knowledgeRetry) link('Retry', () => a.knowledgeRetry!(job.jobId));
       if (job.state === 'waiting-anki' && a.knowledgeRetry) link('Check again', () => a.knowledgeRetry!(job.jobId));
-      if (['queued', 'running', 'needs-review', 'waiting-anki'].includes(job.state) && a.knowledgeCancel) link('Cancel', () => a.knowledgeCancel!(job.jobId));
+      if (['queued', 'running', 'needs-review', 'needs-intake', 'waiting-anki'].includes(job.state) && a.knowledgeCancel) link('Cancel', () => a.knowledgeCancel!(job.jobId));
       if (job.stale && a.knowledgeRerun) {
         link('Update request', () => a.knowledgeRerun!(job.jobId), 'The comment changed since this ran. Run it again with the new wording.');
       }

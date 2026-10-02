@@ -16,6 +16,8 @@ export type JobState =
   | 'running'
   /** A possible duplicate object: the owner decides in the review form. */
   | 'needs-review'
+  /** A card request waiting for the owner's choices (concept, card type, how many). */
+  | 'needs-intake'
   /** The object and cards exist; Anki was not reachable to deliver them. */
   | 'waiting-anki'
   | 'complete'
@@ -39,6 +41,31 @@ export interface ObjectProposal {
   /** The existing object the worker says this is, by title, and how sure it is. */
   match: string | null;
   confidence: 'high' | 'low' | 'none';
+  /** What kind of cards the request seems to want, how many, and whether that was unclear. */
+  cardType: CardType;
+  cardCount: number;
+  ambiguous: boolean;
+}
+
+export const CARD_TYPES = ['concept', 'application', 'comparison', 'process', 'fact', 'other'] as const;
+export type CardType = (typeof CARD_TYPES)[number];
+
+export const CARD_TYPE_LABELS: Record<CardType, string> = {
+  concept: 'Concept (what it is, what it means)',
+  application: 'Application (examples, when to use it)',
+  comparison: 'Comparison (how it differs from…)',
+  process: 'Process (steps, how it works)',
+  fact: 'Fact (names, numbers, dates)',
+  other: 'Other (say how in the note)',
+};
+
+/** The owner's choices for the cards, from the intake form. */
+export interface CardPlan {
+  type: CardType;
+  /** Roughly how many cards. */
+  count: number;
+  /** Anything else, e.g. "contrast it with a miss". */
+  note: string;
 }
 
 export interface Candidate {
@@ -77,6 +104,14 @@ export interface KnowledgeJob {
   quote: string | null;
   /** The section around the passage, captured with it. */
   context: { label: string; text: string } | null;
+  /** The sentence(s) around the highlight, highlight in bold: the object's evidence. */
+  excerpt?: string | null;
+  /** The heading the highlight sits under, for a link back to that section. */
+  heading?: string | null;
+  /** The owner's card choices from the intake form. */
+  plan?: CardPlan;
+  /** Which choice the form starts on: an existing object's path, or `new`. */
+  suggest?: string;
   /** The comment that asked, as it was when the job was made. */
   request: string;
   /** Run after the assistant this comment also asked has answered (or the request was closed). */

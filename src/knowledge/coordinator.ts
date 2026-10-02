@@ -22,9 +22,10 @@ import {
   type EvidenceEntry,
   type LearningState,
 } from './objects';
+import { conceptTitle } from './source';
 import { instructionOf } from './trigger';
 import { cardRequest, objectRequest, parseCardsReply, parseObjectReply } from './worker';
-import type { Candidate, CardDraft, JobMessage, KnowledgeAction, KnowledgeJob, KnowledgeStatusView, ObjectProposal } from './types';
+import type { Candidate, CardDraft, CardPlan, JobMessage, KnowledgeAction, KnowledgeJob, KnowledgeStatusView, ObjectProposal } from './types';
 
 /** Private runtime folder for jobs; they hold quoted note text, so never the tracked records. */
 export const JOBS_DIR = '.threadglyph/knowledge/jobs';
@@ -71,8 +72,12 @@ export interface EnqueueInput {
   notePath: string;
   quote: string | null;
   context: { label: string; text: string } | null;
+  excerpt?: string | null;
+  heading?: string | null;
   request: string;
   waitForAnswer: boolean;
+  /** Card choices made up front; without them a card request asks with the intake form. */
+  plan?: CardPlan;
 }
 
 const jobPath = (id: string) => `${JOBS_DIR}/${id}.json`;
@@ -174,14 +179,19 @@ export class KnowledgeCoordinator {
     await this.save({ ...job, state: 'canceled', reason: job.result ? 'Canceled. What it already made stays.' : 'Canceled.' });
   }
 
-  /** The owner's choice in the review form: add to an existing object, or make a new one. */
-  async review(id: string, decision: ReviewDecision): Promise<void> {
-    const job = this.jobs.get(id);
-    if (!job || job.state !== 'needs-review' || !job.proposal || !this.host.enabled()) return;
+  /**
+   * The owner's choice in the review or intake form: add to an existing object,
+   * or make a new one; for a card request, also what cards to write.
+   */
+  async review(id: string, decision: ReviewDecision, plan?: CardPlan): Promise<void> {
+    const found = this.jobs.get(id);
+    if (!found || (found.state !== 'needs-review' && found.state !== 'needs-intake') || !found.proposal || !this.host.enabled()) return;
+    const job: KnowledgeJob = plan ? { ...found, plan } : found;
+    const proposal = found.proposal;
     try {
       const next = await this.publish(job, decision.kind === 'existing'
         ? { kind: 'existing', path: decision.path }
-        : { kind: 'new', proposal: { ...job.proposal, title: decision.title.trim() || job.proposal.title, essence: decision.essence.trim() || job.proposal.essence } });
+        : { kind: 'new', proposal: { ...proposal, title: decision.title.trim() || proposal.title, essence: decision.essence.trim() || proposal.essence } });
       await this.save({ ...next, state: 'queued', reason: undefined });
     } catch (err) {
       await this.save({ ...job, reason: (err as Error).message });
@@ -287,11 +297,34 @@ export class KnowledgeCoordinator {
     const ranked = rankCandidates(all, [job.quote ?? '', job.request, ...discussion.map((m) => m.body)].join('\n'));
     const answer = await this.ask(objectRequest(job, linkName(job.notePath), discussion, ranked), signal);
     if (!answer.ok) return this.save({ ...job, state: answer.paused ? 'queued' : 'failed', reason: answer.message });
-    const parsed = parseObjectReply(answer.text);
+    let parsed = parseObjectReply(answer.text);
     if (!parsed.ok) return this.save({ ...job, state: 'failed', reason: parsed.message });
-    const proposal = parsed.proposal;
+    // The highlight names the concept: never the note's or the section's name.
+    const named = conceptTitle(parsed.proposal.title, job.quote, linkName(job.notePath));
+    if (named.title !== parsed.proposal.title) {
+      // It wrote about something else in the section: ask once more, about the highlighted concept.
+      const again = await this.ask(objectRequest(job, linkName(job.notePath), discussion, ranked, named.title), signal);
+      if (!again.ok && again.paused) return this.save({ ...job, state: 'queued', reason: again.message });
+      const retried = again.ok ? parseObjectReply(again.text) : null;
+      if (retried?.ok) parsed = { ok: true, proposal: { ...retried.proposal, title: named.title } };
+    }
+    const aliases = [...parsed.proposal.aliases, ...(named.alias ? [named.alias] : [])].filter((a, i, all) => a.toLowerCase() !== named.title.toLowerCase() && all.indexOf(a) === i);
+    const proposal = { ...parsed.proposal, title: named.title, aliases };
     const matched = proposal.match ? byName(all, proposal.match) : null;
     const sameName = byName(all, proposal.title) ?? proposal.aliases.map((a) => byName(all, a)).find(Boolean) ?? null;
+    if (job.action === 'card' && !job.plan) {
+      // One form for a card request: the concept, where it goes, and what cards to write.
+      const suspect = matched ?? sameName;
+      const candidates = suspect ? [suspect, ...ranked.filter((c) => c.path !== suspect.path)].slice(0, 4) : [];
+      return this.save({
+        ...job,
+        proposal,
+        candidates: candidates.map(({ path, title, essence }) => ({ path, title, essence })),
+        suggest: suspect && (matched === suspect ? proposal.confidence !== 'none' : true) ? suspect.path : 'new',
+        state: 'needs-intake',
+        reason: suspect ? `Choose the cards. “${suspect.title}” already exists.` : 'Choose the cards.',
+      });
+    }
     if (matched && proposal.confidence === 'high') {
       return this.save(await this.publish({ ...job, proposal }, { kind: 'existing', path: matched.path }));
     }
@@ -302,6 +335,7 @@ export class KnowledgeCoordinator {
         ...job,
         proposal,
         candidates: candidates.map(({ path, title, essence }) => ({ path, title, essence })),
+        suggest: suspect.path,
         state: 'needs-review',
         reason: `This may be “${suspect.title}”, which already exists.`,
       });
@@ -315,6 +349,8 @@ export class KnowledgeCoordinator {
       noteLink: noteLink(job.notePath),
       threadId: job.threadId,
       quote: job.quote,
+      excerpt: job.excerpt ?? null,
+      heading: job.heading ?? null,
       action: job.action,
       instruction: instructionOf(job.request),
     };
@@ -362,7 +398,8 @@ export class KnowledgeCoordinator {
     if (!drafts) {
       const objectText = await this.host.vault.read(result.objectPath);
       if (objectText === null) return this.save({ ...job, state: 'failed', reason: `The object ${result.objectPath} is missing.` });
-      const answer = await this.ask(cardRequest(job, result.objectPath, objectText, instructionOf(job.request)), signal);
+      const plan = job.plan ?? { type: job.proposal?.cardType ?? 'concept', count: job.proposal?.cardCount ?? 1, note: '' };
+      const answer = await this.ask(cardRequest(result.objectPath, objectText, plan, instructionOf(job.request)), signal);
       if (!answer.ok) return this.save({ ...job, state: answer.paused ? 'queued' : 'failed', reason: answer.message });
       const cards = parseCardsReply(answer.text);
       if (!cards.length) return this.save({ ...job, state: 'failed', reason: 'The assistant wrote no usable cards.' });
@@ -448,6 +485,7 @@ export function statusView(job: KnowledgeJob, currentBody: string | null): Knowl
     queued: job.waitForAnswer ? 'Waiting for the answer, then queued' : 'Queued',
     running: r ? (job.action === 'card' ? `Writing cards for ${object}…` : 'Saving…') : 'Reading the passage…',
     'needs-review': job.reason ?? 'Needs your review',
+    'needs-intake': job.reason ?? 'Choose the cards.',
     'waiting-anki': `${plural(cards, 'card')} in the inbox; ${job.reason ?? 'waiting for Anki'}`,
     complete: !r
       ? 'Done'

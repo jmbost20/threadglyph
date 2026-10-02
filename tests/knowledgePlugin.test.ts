@@ -93,7 +93,7 @@ describe('knowledge workflows in the plugin', () => {
   it('does nothing while off: @knowledge is plain text', async () => {
     plugin.settings.aiEnabled = true;
     await plugin.refresh();
-    await commentOn('Replicas converge', '@knowledge what is this?');
+    await commentOn('converge eventually', '@knowledge what is this?');
     expect(files(JOBS_DIR)).toEqual([]);
     expect(files('Knowledge')).toEqual([]);
     expect(q('.tg-knowledge')).toBeNull();
@@ -117,37 +117,85 @@ describe('knowledge workflows in the plugin', () => {
 
   it('turns an @card comment into an object, a card and a status row, writing only in the knowledge folder', async () => {
     await enable();
-    answers = [objectAnswer(), cardsAnswer];
-    await commentOn('Replicas converge', '@card what is this?');
+    answers = [objectAnswer({ card_type: 'concept', card_count: 2 }), cardsAnswer];
+    await commentOn('converge eventually', '@card what is this?');
     await flush();
     expect(notices).toContain('Threadglyph: queued for knowledge and cards.');
+    // The intake form opens by itself, filled in from what could be inferred; Enter accepts it.
+    const intake = openModals.at(-1)!;
+    expect(intake.titleEl.textContent).toBe('New cards · Eventual consistency');
+    expect(intake.contentEl.querySelector<HTMLSelectElement>('select')!.value).toBe('concept');
+    expect(intake.contentEl.querySelector<HTMLInputElement>('input[name="tg-card-count"]:checked')!.value).toBe('2');
+    expect(intake.contentEl.querySelector('.tg-ai-caution')).toBeNull();
+    (intake.scope as unknown as { press(m: string[], k: string): unknown }).press([], 'Enter');
+    await flush();
     const objectPath = 'Knowledge/Objects/Eventual consistency.md';
     const object = app.vault.adapter.files.get(objectPath)!;
     expect(field(object, 'source_refs')).toEqual(['[[Reading/Week 3]]']);
-    expect(object).toContain('> Replicas converge');
+    expect(object).toContain('> Replicas **converge eventually** once writes stop.\n\n— [[Reading/Week 3#Consistency|Week 3 › Consistency]]');
     expect(app.vault.adapter.files.get('Knowledge/Knowledge.base')).toContain('Knowledge/Objects');
     const cards = files('Knowledge/Cards');
     expect(cards).toHaveLength(1);
     // The passage and its section went to the assistant; the note is unchanged.
-    expect(requests[0].quote).toBe('Replicas converge');
-    expect(requests[0].context?.text).toContain('# Consistency');
+    // The sentence with the highlight in bold, and only its own section, went to the assistant.
+    expect(requests[0].quote).toBe('Replicas **converge eventually** once writes stop.');
+    expect(requests[0].context).toEqual({ label: 'The section “Consistency”', text: '# Consistency\n\nReplicas converge eventually once writes stop.' });
     expect(app.vault.adapter.files.get(NOTE)).toBe(NOTE_TEXT);
     // Thread records hold no quoted text; the private job does.
-    expect(JSON.stringify(threads())).not.toContain('Replicas converge');
-    expect(app.vault.adapter.files.get(files(JOBS_DIR)[0])).toContain('Replicas converge');
+    expect(JSON.stringify(threads())).not.toContain('converge eventually');
+    expect(app.vault.adapter.files.get(files(JOBS_DIR)[0])).toContain('converge eventually');
 
     await plugin.refresh();
     const row = q('.tg-knowledge-row')!;
     expect(row.textContent).toContain('1 card from “Eventual consistency”, in the card inbox');
+    expect(button('Card', row)).toBeUndefined();
+    // Open shows the knowledge base filtered to this concept and the cards made with it.
     button('Open', row)!.click();
-    button('Card', row)!.click();
-    expect(app.workspace.opened).toEqual([objectPath, cards[0]]);
+    await flush();
+    expect(app.workspace.opened).toEqual(['Knowledge/Knowledge.base#Selected']);
+    const base = app.vault.adapter.files.get('Knowledge/Knowledge.base')!;
+    expect(base).toContain(`- file.path == "${objectPath}"`);
+    expect(base).toContain(`- file.path == "${cards[0]}"`);
+  });
+
+  it('asks what cards to make when the request is unclear, and uses the choices', async () => {
+    await enable();
+    answers = [objectAnswer({ ambiguous: true, card_count: 7 }), { ok: true, text: '{"cards": [{"front": "Q1", "back": "A1"}, {"front": "Q2", "back": "A2"}]}' }];
+    await commentOn('converge eventually', '@card');
+    const intake = openModals.at(-1)!;
+    expect(intake.contentEl.querySelector('.tg-ai-caution')!.textContent).toBe('Not sure what you want to learn here. Is this a concept card?');
+    expect(intake.contentEl.querySelector<HTMLInputElement>('input[name="tg-card-count"]:checked')!.value).toBe('8');
+    const type = intake.contentEl.querySelector<HTMLSelectElement>('select')!;
+    type.value = 'process';
+    type.dispatchEvent(new Event('change'));
+    const two = intake.contentEl.querySelector<HTMLInputElement>('input[name="tg-card-count"][value="2"]')!;
+    two.checked = true;
+    two.dispatchEvent(new Event('change'));
+    const note = intake.contentEl.querySelector<HTMLTextAreaElement>('textarea[aria-label="Anything else"]')!;
+    note.value = 'step by step';
+    note.dispatchEvent(new Event('input'));
+    // Enter inside a text box is a new line, not Apply.
+    const press = (intake.scope as unknown as { keys: { modifiers: string[]; key: string; run: (e?: unknown) => unknown }[] }).keys.find((k) => k.key === 'Enter' && !k.modifiers.length)!;
+    expect(press.run({ target: note, metaKey: false, ctrlKey: false })).toBe(true);
+    expect(openModals).toHaveLength(1);
+    // Later closes it; Review on the thread brings it back.
+    button('Later', intake.contentEl)!.click();
+    await plugin.refresh();
+    expect(q('.tg-knowledge-row')!.textContent).toContain('Choose the cards.');
+    button('Review')!.click();
+    const again = openModals.at(-1)!;
+    expect(again.titleEl.textContent).toBe('New cards · Eventual consistency');
+    button('Create cards (↩)', again.contentEl)!.click();
+    await flush();
+    expect(plugin.knowledge.all()[0].state).toBe('complete');
+    expect(requests[1].messages[0].body).toBe('Write about 7 concept cards.');
+    expect(files('Knowledge/Cards')).toHaveLength(2);
   });
 
   it('waits for the assistant the same comment asked, then includes its answer', async () => {
     await enable();
     answers = [{ ok: true, text: 'It means replicas agree later.' }, objectAnswer()];
-    await commentOn('Replicas converge', '@Local explain @knowledge');
+    await commentOn('converge eventually', '@Local explain @knowledge');
     expect(plugin.knowledge.all()[0].state).toBe('queued');
     expect(q('.tg-knowledge-row')!.textContent).toContain('Waiting for the answer');
     button('Send')!.click();
@@ -164,7 +212,7 @@ describe('knowledge workflows in the plugin', () => {
   it('runs once the assistant request is closed without an answer', async () => {
     await enable();
     answers = [objectAnswer()];
-    await commentOn('Replicas converge', '@Local @knowledge');
+    await commentOn('converge eventually', '@Local @knowledge');
     expect(plugin.knowledge.all()[0].state).toBe('queued');
     button('Cancel')?.click();
     (plugin as unknown as { ai: { closeAll(): void } }).ai.closeAll();
@@ -176,7 +224,7 @@ describe('knowledge workflows in the plugin', () => {
   it('queues a request added in an edit, and offers Update request after the request is edited', async () => {
     await enable();
     answers = [objectAnswer(), objectAnswer({ title: 'Convergence' })];
-    await commentOn('Replicas converge', 'Interesting');
+    await commentOn('converge eventually', 'Interesting');
     expect(plugin.knowledge.all()).toEqual([]);
     const edit = async (body: string) => {
       [...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!.click();
@@ -209,13 +257,17 @@ describe('knowledge workflows in the plugin', () => {
     app.vault.adapter.dirs.add('Knowledge/Objects');
     app.vault.adapter.files.set('Knowledge/Objects/Eventual consistency.md', renderObject({
       koId: 'ko-1',
-      proposal: { title: 'Eventual consistency', aliases: [], kind: 'concept', domains: [], essence: 'Old essence.', keyIdeas: [], match: null, confidence: 'none' },
+      proposal: { title: 'Eventual consistency', aliases: [], kind: 'concept', domains: [], essence: 'Old essence.', keyIdeas: [], match: null, confidence: 'none', cardType: 'concept', cardCount: 1, ambiguous: false },
       learning: 'captured',
       evidence: { date: '2026-09-01', noteLink: 'Old', threadId: 'thread-old-1', quote: 'old', action: 'knowledge', instruction: '' },
     }));
     answers = [objectAnswer({ match: 'Eventual consistency', confidence: 'low' })];
-    await commentOn('Replicas converge', '@knowledge');
+    await commentOn('converge eventually', '@knowledge');
+    // The form opens by itself; closing it with Later leaves Review on the thread.
+    expect(openModals).toHaveLength(1);
+    button('Later', openModals[0].contentEl)!.click();
     await plugin.refresh();
+    expect(openModals).toHaveLength(0);
     expect(q('.tg-knowledge-row')!.textContent).toContain('may be “Eventual consistency”');
     expect(command('knowledge-review').checkCallback!(true)).toBe(true);
     button('Review')!.click();
@@ -246,9 +298,8 @@ describe('knowledge workflows in the plugin', () => {
     app.vault.adapter.dirs.add('Knowledge/Objects');
     app.vault.adapter.files.set('Knowledge/Objects/Eventual consistency.md', '---\ntitle: Eventual consistency\n---\n\n## Essence\n\nX\n');
     answers = [objectAnswer()];
-    await commentOn('Replicas converge', '@knowledge');
+    await commentOn('converge eventually', '@knowledge');
     const id = plugin.knowledge.all()[0].id;
-    plugin.openKnowledgeReview(id);
     button('Later', openModals.at(-1)!.contentEl)!.click();
     expect(plugin.knowledge.get(id)!.state).toBe('needs-review');
     plugin.openKnowledgeReview(id);
@@ -267,7 +318,7 @@ describe('knowledge workflows in the plugin', () => {
     openModals.at(-1)!.close();
 
     answers = [{ ok: false, kind: 'busy', message: 'Busy.' }];
-    await commentOn('Replicas converge', '@knowledge');
+    await commentOn('converge eventually', '@knowledge');
     expect(command('knowledge-queue').checkCallback!(true)).toBe(true);
     command('knowledge-queue').checkCallback!(false);
     let modal = openModals.at(-1)!;
@@ -279,7 +330,8 @@ describe('knowledge workflows in the plugin', () => {
     expect(plugin.knowledge.all()[0].state).toBe('complete');
     (modal as unknown as { render(): void }).render();
     button('Open', modal.contentEl)!.click();
-    expect(app.workspace.opened).toEqual(['Knowledge/Objects/Eventual consistency.md']);
+    await flush();
+    expect(app.workspace.opened).toEqual(['Knowledge/Knowledge.base#Selected']);
     modal.close();
 
     answers = [() => new Promise(() => {})];
@@ -294,6 +346,7 @@ describe('knowledge workflows in the plugin', () => {
     app.vault.adapter.files.set('Knowledge/Objects/Unrelated.md', '---\ntitle: Unrelated\n---\n');
     answers = [objectAnswer({ title: 'Unrelated' })];
     await commentOn('Replicas', '@knowledge');
+    openModals.at(-1)!.close();
     plugin.openKnowledgeQueue();
     modal = openModals.at(-1)!;
     button('Review', modal.contentEl)!.click();
@@ -303,7 +356,7 @@ describe('knowledge workflows in the plugin', () => {
   it('retries and cancels from the thread card', async () => {
     await enable();
     answers = [{ ok: false, kind: 'busy', message: 'Busy.' }];
-    await commentOn('Replicas converge', '@knowledge');
+    await commentOn('converge eventually', '@knowledge');
     await plugin.refresh();
     answers = [() => new Promise(() => {})];
     button('Retry')!.click();
@@ -319,9 +372,10 @@ describe('knowledge workflows in the plugin', () => {
     app.vault.adapter.dirs.add('Knowledge/Objects');
     app.vault.adapter.files.set('Knowledge/Objects/Eventual consistency.md', '---\ntitle: Eventual consistency\n---\n');
     answers = [objectAnswer()];
-    await commentOn('Replicas converge', '@knowledge');
+    await commentOn('converge eventually', '@knowledge');
     const id = plugin.knowledge.all()[0].id;
     expect(plugin.knowledge.get(id)!.state).toBe('needs-review');
+    openModals.at(-1)!.close();
     plugin.settings.knowledgeEnabled = false;
     await plugin.refresh();
     expect(q('.tg-knowledge')).toBeNull();
@@ -356,7 +410,7 @@ describe('knowledge workflows in the plugin', () => {
   it('uses no assistant while AI is off, and sends to Anki only when that is on', async () => {
     plugin.settings.knowledgeEnabled = true;
     await plugin.refresh();
-    await commentOn('Replicas converge', '@knowledge');
+    await commentOn('converge eventually', '@knowledge');
     expect(plugin.knowledge.all()[0]).toMatchObject({ state: 'failed', reason: expect.stringContaining('No assistant') });
     const host = (plugin.knowledge as unknown as { host: { delivery(): unknown } }).host;
     expect(host.delivery()).toBeNull();

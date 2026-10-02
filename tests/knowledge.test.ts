@@ -22,6 +22,7 @@ import {
 } from '../src/knowledge/objects';
 import { DEFAULT_KNOWLEDGE_SETTINGS, knowledgeBase, migrateKnowledgeSettings } from '../src/knowledge/settings';
 import { instructionOf, requestedAction } from '../src/knowledge/trigger';
+import { conceptTitle, excerptAround, localSection } from '../src/knowledge/source';
 import type { KnowledgeJob, ObjectProposal } from '../src/knowledge/types';
 import { CARD_PROMPT, OBJECT_PROMPT, cardRequest, objectRequest, parseCardsReply, parseObjectReply } from '../src/knowledge/worker';
 import { buildPromptText, systemPromptFor } from '../src/ai/prompt';
@@ -36,6 +37,9 @@ const proposal = (over: Partial<ObjectProposal> = {}): ObjectProposal => ({
   keyIdeas: ['Reads can be stale', 'Replicas converge'],
   match: null,
   confidence: 'none',
+  cardType: 'concept',
+  cardCount: 1,
+  ambiguous: false,
   ...over,
 });
 
@@ -171,7 +175,7 @@ describe('worker replies', () => {
     const parsed = parseObjectReply(reply);
     expect(parsed).toEqual({
       ok: true,
-      proposal: { title: 'Cache hit', aliases: ['hit'], kind: 'concept', domains: ['systems'], essence: 'Found\tin cache.', keyIdeas: ['fast'], match: 'Caching', confidence: 'high' },
+      proposal: { title: 'Cache hit', aliases: ['hit'], kind: 'concept', domains: ['systems'], essence: 'Found\tin cache.', keyIdeas: ['fast'], match: 'Caching', confidence: 'high', cardType: 'concept', cardCount: 1, ambiguous: false },
     });
   });
 
@@ -187,9 +191,14 @@ describe('worker replies', () => {
     expect(parseObjectReply('```json\n{"title": "T"}\n```')).toEqual({ ok: false, message: 'The assistant’s answer had no title or essence.' });
   });
 
-  it('reads at most five usable cards', () => {
-    const cards = Array.from({ length: 7 }, (_, i) => ({ front: `Q${i}`, back: `A${i}` }));
-    expect(parseCardsReply(`\`\`\`json\n${JSON.stringify({ cards: [{ front: '', back: 'x' }, ...cards] })}\n\`\`\``)).toHaveLength(5);
+  it('reads card plans and at most eight usable cards', () => {
+    const plan = parseObjectReply('{"title": "T", "essence": "E", "card_type": "process", "card_count": "12", "ambiguous": true}');
+    expect(plan.ok && plan.proposal).toMatchObject({ cardType: 'process', cardCount: 8, ambiguous: true });
+    const fallback = parseObjectReply('{"title": "T", "essence": "E", "card_type": "poem", "card_count": "lots"}');
+    expect(fallback.ok && fallback.proposal).toMatchObject({ cardType: 'concept', cardCount: 1, ambiguous: false });
+    expect(parseObjectReply('{"title": "T", "essence": "E", "card_count": 0}').ok && true).toBe(true);
+    const cards = Array.from({ length: 10 }, (_, i) => ({ front: `Q${i}`, back: `A${i}` }));
+    expect(parseCardsReply(`\`\`\`json\n${JSON.stringify({ cards: [{ front: '', back: 'x' }, ...cards] })}\n\`\`\``)).toHaveLength(8);
     expect(parseCardsReply('nothing')).toEqual([]);
     expect(parseCardsReply('{"cards": "no"}')).toEqual([]);
   });
@@ -202,10 +211,59 @@ describe('worker replies', () => {
     expect(req.messages).toEqual([{ author: 'Owner', origin: 'human', body: 'R' }]);
     const withThread = objectRequest(job, 'Note', [{ author: 'Local', ai: true, body: 'answer' }], []);
     expect(withThread.messages[0].origin).toBe('ai');
-    const cards = cardRequest(job, 'K/Objects/X.md', 'object text', '');
+    const cards = cardRequest('K/Objects/X.md', 'object text', { type: 'concept', count: 1, note: '' }, '');
     expect(systemPromptFor(cards)).toBe(CARD_PROMPT);
     expect(cards.noteName).toBe('X');
-    expect(cards.messages[0].body).toBe('Make a card about this (knowledge).');
+    expect(cards.messages[0].body).toBe('Write about 1 concept card.');
+    expect(cardRequest('K/Objects/X.md', 't', { type: 'application', count: 3, note: 'Use web examples.' }, 'cards please').messages[0].body)
+      .toBe('Write about 3 application cards.\nUse web examples.\nThe comment said: cards please');
+  });
+});
+
+describe('source excerpt and concept name', () => {
+  const doc = '# Notes\n\n## Caching\n\nIntro line. A cache stores copies of data in fast memory. When data is there it is a hit.\n\n- A list item about cache use\n- Another item\n';
+  const at = (text: string, nth = 0) => {
+    let i = -1;
+    for (let k = 0; k <= nth; k++) i = doc.indexOf(text, i + 1);
+    return [i, i + text.length] as const;
+  };
+
+  it('takes the sentence around the highlight, bolded, and the heading above it', () => {
+    expect(excerptAround(doc, ...at('cache'))).toEqual({ excerpt: 'A **cache** stores copies of data in fast memory.', heading: 'Caching' });
+    expect(excerptAround(doc, ...at('cache use')).excerpt).toBe('- A list item about **cache use**');
+    expect(excerptAround('No heading here. Just text', 17, 21)).toEqual({ excerpt: '**Just** text', heading: null });
+    expect(excerptAround('```\n# not a heading\n```\nWord here.', 25, 29).heading).toBeNull();
+  });
+
+  it('keeps a long sentence to a window around the highlight', () => {
+    const long = `${'word '.repeat(300)}target ${'word '.repeat(300)}.`;
+    const from = long.indexOf('target');
+    const { excerpt } = excerptAround(long, from, from + 6);
+    expect(excerpt).toContain('**target**');
+    expect(excerpt.length).toBeLessThan(700);
+  });
+
+  it('uses the nearest heading of any level as the section, not a whole note under its title', () => {
+    const note = '# Playground\n\nIntro with a passage.\n\n## Caching\n\nA cache stores data.\n\n## Other\n\nMore.\n';
+    expect(localSection(note, note.indexOf('passage'))).toEqual({ label: 'The section “Playground”', text: '# Playground\n\nIntro with a passage.' });
+    expect(localSection(note, note.indexOf('cache'))).toEqual({ label: 'The section “Caching”', text: '## Caching\n\nA cache stores data.' });
+    expect(localSection('No headings at all.', 3)).toEqual({ label: 'The text around it', text: 'No headings at all.' });
+    expect(localSection('```\n# code\n```\ntext', 18).label).toBe('The text around it');
+    const long = `## Big\n\n${'x'.repeat(5000)}target${'y'.repeat(5000)}`;
+    const big = localSection(long, long.indexOf('target'));
+    expect(big.text).toContain('target');
+    expect(big.text.startsWith('[…]')).toBe(true);
+    expect(big.text.length).toBeLessThan(3100);
+  });
+
+  it('names the concept after a short highlight, not the note or section', () => {
+    expect(conceptTitle('Knowledge playground', 'passage', 'Knowledge playground')).toEqual({ title: 'Passage', alias: null });
+    expect(conceptTitle('Caching', 'store', 'Notes')).toEqual({ title: 'Store', alias: 'Caching' });
+    expect(conceptTitle('Cache', 'caches', 'Notes')).toEqual({ title: 'Cache', alias: null });
+    expect(conceptTitle('Eventual consistency', 'eventually consistent system', 'Notes')).toEqual({ title: 'Eventual consistency', alias: null });
+    expect(conceptTitle('Anything', 'one two three four five six seven', 'Notes')).toEqual({ title: 'Anything', alias: null });
+    expect(conceptTitle('Anything', null, 'Notes')).toEqual({ title: 'Anything', alias: null });
+    expect(conceptTitle('Anything', '“…”', 'Notes')).toEqual({ title: 'Anything', alias: null });
   });
 });
 
@@ -217,12 +275,18 @@ describe('settings', () => {
     expect(migrateKnowledgeSettings({ knowledgeAssistant: 'other', knowledgeFolder: '/' }).knowledgeAssistant).toBe('local');
     expect(migrateKnowledgeSettings({ knowledgeFolder: '//' }).knowledgeFolder).toBe('Knowledge');
     expect(knowledgeBase('K')).toContain('file.inFolder("K/Objects")');
+    expect(knowledgeBase('K')).not.toContain('Selected');
+    const focused = knowledgeBase('K', ['K/Objects/Cache.md', 'K/Cards/Cache · 1.md']);
+    expect(focused.indexOf('name: Selected')).toBeLessThan(focused.indexOf('name: Objects'));
+    expect(focused).toContain('- file.path == "K/Cards/Cache · 1.md"');
+    expect(focused).toContain('displayName: Concept');
   });
 });
 
 // ── Coordinator ────────────────────────────────────────────────────────────────
 
 const FOLDER = 'Knowledge';
+const PLAN = { type: 'concept' as const, count: 1, note: '' };
 
 function makeHost(answers: (AiResult | ((r: AiRequest) => AiResult))[], opts: { thread?: Partial<ThreadRecord>; delivery?: CardDelivery | null; answered?: boolean } = {}) {
   const files = new Map<string, string>();
@@ -390,7 +454,7 @@ describe('KnowledgeCoordinator', () => {
   it('writes cards from the object, links them, and keeps them in the inbox without Anki', async () => {
     const h = makeHost([objectAnswer(), cardsAnswer(2)]);
     const c = new KnowledgeCoordinator(h.host);
-    const job = await c.enqueue(input({ action: 'card', request: '@card two cards' }));
+    const job = await c.enqueue(input({ action: 'card', request: '@card two cards', plan: { type: 'concept', count: 2, note: '' } }));
     await settle(c);
     const done = c.get(job.id)!;
     expect(done.state).toBe('complete');
@@ -398,7 +462,7 @@ describe('KnowledgeCoordinator', () => {
     // Cards are written from the published object, not the raw source.
     expect(h.requests[1].quote).toBeNull();
     expect(h.requests[1].vaultNotes?.[0].text).toContain('## Essence');
-    expect(h.requests[1].messages[0].body).toBe('two cards');
+    expect(h.requests[1].messages[0].body).toBe('Write about 2 concept cards.\nThe comment said: two cards');
     const object = h.vaultFiles.get(done.result!.objectPath)!;
     expect(field(object, 'learning_state')).toBe('carded');
     expect(field(object, 'card_refs')).toHaveLength(2);
@@ -407,10 +471,79 @@ describe('KnowledgeCoordinator', () => {
     expect(h.folders).toContain('Knowledge/Cards');
   });
 
+  it('asks for the card choices in one form, then writes that many cards', async () => {
+    const h = makeHost([objectAnswer({ card_type: 'application', card_count: 3, ambiguous: true }), cardsAnswer(3)]);
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input({ action: 'card', request: '@card', excerpt: 'A **cache** stores data.', heading: 'Caching' }));
+    await settle(c);
+    expect(c.get(job.id)).toMatchObject({ state: 'needs-intake', suggest: 'new', reason: 'Choose the cards.', candidates: [], proposal: { cardType: 'application', cardCount: 3, ambiguous: true } });
+    expect(statusView(c.get(job.id)!, null).text).toBe('Choose the cards.');
+    await c.review(job.id, { kind: 'new', title: '', essence: '' }, { type: 'comparison', count: 3, note: 'versus a miss' });
+    await settle(c);
+    const done = c.get(job.id)!;
+    expect(done.state).toBe('complete');
+    expect(done.result!.cardPaths).toHaveLength(3);
+    expect(h.requests[1].messages[0].body).toBe('Write about 3 comparison cards.\nversus a miss');
+    // The evidence is the sentence around the highlight, linked to its section.
+    const object = h.vaultFiles.get(done.result!.objectPath)!;
+    expect(object).toContain('> A **cache** stores data.\n\n— [[Reading/Week 3#Caching|Week 3 › Caching]]');
+  });
+
+  it('asks again about the highlighted concept when the first answer was about something else', async () => {
+    const h = makeHost([objectAnswer({ title: 'Knowledge playground', essence: 'About the note.' }), objectAnswer({ title: 'Passage (text)', essence: 'A short piece of text.' })]);
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input({ quote: 'passage', excerpt: 'Select a **passage** here.' }));
+    await settle(c);
+    expect(h.requests).toHaveLength(2);
+    expect(h.requests[0].quote).toBe('Select a **passage** here.');
+    expect(h.requests[1].messages.at(-1)!.body).toBe('The concept is “Passage”: the words in bold. Write the object for that concept only.');
+    const object = h.vaultFiles.get(c.get(job.id)!.result!.objectPath)!;
+    expect(field(object, 'title')).toBe('Passage');
+    expect(object).toContain('A short piece of text.');
+  });
+
+  it('keeps the corrected name when the second answer fails, and pauses if turned off meanwhile', async () => {
+    const h = makeHost([objectAnswer({ title: 'Caching', essence: 'About caching.' }), { ok: true, text: 'not json' }]);
+    const c = new KnowledgeCoordinator(h.host);
+    const job = await c.enqueue(input({ quote: 'store' }));
+    await settle(c);
+    const object = h.vaultFiles.get(c.get(job.id)!.result!.objectPath)!;
+    expect(field(object, 'title')).toBe('Store');
+    expect(field(object, 'aliases')).toEqual(['Caching']);
+
+    let on = true;
+    h.host.enabled = () => on;
+    let calls = 0;
+    h.host.ask = async () => {
+      if (++calls === 2) on = false;
+      return objectAnswer({ title: 'Caching' });
+    };
+    const paused = await c.enqueue(input({ quote: 'store', messageId: 'msg-2' }));
+    await settle(c);
+    expect(c.get(paused.id)).toMatchObject({ state: 'queued', reason: 'Paused: knowledge workflows are off.' });
+  });
+
+  it('suggests the existing object in the card form when one matches', async () => {
+    const h = makeHost([objectAnswer({ match: 'Eventual consistency', confidence: 'high' }), objectAnswer({ match: 'Eventual consistency', confidence: 'none' }), objectAnswer({ title: 'Eventual consistency' })]);
+    h.vaultFiles.set('Knowledge/Objects/Eventual consistency.md', renderObject({ koId: 'ko-old', proposal: proposal(), learning: 'captured', evidence: evidence() }));
+    const c = new KnowledgeCoordinator(h.host);
+    const a = await c.enqueue(input({ action: 'card', request: '@card', quote: 'eventual' }));
+    await settle(c);
+    expect(c.get(a.id)).toMatchObject({ state: 'needs-intake', suggest: 'Knowledge/Objects/Eventual consistency.md', reason: 'Choose the cards. “Eventual consistency” already exists.' });
+    const b = await c.enqueue(input({ action: 'card', request: '@card', messageId: 'msg-2', quote: 'eventual' }));
+    await c.cancel(a.id);
+    await settle(c);
+    expect(c.get(b.id)!.suggest).toBe('new');
+    await c.cancel(b.id);
+    const d = await c.enqueue(input({ action: 'card', request: '@card', messageId: 'msg-3', quote: 'consistency' }));
+    await settle(c);
+    expect(c.get(d.id)!.suggest).toBe('Knowledge/Objects/Eventual consistency.md');
+  });
+
   it('fails clearly when the assistant is off, errors or writes nothing usable, and retries from there', async () => {
     const h = makeHost([]);
     const c = new KnowledgeCoordinator(h.host);
-    const job = await c.enqueue(input({ action: 'card' }));
+    const job = await c.enqueue(input({ action: 'card', plan: PLAN }));
     await settle(c);
     expect(c.get(job.id)).toMatchObject({ state: 'failed', reason: expect.stringContaining('No assistant') });
     expect(statusView(c.get(job.id)!, null).text).toContain('Failed: No assistant');
@@ -449,7 +582,7 @@ describe('KnowledgeCoordinator', () => {
     const c = new KnowledgeCoordinator(h.host);
     const realCreate = h.host.vault.create;
     h.host.vault.create = async () => {};
-    const job = await c.enqueue(input({ action: 'card' }));
+    const job = await c.enqueue(input({ action: 'card', plan: PLAN }));
     await settle(c);
     expect(c.get(job.id)!.reason).toContain('is missing');
     h.host.vault.create = realCreate;
@@ -579,7 +712,7 @@ describe('KnowledgeCoordinator', () => {
       return objectAnswer();
     };
     const c = new KnowledgeCoordinator(h.host);
-    const job = await c.enqueue(input({ action: 'card' }));
+    const job = await c.enqueue(input({ action: 'card', plan: PLAN }));
     await settle(c);
     expect(c.get(job.id)).toMatchObject({ state: 'queued', reason: 'Paused: knowledge workflows are off.' });
     on = true;
@@ -604,7 +737,7 @@ describe('KnowledgeCoordinator', () => {
       if (p.includes('/Cards/') && ++cards === 2) throw new Error('disk full');
       await realCreate(p, t);
     };
-    const job = await c.enqueue(input({ action: 'card' }));
+    const job = await c.enqueue(input({ action: 'card', plan: PLAN }));
     await settle(c);
     expect(c.get(job.id)).toMatchObject({ state: 'failed', reason: 'disk full', result: { cardPaths: [expect.stringContaining('id0003')] } });
     h.host.vault.create = realCreate;
@@ -638,7 +771,7 @@ describe('KnowledgeCoordinator', () => {
     const c = new KnowledgeCoordinator(h.host);
     const job = await c.enqueue(input());
     await settle(c);
-    await c.rerun(job.id, { action: 'knowledge', request: '@knowledge convergence', quote: 'New quote', context: null });
+    await c.rerun(job.id, { action: 'knowledge', request: '@knowledge convergence', quote: 'they converge', context: null });
     await settle(c);
     expect(c.get(job.id)).toMatchObject({ revision: 2, state: 'complete', request: '@knowledge convergence', result: { objectTitle: 'Convergence' } });
     await c.rerun('nope', { action: 'knowledge', request: '', quote: null, context: null });
@@ -656,7 +789,7 @@ describe('KnowledgeCoordinator', () => {
     };
     const h = makeHost([objectAnswer(), cardsAnswer(2)], { delivery });
     const c = new KnowledgeCoordinator(h.host);
-    const job = await c.enqueue(input({ action: 'card' }));
+    const job = await c.enqueue(input({ action: 'card', plan: PLAN }));
     await settle(c);
     expect(c.get(job.id)).toMatchObject({ state: 'waiting-anki', reason: 'Anki is not reachable.' });
     expect(statusView(c.get(job.id)!, null).text).toBe('2 cards in the inbox; Anki is not reachable.');
@@ -680,7 +813,7 @@ describe('KnowledgeCoordinator', () => {
     const realCreate = h.host.vault.create;
     let made = 0;
     h.host.vault.create = async (p, t) => realCreate(p, p.includes('/Cards/') && made++ === 0 ? 'edited away' : t);
-    const job = await c.enqueue(input({ action: 'card' }));
+    const job = await c.enqueue(input({ action: 'card', plan: PLAN }));
     await settle(c);
     expect(c.get(job.id)).toMatchObject({ state: 'failed', reason: 'Anki refused the card: no deck' });
   });

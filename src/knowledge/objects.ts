@@ -38,6 +38,10 @@ export interface EvidenceEntry {
   noteLink: string;
   threadId: string;
   quote: string | null;
+  /** The sentence(s) around the highlight; used instead of the bare highlight when present. */
+  excerpt?: string | null;
+  /** The source heading, so the link goes to that section. */
+  heading?: string | null;
   action: 'knowledge' | 'card';
   instruction: string;
   /** A hidden Obsidian comment that identifies the request, so it is added once. */
@@ -45,8 +49,11 @@ export interface EvidenceEntry {
 }
 
 function evidenceBlock(e: EvidenceEntry): string {
-  const quote = e.quote ? e.quote.trim().split('\n').map((l) => `> ${l}`).join('\n') : '> (image or no passage)';
-  return `${quote}\n\n— [[${e.noteLink}]] · thread ${e.threadId.slice(0, 8)} · ${e.date}${e.mark ? ` ${e.mark}` : ''}`;
+  const text = e.excerpt || e.quote;
+  const quote = text ? text.trim().split('\n').map((l) => `> ${l}`).join('\n') : '> (image or no passage)';
+  const name = e.noteLink.split('/').pop()!;
+  const link = e.heading ? `[[${e.noteLink}#${e.heading}|${name} › ${e.heading}]]` : `[[${e.noteLink}]]`;
+  return `${quote}\n\n— ${link} · thread ${e.threadId.slice(0, 8)} · ${e.date}${e.mark ? ` ${e.mark}` : ''}`;
 }
 
 function historyLine(e: EvidenceEntry): string {
