@@ -506,13 +506,12 @@ describe('KnowledgeCoordinator', () => {
   it('publishes nothing when canceled during the second ask', async () => {
     const h = makeHost([]);
     let calls = 0;
-    let c!: KnowledgeCoordinator;
     let id = '';
+    const c = new KnowledgeCoordinator(h.host);
     h.host.ask = async () => {
       if (++calls === 2) await c.cancel(id);
       return objectAnswer({ title: 'Caching' });
     };
-    c = new KnowledgeCoordinator(h.host);
     id = (await c.enqueue(input({ quote: 'store' }))).id;
     await settle(c);
     expect(c.get(id)!.state).toBe('canceled');
