@@ -49,7 +49,10 @@ export function contextTokens(promptChars: number): number | null {
 /** The host part of an address, or the address itself when it cannot be parsed. */
 function hostName(address: string): string {
   try {
-    return new URL(address).hostname.replace(/^\[|\]$/g, '');
+    const url = new URL(address);
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    // "gpu-box:11434" parses with protocol "gpu-box:" and no hostname: name it as typed.
+    return /^https?:$/.test(url.protocol) && host ? host : address;
   } catch {
     return address;
   }
