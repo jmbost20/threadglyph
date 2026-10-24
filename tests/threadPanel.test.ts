@@ -349,6 +349,24 @@ describe('ThreadPanel double submit (Gitar review on PR #1)', () => {
     expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Question', 'Keep me']);
   });
 
+  it('never loses text typed while a reply is saving (Codex review)', async () => {
+    const thread = await createViaPanel('Question');
+    actions.rerender = () => {};
+    let finish!: (ok: boolean) => void;
+    vi.spyOn(actions, 'reply').mockImplementationOnce(() => new Promise<boolean>((r) => (finish = r)));
+    const key = draftKey.reply(thread.id);
+    const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="${key}"]`)!;
+    type(input, 'First reply');
+    button('Reply')!.click();
+    expect(input.readOnly).toBe(true);
+    // Text that reaches the draft anyway (e.g. set by code) outlives the save.
+    type(input, 'New text typed while saving');
+    finish(true);
+    await flush();
+    expect(input.readOnly).toBe(false);
+    expect(ctl.drafts.get(key)).toBe('New text typed while saving');
+  });
+
   it('re-enables the button when submit throws', async () => {
     const thread = await createViaPanel('Question');
     actions.rerender = () => {};

@@ -1039,20 +1039,26 @@ export class ThreadPanel extends ItemView {
     // Ignore repeat clicks or Cmd/Ctrl+Enter while a submit is in flight, so one action writes once.
     let busy = false;
     const doSubmit = async () => {
-      if (busy || !input.value.trim()) return;
-      if (!key.startsWith('edit:') && this.hasAssistantMention(input.value)) this.pendingAiFocus = key;
+      const body = input.value;
+      if (busy || !body.trim()) return;
+      const mentions = !key.startsWith('edit:') && this.hasAssistantMention(body);
+      if (mentions) this.pendingAiFocus = key;
       busy = true;
       submitButton.disabled = true;
+      // The box is read-only while it saves, so nothing typed meanwhile can be lost.
+      input.readOnly = true;
       try {
-        if (await submit(input.value)) {
-          this.actions.drafts.delete(key);
+        if (await submit(body)) {
+          // Clear the draft only if it is still what was posted.
+          if ((this.actions.drafts.get(key) ?? body) === body) this.actions.drafts.delete(key);
           // A new thread continues in its reply box.
           if (key.startsWith('new:')) this.replyAfterCreate = true;
-          if (!key.startsWith('edit:') && this.hasAssistantMention(input.value)) this.pendingAiFocus = key;
+          if (mentions) this.pendingAiFocus = key;
         } else this.pendingAiFocus = null;
       } finally {
         busy = false;
         submitButton.disabled = false;
+        input.readOnly = false;
       }
       this.actions.rerender();
     };
