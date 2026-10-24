@@ -10,6 +10,7 @@ import type { ThreadRecord } from '../src/model/types';
 import type { AiAdapter, AiRequest, AiResult } from '../src/ai/types';
 import { DEFAULT_AI_SETTINGS } from '../src/ai/assistants';
 import { ANCHORS_DIR, THREADS_DIR } from '../src/storage/paths';
+import type { PanelActions } from '../src/ui/ThreadPanel';
 
 type Fake = InstanceType<typeof FakeApp>;
 
@@ -33,6 +34,7 @@ const expandAll = () => {
 const button = (label: string) =>
   [...panelEl().querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === label);
 const command = (id: string) => (plugin as unknown as { commands: { id: string; editorCheckCallback?: (...a: unknown[]) => boolean; callback?: () => void }[] }).commands.find((c) => c.id === id)!;
+const panelActions = () => (plugin as unknown as { panelActions(): PanelActions }).panelActions();
 const select = (text: string) => {
   const from = NOTE_TEXT.indexOf(text);
   view.editor.selection = [from, from + text.length];
@@ -310,6 +312,35 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     glyph.closest('.cm-gutterElement')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     await flush();
     expect(q('.tg-card-resolved.tg-card-focused')).not.toBeNull();
+  });
+
+  it('deletes and restores a comment, then the whole thread, from the panel', async () => {
+    await commentOn('worth a comment', 'First');
+    const id = threads()[0].id;
+    const actions = panelActions();
+    expect(await actions.reply(id, 'Second')).toBe(true);
+    const second = threads()[0].messages[1].id;
+    expect(await actions.setMessageDeleted(id, second, true)).toBe(true);
+    expect(threads()[0].messages[1].deletedAt).toBeTruthy();
+    expect(await actions.setMessageDeleted(id, second, false)).toBe(true);
+    expect(threads()[0].messages[1].deletedAt).toBeFalsy();
+    expect(await actions.setThreadDeleted(id, true)).toBe(true);
+    expect(threads()[0].messages.every((m) => m.deletedAt)).toBe(true);
+    expect(await actions.setThreadDeleted(id, false)).toBe(true);
+    expect(threads()[0].messages.some((m) => m.deletedAt)).toBe(false);
+    expect(app.vault.adapter.files.get(NOTE)).toBe(NOTE_TEXT);
+  });
+
+  it('selects a passage from the panel, and refreshes on file-open, leaf changes and unrelated deletes', async () => {
+    await commentOn('worth a comment', 'Look');
+    await panelActions().select(threads()[0].id);
+    const from = NOTE_TEXT.indexOf('worth a comment');
+    expect(view.editor.selection).toEqual([from, from + 15]);
+    const refresh = vi.spyOn(plugin, 'refresh');
+    app.workspace.trigger('file-open');
+    app.workspace.trigger('active-leaf-change');
+    app.vault.trigger('delete', new TFile('Other.md'));
+    expect(refresh).toHaveBeenCalledTimes(3);
   });
 
   it('handles panel actions: cancel, edit and cancel edit, resolve toggle, reopen', async () => {
@@ -712,6 +743,36 @@ describe('Threadglyph plugin AI', () => {
     await flush();
     expect(requests).toHaveLength(2);
     expect(threads()[0].messages.filter((m) => m.origin === 'ai')).toHaveLength(1);
+  });
+
+  it('will not delete while an AI reply is saving, and closes an open Ask AI card on delete', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Hmm');
+    const id = threads()[0].id;
+    const question = threads()[0].messages[0].id;
+    const actions = panelActions();
+    // Hold the reply's save open, to delete while it is in progress.
+    const original = app.vault.adapter.write.bind(app.vault.adapter);
+    let finish = () => {};
+    const write = vi.spyOn(app.vault.adapter, 'write').mockImplementation(
+      (path: string, data: string) => new Promise<void>((done) => { finish = () => void original(path, data).then(done); }),
+    );
+    actions.aiOpen(id);
+    actions.aiSend(id);
+    await flush();
+    expect(await actions.setMessageDeleted(id, question, true)).toBe(false);
+    expect(await actions.setThreadDeleted(id, true)).toBe(false);
+    expect(notices.at(-1)).toBe('The AI reply is saving. Try deleting again in a moment.');
+    write.mockRestore();
+    finish();
+    await flush();
+    expect(threads()[0].messages.map((m) => [m.origin, !!m.deletedAt])).toEqual([['human', false], ['ai', false]]);
+
+    actions.aiOpen(id);
+    await flush();
+    expect(q('.tg-ai')).not.toBeNull();
+    expect(await actions.setThreadDeleted(id, true)).toBe(true);
+    expect(q('.tg-ai')).toBeNull();
   });
 
   it('cancel and close leave the thread untouched', async () => {

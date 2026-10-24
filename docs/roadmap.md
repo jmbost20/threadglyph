@@ -4,9 +4,8 @@ Where Threadglyph is heading, roughly in order. Nothing here has a date; it is a
 
 ## Next
 
-- **Obsidian community plugin directory.** Submit once the two items below are done.
+- **Obsidian community plugin directory.** Submit once the item below is done.
 - **Obsidian-style confirmation dialogs** in place of the browser's `confirm()` for discarding unsaved text.
-- **Decide the future of `@agent`.** It is on hold; removing it would make "your notes are never changed" unconditional.
 
 ## Later
 

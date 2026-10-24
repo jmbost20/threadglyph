@@ -20,11 +20,10 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 - **Comment on any passage.** Select text and run **Threadglyph: Comment on selection** (command palette or right-click). The passage is highlighted, numbered to match its card, and marked in the margin.
 - **Threads in a side panel.** Reply, edit any message (the earlier text is kept), resolve or reopen, delete with undo, and search with ⌘F. Open, Resolved and All tabs, plus filters by author, age and date.
 - **Comment on images.** Every PNG, JPEG or WebP embed gets a title pill with a **Comment** button.
-- **Comments live beside your notes.** Threads are stored in separate JSON files, never inside the note.
+- **Your notes are never changed.** Threads are stored in separate JSON files beside your notes; Threadglyph does not write to note files.
 - **Anchors that survive edits.** Edits around a passage don't break its thread. If the passage is deleted, or repeated so the original copy can't be told apart, the thread says so instead of guessing, and offers **Reattach to selection**.
 - **Optional AI replies (off by default).** Mention `@Local`, `@Gemini` or `@Claude` in a comment, or press **Ask AI**. Before anything is sent you see a preview of exactly what goes, and where ("Stays on this computer", "Sent to Google", "Sent to Anthropic", or the host of an Ollama server on another machine). The answer is added to the thread, labelled as AI, and stays editable.
 - **Import from Agent Comments.** Turns the `{==…==}{>>…<<}` comments of the [Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) plugin into threads, without changing the note.
-- *`@agent` (legacy, experimental, on hold): proposes edits to the note as a diff and changes nothing until you press Accept, apart from removing the `@a` you typed when you pick it from the menu. Its confirmations show what it may change and where the request goes, not the full request text. New work goes into `@Local` / `@Gemini` replies instead.*
 
 ## How it was built
 
@@ -32,7 +31,7 @@ Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude C
 
 - **35 distinct Gitar findings on merged code, all resolved:** 15 bugs, 1 security issue, 11 edge cases, 7 test or code-quality problems, 1 performance issue. (Two comments repeated on stacked PRs are counted once.)
 - **Examples:** two quick clicks [could silently lose a reply](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4122849310); an AI rewrite containing a code block [could leak quoted note text into a thread file](https://github.com/jmbost20/threadglyph/pull/14#discussion_r4366902160); and several tests [could not actually fail](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4128873979).
-- **Sonar's coverage gate was met with tests, never by excluding code:** line coverage went from 72.8% to 99.8% on the first PR, and is about 99.5% today.
+- **Sonar's coverage gate was met with tests, never by excluding code:** line coverage went from 72.8% to 99.8% on the first PR, and is about 99.8% today.
 
 The full story, with links to the reviews, is in [How Gitar and SonarQube reviewed Threadglyph](docs/gitar-and-sonar.md).
 

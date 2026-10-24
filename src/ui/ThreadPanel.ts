@@ -2,8 +2,7 @@ import { ItemView, Scope, type WorkspaceLeaf } from 'obsidian';
 import type { AiState, ContextScope } from '../ai/session';
 import type { Message } from '../model/types';
 import type { LoadProblem } from '../storage/threadStore';
-import { CompareModal, ConfirmDeleteModal } from './modals';
-import { AGENT_LEGACY_NOTE, renderProposal, type ProposalView } from './proposalView';
+import { ConfirmDeleteModal } from './modals';
 import {
   anchorProblem,
   EMPTY_COMMENT_FILTERS,
@@ -47,11 +46,7 @@ export interface PanelState {
   filter: ThreadFilter;
   /** Enabled assistants in preference order; empty when AI is off (no AI controls are shown). */
   assistants: AssistantInfo[];
-  /** @Agent, offered in the mention menu when AI is on: proposes edits instead of replying. */
-  agent?: AssistantInfo | null;
   ai: Record<string, AiCardView>;
-  /** Agent proposals waiting for Accept or Reject, by thread id. */
-  proposals?: Record<string, ProposalView>;
 }
 
 /** An assistant as the panel shows it. */
@@ -98,10 +93,6 @@ export interface PanelActions {
   aiClose(threadId: string, discardQuestion?: boolean): void;
   /** Adds the (possibly edited) draft to the thread as an attributed AI message. */
   aiAdopt(threadId: string, body: string): Promise<boolean>;
-  /** Applies an agent proposal to the note (one undoable edit). */
-  proposalAccept(threadId: string): void;
-  /** Drops an agent proposal; the note is not touched. */
-  proposalReject(threadId: string): void;
   setFilter(filter: ThreadFilter): void;
   rerender(): void;
 }
@@ -590,11 +581,6 @@ export class ThreadPanel extends ItemView {
 
     const ai = this.state.ai[thread.id];
     if (ai) this.renderAi(card, thread.id, ai);
-    const proposal = this.state.proposals?.[thread.id];
-    if (proposal) {
-      renderProposal(card, proposal, () => this.actions.proposalAccept(thread.id), () => this.actions.proposalReject(thread.id),
-        () => proposal.diff && new CompareModal(this.app, proposal.diff).open());
-    }
 
     const footer = card.createDiv({ cls: 'tg-card-footer' });
     if (this.state.assistants.length && thread.status === 'open' && !ai) {
@@ -751,7 +737,7 @@ export class ThreadPanel extends ItemView {
 
   private renderAi(card: HTMLElement, threadId: string, ai: AiCardView): void {
     const assistant = this.state.assistants.find((a) => a.id === ai.state.assistant);
-    const name = ai.state.agent ? `Agent (${assistant?.name ?? 'AI'})` : (assistant?.name ?? 'AI');
+    const name = assistant?.name ?? 'AI';
     const box = card.createDiv({ cls: `tg-ai tg-ai-phase-${ai.state.phase}` });
     box.setAttr('aria-live', 'polite');
     const buttons = (parent: HTMLElement) => parent.createDiv({ cls: 'tg-composer-buttons' });
@@ -766,8 +752,7 @@ export class ThreadPanel extends ItemView {
 
     switch (ai.state.phase) {
       case 'preview': {
-        box.createDiv({ cls: 'tg-ai-title', text: ai.state.agent ? 'Ask the agent to change the note' : 'Ask AI' });
-        if (ai.state.agent) box.createDiv({ cls: 'tg-ai-caution tg-legacy', text: AGENT_LEGACY_NOTE });
+        box.createDiv({ cls: 'tg-ai-title', text: 'Ask AI' });
         const where = assistant ? ` ${assistant.destination}.` : '';
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
         box.createDiv({ cls: 'tg-ai-note tg-ai-keys', text: 'Enter sends · ↑↓ move · → opens · Esc cancels and removes the question' });
@@ -780,7 +765,6 @@ export class ThreadPanel extends ItemView {
       }
       case 'running': {
         box.createDiv({ cls: 'tg-ai-title', text: `Asking ${name}…` });
-        if (ai.state.agent) box.createDiv({ cls: 'tg-ai-note', text: 'Rewriting a long list on a local model can take a few minutes. Nothing changes until you Accept.' });
         button(buttons(box), 'Cancel', () => this.actions.aiCancel(threadId));
         break;
       }
@@ -1010,9 +994,9 @@ export class ThreadPanel extends ItemView {
     return this.mentionables().some((a) => mentions.has(a.name.toLowerCase()));
   }
 
-  /** Everything the @ menu offers: the agent first, then each assistant. */
+  /** Everything the @ menu offers: each enabled assistant. */
   private mentionables(): AssistantInfo[] {
-    return this.state.agent ? [this.state.agent, ...this.state.assistants] : this.state.assistants;
+    return this.state.assistants;
   }
 
   /**

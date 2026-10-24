@@ -1,5 +1,5 @@
 import type { ProcessRunner } from './claudeCli';
-import { buildPromptText, systemPromptFor } from './prompt';
+import { SYSTEM_PROMPT, buildPromptText } from './prompt';
 import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
 
 /**
@@ -67,7 +67,7 @@ export function geminiArgs(model: string, image: string | null, imageDir: string
 
 /** The request as sent on stdin: standing instructions, then the fenced note material and thread. */
 export function geminiInput(request: AiRequest): string {
-  return `${systemPromptFor(request)}\n\n---\n\n${buildPromptText(request)}\n`;
+  return `${SYSTEM_PROMPT}\n\n---\n\n${buildPromptText(request)}\n`;
 }
 
 /** The reply text from `--output-format json`, or null when the output has no answer. */
@@ -147,7 +147,7 @@ export class GeminiCliAdapter implements AiAdapter {
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
     const { command, folder, ownsFolder, model, env, run, files } = this.options;
-    const timeoutMs = this.options.timeoutMs + (request.extraSeconds ?? 0) * 1000;
+    const timeoutMs = this.options.timeoutMs;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (ownsFolder) await files.prepareFolder(folder, `${JSON.stringify(GEMINI_FOLDER_SETTINGS, null, 2)}\n`);
 

@@ -14,7 +14,7 @@ Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude C
 | …performance | 1 |
 | Findings on the open knowledge-workflows PR (#12) | 10, all fixed on that branch |
 | Sonar quality-gate failures | 2: low coverage on new code (PR #1) and Reliability rating D, caused by two real bugs (PR #7) |
-| How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is about 99.5% today |
+| How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is about 99.8% today |
 
 **How the findings were counted:** every top-level Gitar review comment on a merged pull request, by its own category label. Two findings were posted on both #7 and #8 (#8 was stacked on #7); each is counted once. Coverage figures come from the development log and `npm run check`.
 
@@ -50,7 +50,7 @@ Each one now has a test that checks the thread files never hold the quoted text.
 
 ### 4. Accept could edit the wrong copy of a passage (PR #10)
 
-[Gitar's comment](https://github.com/jmbost20/threadglyph/pull/10#discussion_r4145848018): if the text an AI proposal was about had been edited, and the same text existed elsewhere in the note, Accept would rewrite the other copy. Proposals now remember the text around them, and Accept refuses unless the passage and its surroundings are unchanged and unique.
+[Gitar's comment](https://github.com/jmbost20/threadglyph/pull/10#discussion_r4145848018): if the text an AI proposal was about had been edited, and the same text existed elsewhere in the note, Accept would rewrite the other copy. The fix made proposals remember the text around them, so Accept refused unless the passage and its surroundings were unchanged and unique. (`@agent`, the feature behind this finding and the ones in section 2, was later removed: Threadglyph no longer writes to notes at all.)
 
 ### 5. Sonar: two real bugs behind a "D", and a finding declined with a reason (PR #7)
 

@@ -32,7 +32,7 @@ The folder contains `main.js`, `manifest.json` and `styles.css`, plus `SHA256SUM
   2. Disable Threadglyph.
   3. Delete `<vault>/.obsidian/plugins/threadglyph/`.
 
-  Threadglyph changed notes only where you accepted an agent proposal (each is an ordinary edit, kept in the note’s history), so there is nothing to undo in them. The `threadglyph/` and `.threadglyph/` folders can stay, which makes a reinstall pick up where it left off, or be deleted.
+  Threadglyph never writes to notes, so there is nothing to undo in them. The `threadglyph/` and `.threadglyph/` folders can stay, which makes a reinstall pick up where it left off, or be deleted.
 - **Agent Comments import:** read-only. The note keeps its `{==…==}{>>…<<}` markup, so removing Threadglyph leaves Agent Comments exactly as it was.
 
 ## Owner test script
@@ -45,17 +45,10 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 4. **Images** (`Image titles.md`, `Images.md`): each image has a title pill (alias, alt text or file name) with **Comment**. Clicking it starts an image thread with a preview. HEIC and missing files get a clear message instead. The title pill also appears in Reading view.
 5. **Ask AI, Local first:** Ask AI on a card. The preview preselects **Local · qwen3:8b · Stays on this computer**; Enter sends. The answer is added to the thread, labelled as AI, and stays editable. Esc in the preview cancels the whole request and removes the comment that asked (restorable from *Deleted comments*). Local on an image thread explains that the model cannot see images; switch to **Gemini** and it describes the image. In settings, set *Ollama address* to `http://192.168.1.20:11434`: the preview now says **Sent to 192.168.1.20** (no server needed to see the label). Set it back.
 6. **@mentions:** type `@` in a reply. You should see Local, Gemini and Claude with their models. Enter makes a new line; ⌘↩ posts, and `@Gemini` then opens the preview with Gemini chosen. When a request fails, the error offers the other assistants directly. If saving an AI reply fails, the reply stays as an editable draft, and Esc does not discard it.
-7. **@agent** (`Agent playground.md`, AI on, Local preferred):
-   - **In a comment:** select "Shopping list" and comment `@Agent sort the children alphabetically`, post with ⌘↩, then press Enter in the preview. You see a diff in the card, and the list dimmed in the note with the sorted lines under it. The note file is unchanged. **Accept** sorts it, and ⌘Z restores it. Try again, type in the list, then Accept: it is refused as stale.
-   - **Inline window:** at the end of "Shopping list", type `@a` and choose **@agent**. The `@a` disappears and a window opens: type "sort these alphabetically", keep *The list item and everything under it*, press ⌘↩. The window shows the diff (**Side by side** switches view) and the note shows it under the dimmed list. ⌘↩ accepts; Reject or closing leaves the note as it was (closing keeps the proposal under the text).
-   - **Typed line:** put the cursor on the "Clean the garage @agent …" line and press ⌘⇧↩. The proposal appears under the item. **Reject** leaves the line, request included, as it was. **Accept** applies it and removes the `@agent …` text.
-   - **Chat:** ⌘⇧A. With the cursor under "Ideas", ask "add three more ideas". A proposal appears in the chat and in the note.
-   - **Other notes:** in the chat ask "add a pasta shopping list using my Recipes note". A dialog asks to read `Recipes.md`. **Deny** sends nothing. Allow → proposal.
-   - Typing `@a` in the note offers `@agent`; a bare `@` still reaches Inline Comments.
-8. **Import** (`Agent Comments sample.md`): run *Import Agent Comments from this note*. The preview lists 3 threads (2 messages; 1 message · resolved; 1 message). Import them, then check that the note text is byte-for-byte unchanged. Running the import again says *Nothing new to import*. Then ask Local or Gemini on an imported thread.
-9. **Backup and restore:** back up, delete one file in `threadglyph/threads/`, reload, and restore. The thread comes back and the others are reported as already existing.
-10. **Safety:** after all of the above, the only note changes are the proposals you accepted (and the `@a` removed when `@agent` was picked from the menu). Check with the sandbox's file history or a diff.
-11. **Release candidate install:** `npm run package`, then copy `dist/threadglyph-<version>/` into a *fresh* empty vault's `.obsidian/plugins/threadglyph/`. Enable it, make a thread, quit and reopen Obsidian (the thread and highlight come back), then disable and delete the plugin folder: the note is unchanged and Obsidian shows no errors.
+7. **Import** (`Agent Comments sample.md`): run *Import Agent Comments from this note*. The preview lists 3 threads (2 messages; 1 message · resolved; 1 message). Import them, then check that the note text is byte-for-byte unchanged. Running the import again says *Nothing new to import*. Then ask Local or Gemini on an imported thread.
+8. **Backup and restore:** back up, delete one file in `threadglyph/threads/`, reload, and restore. The thread comes back and the others are reported as already existing.
+9. **Safety:** after all of the above, no note has changed. Check with the sandbox's file history or a diff.
+10. **Release candidate install:** `npm run package`, then copy `dist/threadglyph-<version>/` into a *fresh* empty vault's `.obsidian/plugins/threadglyph/`. Enable it, make a thread, quit and reopen Obsidian (the thread and highlight come back), then disable and delete the plugin folder: the note is unchanged and Obsidian shows no errors.
 
 ## Acceptance record
 
