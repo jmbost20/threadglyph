@@ -23,14 +23,14 @@
     "@codemirror/view": "6.38.6",
     "@eslint/js": "^9.15.0",
     "@types/node": "^22.9.0",
-    "@vitest/coverage-v8": "^2.1.9",
-    "esbuild": "^0.24.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "esbuild": "^0.28.2",
     "eslint": "^9.15.0",
     "eslint-plugin-obsidianmd": "^0.4.2",
-    "happy-dom": "^15.11.7",
+    "happy-dom": "^21.0.4",
     "obsidian": "^1.13.1",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.15.0",
-    "vitest": "^2.1.9"
+    "vitest": "^5.0.5"
   }
 }

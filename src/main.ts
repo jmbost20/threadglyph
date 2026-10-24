@@ -69,6 +69,7 @@ const ASSISTANT_LABELS: Record<AssistantId, string> = {
 /** Where an assistant's requests go, in words for the preview. */
 export function destination(adapter: AiAdapter): string {
   if (adapter.egress === 'local') return 'Stays on this computer';
+  if (adapter.recipient) return `Sent to ${adapter.recipient}`;
   const where: Record<string, string> = { gemini: 'Google', claude: 'Anthropic', local: 'ollama.com' };
   return `Sent to ${where[adapter.id] ?? 'the provider'}`;
 }
@@ -1279,7 +1280,7 @@ class ThreadglyphSettingTab extends PluginSettingTab {
       });
 
     new Setting(this.containerEl).setName('Local (Ollama)').setHeading();
-    text('Ollama address', `Default ${DEFAULT_AI_SETTINGS.ollamaHost}.`, () => s.ollamaHost, (v) => {
+    text('Ollama address', `Default ${DEFAULT_AI_SETTINGS.ollamaHost}. An address on another machine is shown as leaving this computer.`, () => s.ollamaHost, (v) => {
       s.ollamaHost = v || DEFAULT_AI_SETTINGS.ollamaHost;
     });
     text('Model', 'An installed Ollama model, e.g. qwen3:8b. Image threads need a vision model such as qwen2.5vl:7b.', () => s.ollamaModel, (v) => {

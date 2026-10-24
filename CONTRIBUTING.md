@@ -15,9 +15,9 @@ Open the sandbox folder in Obsidian as a vault and enable community plugins. Rel
 
 ## Ground rules
 
-- **Notes stay untouched.** Threadglyph never writes to a note unless the user presses Accept on a previewed agent proposal. Keep it that way.
-- **No note text in tracked thread files.** Quotes and context belong in `.threadglyph/` (local only). See [Where data lives](README.md#where-data-lives).
-- **Nothing leaves the computer without a preview.** Any new AI path must show what is sent and where before sending.
+- **Notes stay untouched.** Threadglyph writes to a note only when the user presses Accept on a previewed `@agent` proposal (and removes the `@a` they just typed when they pick `@agent` from the menu). Keep it that way.
+- **Quotes stay out of tracked thread files.** Captured passages and their context belong in `.threadglyph/` (local only); code must never copy them into `threadglyph/threads/`. Messages are the user's and the AI's own text. See [Where data lives](README.md#where-data-lives).
+- **Nothing leaves the computer without a preview.** Any new AI path must show what is sent, in full, and where, before sending. (The legacy `@agent` predates this rule and shows scope and destination only.)
 - **Synthetic test data only.** Never commit real notes, screenshots of real notes, transcripts, model output from personal text, or secrets.
 - **Tests come with fixes.** A bug fix includes a test that fails without it. Don't lower coverage or loosen the lint or quality gates to get a green check.
 

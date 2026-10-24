@@ -60,6 +60,8 @@ export interface AiAdapter {
   /** The model or tool behind the name, e.g. `qwen3:8b`. */
   readonly detail: string;
   readonly egress: AiEgress;
+  /** Who receives requests that leave the computer, when the adapter knows better than its id (e.g. a remote Ollama host). */
+  readonly recipient?: string;
   readonly capabilities: AiCapabilities;
   ask(request: AiRequest, signal: AbortSignal): Promise<AiResult>;
 }

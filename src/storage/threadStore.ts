@@ -76,10 +76,12 @@ export class ThreadStore {
     const id = idFromPath(ANCHORS_DIR, path);
     if (!id) return null;
     const raw = await this.fs.read(path);
+    // A fixed or deleted file no longer has a problem.
+    this.problems.delete(path);
     const parsed = raw === null ? null : parseAnchor(raw);
     if (!parsed?.ok || parsed.value.threadId !== id) {
       this.anchors.delete(id);
-      if (parsed && !parsed.ok) this.problems.set(path, parsed.error);
+      if (parsed) this.problems.set(path, parsed.ok ? 'file name does not match its id' : parsed.error);
       return null;
     }
     this.anchors.set(id, parsed.value);
@@ -107,17 +109,20 @@ export class ThreadStore {
 
   /**
    * Adds a thread from a backup unless a thread with its id already exists
-   * (in memory or on disk). Existing data is never overwritten.
+   * (in memory or on disk). Existing data is never overwritten. The check and the
+   * write run in the thread's queue, so two restores of one id cannot both write.
    */
-  async restore(thread: ThreadRecord, anchor: TextAnchor | undefined): Promise<'restored' | 'exists'> {
-    if (this.threads.has(thread.id) || (await this.fs.read(threadPath(thread.id))) !== null) return 'exists';
-    // An anchor left on this device (e.g. from a later reattach) is newer than the backup's; keep it.
-    const hasAnchor = this.anchors.has(thread.id) || (await this.fs.read(anchorPath(thread.id))) !== null;
-    if (anchor && !hasAnchor) await this.writeAnchor(anchor);
-    await this.fs.ensureDir(THREADS_DIR);
-    await this.fs.write(threadPath(thread.id), serialize(thread));
-    this.threads.set(thread.id, thread);
-    return 'restored';
+  restore(thread: ThreadRecord, anchor: TextAnchor | undefined): Promise<'restored' | 'exists'> {
+    return this.serialized(thread.id, async () => {
+      if (this.threads.has(thread.id) || (await this.fs.read(threadPath(thread.id))) !== null) return 'exists';
+      // An anchor left on this device (e.g. from a later reattach) is newer than the backup's; keep it.
+      const hasAnchor = this.anchors.has(thread.id) || (await this.fs.read(anchorPath(thread.id))) !== null;
+      if (anchor && !hasAnchor) await this.writeAnchor(anchor);
+      await this.fs.ensureDir(THREADS_DIR);
+      await this.fs.write(threadPath(thread.id), serialize(thread));
+      this.threads.set(thread.id, thread);
+      return 'restored' as const;
+    });
   }
 
   hasThreads(notePath: string): boolean {

@@ -37,8 +37,8 @@ Measured on an Apple M1 Pro (Node 26, Vitest), synthetic notes of ordinary lines
 
 ## Sync and multiple devices
 
-- `threadglyph/threads/` holds plain JSON files with no note text. They travel with any sync (Obsidian Sync, iCloud, Git).
-- `.threadglyph/` (anchors, backups) is a dot-folder. It is meant to stay local: it quotes note text, and the README tells Git users to ignore it. Obsidian Sync documents that it skips hidden folders (from the docs, not verified here). On a second device, threads therefore show with all their messages and offer **Reattach to selection**. This is by design, to keep note text out of synced records.
+- `threadglyph/threads/` holds plain JSON files without captured quotes (messages are stored as written). They travel with any sync (Obsidian Sync, iCloud, Git).
+- `.threadglyph/` (anchors, backups) is a dot-folder. It is meant to stay local: it quotes note text, and the README tells Git users to ignore it. Obsidian Sync documents that it skips hidden folders (from the docs, not verified here); other sync tools may copy dot-folders, so check yours. On a second device, threads therefore show with all their messages and offer **Reattach to selection**. This is by design, to keep note text out of synced records.
 - Two devices changing the same thread at once: the revision check refuses to overwrite a newer file. How a given sync service resolves two diverging JSON files is **not tested**. Some services keep the last write, so one device's reply could be lost before Threadglyph ever sees it.
 
 ## Verdict

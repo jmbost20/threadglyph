@@ -47,7 +47,9 @@ const time = (work: () => unknown) => {
   return performance.now() - start;
 };
 
-describe('long notes', () => {
+// Building the ~1 MB fixture under coverage on a shared CI runner can pass Vitest's 5 s default;
+// the speed that matters is asserted inside each test (e.g. under 3 s to resolve 200 anchors).
+describe('long notes', { timeout: 30_000 }, () => {
   const doc = longNote();
 
   it('resolves 200 anchors in a ~1 MB note quickly enough for a refresh', () => {

@@ -101,6 +101,21 @@ describe('ThreadStore', () => {
     expect(fs.files).toEqual(snapshot);
   });
 
+  it('reports a misnamed anchor file, and forgets an anchor problem once the file is fixed (Codex review)', async () => {
+    const { fs, store, thread, anchor } = await setup();
+    const misnamed = `${ANCHORS_DIR}/other-id-0001.json`;
+    fs.files.set(misnamed, fs.files.get(anchorPath(thread.id)) ?? '');
+    expect(await store.reloadAnchorFile(misnamed)).toBeNull();
+    expect(store.loadProblems()).toContainEqual({ path: misnamed, error: 'file name does not match its id' });
+
+    fs.files.set(anchorPath(thread.id), '{"schema":1}');
+    expect(await store.reloadAnchorFile(anchorPath(thread.id))).toBeNull();
+    expect(store.loadProblems().map((p) => p.path)).toContain(anchorPath(thread.id));
+    fs.files.set(anchorPath(thread.id), JSON.stringify(anchor));
+    expect(await store.reloadAnchorFile(anchorPath(thread.id))).not.toBeNull();
+    expect(store.loadProblems().map((p) => p.path)).not.toContain(anchorPath(thread.id));
+  });
+
   it('reloads a single file after an external change or deletion', async () => {
     const { fs, clock, store, thread } = await setup();
     const external = addReply(thread, human, 'From another device', clock);
@@ -153,6 +168,17 @@ describe('ThreadStore write serialization', () => {
     );
     expect(results.every((r) => r.ok)).toBe(true);
     expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Why this?', 'one', 'two', 'three']);
+  });
+
+  it('restores a missing thread once when two restores race, never overwriting (Codex review)', async () => {
+    const fs = new MemoryFs();
+    const clock = fakeClock();
+    const store = new ThreadStore(fs, clock);
+    const thread = createThread(note, human, 'From backup A', clock);
+    const other = { ...thread, messages: [{ ...thread.messages[0], body: 'From backup B' }] };
+    const results = await Promise.all([store.restore(thread, undefined), store.restore(other, undefined)]);
+    expect(results.sort()).toEqual(['exists', 'restored']);
+    expect(await fs.read(threadPath(thread.id))).toContain('From backup A');
   });
 
   it('keeps the queue usable after a failed update', async () => {

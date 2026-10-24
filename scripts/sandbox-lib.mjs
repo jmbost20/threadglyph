@@ -3,9 +3,9 @@
  * which refuses any path outside the sandbox vault, so a real vault can only
  * ever be read.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
 /**
  * The vault `npm run sandbox:pull` copies settings from. There is no default:
@@ -64,6 +64,38 @@ export function isSandbox(vault) {
 
 const overlaps = (a, b) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
+/** `path` with symlinks resolved through its nearest existing ancestor (the rest may not exist yet). */
+export function realPath(path, depth = 0) {
+  // lstat, not existsSync: a link whose target is missing still exists, and must be followed.
+  const present = (p) => { try { lstatSync(p); return true; } catch { return false; } };
+  const rest = [];
+  let at = resolve(path);
+  while (!present(at)) {
+    const parent = dirname(at);
+    if (parent === at) break;
+    rest.unshift(basename(at));
+    at = parent;
+  }
+  if (!present(at)) return join(at, ...rest);
+  let real;
+  try {
+    real = realpathSync(at);
+  } catch {
+    // A dangling link: resolve its target by hand, so where a write would land is checked.
+    if (depth > 40) throw new Error(`Too many symbolic links: ${path}`);
+    real = realPath(resolve(realPath(dirname(at), depth + 1), readlinkSync(at)), depth + 1);
+  }
+  return join(real, ...rest);
+}
+
+/** The nearest folder above `path` that holds an Obsidian vault, if any. */
+function vaultAbove(path) {
+  for (let at = dirname(path); ; at = dirname(at)) {
+    if (existsSync(join(at, '.obsidian'))) return at;
+    if (dirname(at) === at) return null;
+  }
+}
+
 /**
  * Resolves the sandbox path. Refuses the source vault, any folder that already holds
  * an Obsidian vault and is not a sandbox, and any vault Obsidian has registered that
@@ -72,13 +104,22 @@ const overlaps = (a, b) => a === b || a.startsWith(b + sep) || b.startsWith(a + 
  */
 export function sandboxPath(arg, protectedVaults = [...registeredVaults(), ...(SOURCE_VAULT ? [SOURCE_VAULT] : [])]) {
   const vault = resolve(expandHome(arg ?? DEFAULT_SANDBOX));
-  const sandbox = isSandbox(vault);
-  // Any existing vault that is not a sandbox is refused, even if Obsidian's list could not be read.
-  if (!sandbox && existsSync(join(vault, '.obsidian'))) {
+  // Symlinks are followed, so a link cannot smuggle the sandbox into a real vault.
+  const real = realPath(vault);
+  const sandbox = isSandbox(real);
+  // Any existing vault that is not a sandbox is refused, even if Obsidian's list could not be read,
+  // and so is any folder inside one.
+  if (!sandbox && existsSync(join(real, '.obsidian'))) {
     console.error(`Refusing to use ${vault}: it is already an Obsidian vault. Point this script at a disposable folder.`);
     process.exit(1);
   }
-  const clash = protectedVaults.find((p) => (p === vault ? !sandbox || p === SOURCE_VAULT : overlaps(p, vault)));
+  const above = vaultAbove(real);
+  if (above) {
+    console.error(`Refusing to use ${vault}: it is inside the Obsidian vault ${above}. Point this script at a disposable folder.`);
+    process.exit(1);
+  }
+  const source = SOURCE_VAULT && realPath(SOURCE_VAULT);
+  const clash = protectedVaults.map(realPath).find((p) => (p === real ? !sandbox || p === source : overlaps(p, real)));
   if (clash) {
     console.error(`Refusing to use ${vault}: it is, or overlaps, a real vault (${clash}). Point this script at a disposable folder.`);
     process.exit(1);
@@ -89,7 +130,11 @@ export function sandboxPath(arg, protectedVaults = [...registeredVaults(), ...(S
 /** `vault/rel`, refusing a path that escapes the sandbox. */
 export function inside(vault, rel) {
   const path = resolve(vault, rel);
-  if (path !== vault && !path.startsWith(vault + sep)) throw new Error(`Refusing to write outside the sandbox: ${path}`);
+  const within = (p, root) => p === root || p.startsWith(root + sep);
+  // Checked as written and with symlinks resolved, so a linked folder cannot lead out.
+  if (!within(path, vault) || !within(realPath(path), realPath(vault))) {
+    throw new Error(`Refusing to write outside the sandbox: ${path}`);
+  }
   return path;
 }
 

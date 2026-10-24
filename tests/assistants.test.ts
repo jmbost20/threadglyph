@@ -210,6 +210,21 @@ describe('Local (Ollama) adapter', () => {
     expect(await ollama({}).adapter.ask(request(), aborted.signal)).toMatchObject({ kind: 'cancelled' });
   });
 
+  it('labels an Ollama server on another machine as leaving the computer (Codex review)', () => {
+    const at = (host: string, model = 'qwen3:8b') => new OllamaAdapter({ host, model, timeoutMs: 1, http: vi.fn() });
+    for (const host of ['http://localhost:11434', 'http://127.0.0.1:11434/', 'http://[::1]:11434', 'http://127.0.0.2:11434', ' ']) {
+      expect(at(host)).toMatchObject({ egress: 'local' });
+      expect(at(host).recipient).toBeUndefined();
+    }
+    expect(at('https://remote.example.invalid:11434')).toMatchObject({ egress: 'cloud', recipient: 'remote.example.invalid' });
+    expect(at('http://192.168.1.20:11434')).toMatchObject({ egress: 'cloud', recipient: '192.168.1.20' });
+    expect(at('not a url')).toMatchObject({ egress: 'cloud', recipient: 'not a url' });
+    // No scheme: Node reads "gpu-box:" as the protocol. It is named as typed, never "ollama.com" (Gitar on #24).
+    expect(at('gpu-box:11434')).toMatchObject({ egress: 'cloud', recipient: 'gpu-box:11434' });
+    expect(at('localhost:11434')).toMatchObject({ egress: 'cloud', recipient: 'localhost:11434' });
+    expect(at('http://localhost:11434', 'kimi-k3:cloud')).toMatchObject({ egress: 'cloud', recipient: 'ollama.com' });
+  });
+
   it('labels Ollama cloud models as leaving the computer', () => {
     expect(isCloudModel('kimi-k3:cloud')).toBe(true);
     expect(isCloudModel('qwen3:8b')).toBe(false);

@@ -41,12 +41,12 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 
 1. **Highlights and numbers** (`Welcome.md`): select text, press ⌘/, comment, then ⌘↩. You should see a highlight and a raised number, and the card shows the same number. A comment higher in the note renumbers in reading order. Resolving keeps the numbers.
 2. **Navigation:** ⌥⌘] and ⌥⌘[ step through threads in the note. In the panel (outside a text box), ⌘⇧→ and ⌘⇧← step through comments and highlight each passage; the keyboard stays in the panel. ⌥⌘/ inside a highlight jumps to its reply box. Clicking highlighted text shows the card without moving your cursor; clicking a badge focuses the reply box.
-3. **Panel search:** click in the panel and press **⌘F**. The search box focuses; Esc clears it. Open / Resolved / All filter the list. ↑/↓ move between cards and ↩ jumps to the passage.
+3. **Panel search and keys:** click in the panel and press **⌘F**. The search box focuses; Esc clears it. Open / Resolved / All filter the list. ↑/↓ move between cards and ↩ jumps to the passage, from a focused card or a clicked comment. Under **Custom filters**, change *Comment age* with the arrow keys: focus stays on the dropdown after each change.
 4. **Images** (`Image titles.md`, `Images.md`): each image has a title pill (alias, alt text or file name) with **Comment**. Clicking it starts an image thread with a preview. HEIC and missing files get a clear message instead. The title pill also appears in Reading view.
-5. **Ask AI, Local first:** Ask AI on a card. The preview preselects **Local · qwen3:8b · Stays on this computer**. Send → draft → edit → **Add to thread**, and the message is labelled *AI · edited by you*. Local on an image thread explains that the model cannot see images. Switch to **Gemini** and it describes the image.
-6. **@mentions:** type `@` in a reply. You should see Local, Gemini and Claude with their models. `@Gemini` opens the preview with Gemini chosen. When a request fails, the error offers the other assistants directly.
+5. **Ask AI, Local first:** Ask AI on a card. The preview preselects **Local · qwen3:8b · Stays on this computer**; Enter sends. The answer is added to the thread, labelled as AI, and stays editable. Esc in the preview cancels the whole request and removes the comment that asked (restorable from *Deleted comments*). Local on an image thread explains that the model cannot see images; switch to **Gemini** and it describes the image. In settings, set *Ollama address* to `http://192.168.1.20:11434`: the preview now says **Sent to 192.168.1.20** (no server needed to see the label). Set it back.
+6. **@mentions:** type `@` in a reply. You should see Local, Gemini and Claude with their models. Enter makes a new line; ⌘↩ posts, and `@Gemini` then opens the preview with Gemini chosen. When a request fails, the error offers the other assistants directly. If saving an AI reply fails, the reply stays as an editable draft, and Esc does not discard it.
 7. **@agent** (`Agent playground.md`, AI on, Local preferred):
-   - **In a comment:** select "Shopping list" and comment `@Agent sort the children alphabetically`, then press ↩ twice. You see a diff in the card, and the list dimmed in the note with the sorted lines under it. The note file is unchanged. **Accept** sorts it, and ⌘Z restores it. Try again, type in the list, then Accept: it is refused as stale.
+   - **In a comment:** select "Shopping list" and comment `@Agent sort the children alphabetically`, post with ⌘↩, then press Enter in the preview. You see a diff in the card, and the list dimmed in the note with the sorted lines under it. The note file is unchanged. **Accept** sorts it, and ⌘Z restores it. Try again, type in the list, then Accept: it is refused as stale.
    - **Inline window:** at the end of "Shopping list", type `@a` and choose **@agent**. The `@a` disappears and a window opens: type "sort these alphabetically", keep *The list item and everything under it*, press ⌘↩. The window shows the diff (**Side by side** switches view) and the note shows it under the dimmed list. ⌘↩ accepts; Reject or closing leaves the note as it was (closing keeps the proposal under the text).
    - **Typed line:** put the cursor on the "Clean the garage @agent …" line and press ⌘⇧↩. The proposal appears under the item. **Reject** leaves the line, request included, as it was. **Accept** applies it and removes the `@agent …` text.
    - **Chat:** ⌘⇧A. With the cursor under "Ideas", ask "add three more ideas". A proposal appears in the chat and in the note.
@@ -54,7 +54,16 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
    - Typing `@a` in the note offers `@agent`; a bare `@` still reaches Inline Comments.
 8. **Import** (`Agent Comments sample.md`): run *Import Agent Comments from this note*. The preview lists 3 threads (2 messages; 1 message · resolved; 1 message). Import them, then check that the note text is byte-for-byte unchanged. Running the import again says *Nothing new to import*. Then ask Local or Gemini on an imported thread.
 9. **Backup and restore:** back up, delete one file in `threadglyph/threads/`, reload, and restore. The thread comes back and the others are reported as already existing.
-10. **Safety:** after all of the above, the only note changes are the proposals you accepted. Check with the sandbox's file history or a diff.
+10. **Safety:** after all of the above, the only note changes are the proposals you accepted (and the `@a` removed when `@agent` was picked from the menu). Check with the sandbox's file history or a diff.
+11. **Release candidate install:** `npm run package`, then copy `dist/threadglyph-<version>/` into a *fresh* empty vault's `.obsidian/plugins/threadglyph/`. Enable it, make a thread, quit and reopen Obsidian (the thread and highlight come back), then disable and delete the plugin folder: the note is unchanged and Obsidian shows no errors.
+
+## Acceptance record
+
+One row per release candidate, filled in by the maintainer after running the script above in Obsidian. A release is tagged only after its row says *pass*.
+
+| Date | Version / commit | Obsidian / OS | Steps run | Result | Notes |
+|---|---|---|---|---|---|
+| | 0.3.0 / | | 1–11 | | |
 
 ## Evidence for the walkthrough
 
