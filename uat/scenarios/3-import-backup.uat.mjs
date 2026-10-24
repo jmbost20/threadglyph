@@ -1,4 +1,4 @@
-/** UAT: Agent Comments import, and backup and restore (docs/pilot.md steps 8 and 9). */
+/** UAT: Agent Comments import, and backup and restore (docs/dev/pilot.md steps 7 and 8). */
 import { rmSync } from 'node:fs';
 import { DIR, WELCOME, agentComments, cards, comment, open, threadFiles, welcome } from '../fixtures.mjs';
 
@@ -13,7 +13,7 @@ export default {
       weight: 'major',
       intro: {"headline": "This shows bringing in comments written in the Agent Comments format, without touching the note.", "context": "The sample note contains Agent Comments markup, with the comments stored inside the note’s text. Import reads them, previews the three threads it found, and creates ThreadGlyph threads beside the note. The note file stays byte-for-byte as it was, and running the import again finds nothing new."},
       tradeoffs: [{"option": "Copy into threads, leaving the markup in the note", "downside": "The comments now exist twice: the old markup stays in the note until you remove it.", "chosen": true}, {"option": "Move: import, then strip the markup from the note", "downside": "Tidy, but it edits your note, and a bad import would lose the originals."}, {"option": "Read the markup live, without importing", "downside": "No duplicates, but replies made in ThreadGlyph would have nowhere to go."}],
-      summary: 'Pilot step 8: the preview lists 3 threads; importing them leaves the note byte-for-byte unchanged; a second import finds nothing new.',
+      summary: 'Pilot step 7: the preview lists 3 threads; importing them leaves the note byte-for-byte unchanged; a second import finds nothing new.',
       fixtures: { [SAMPLE]: agentComments },
       async run(s) {
         await s.step('Open the Agent Comments sample (⌘O)', () => open(s, SAMPLE), { shot: false });
@@ -50,7 +50,7 @@ export default {
       weight: 'major',
       intro: {"headline": "This shows that a backup can bring back a lost thread without overwriting anything.", "context": "With two threads, you back them up. Then one thread’s file is deleted from disk, as if lost, and the plugin reloads with one thread. Restoring from the backup brings back only the missing thread and reports the other as already there; nothing that exists is overwritten."},
       tradeoffs: [{"option": "Restore only what is missing, never overwrite", "downside": "If a thread changed since the backup, you can’t roll it back from here.", "chosen": true}, {"option": "Restore everything, overwriting", "downside": "A true rollback, but it can undo replies written after the backup."}, {"option": "Ask thread by thread", "downside": "The most control, but slow and fiddly when there are many threads."}],
-      summary: 'Pilot step 9: back up, delete one thread file, reload, restore from the backup. The lost thread comes back and the other is reported as already there.',
+      summary: 'Pilot step 8: back up, delete one thread file, reload, restore from the backup. The lost thread comes back and the other is reported as already there.',
       fixtures: { [WELCOME]: welcome },
       async run(s) {
         await s.step('Open “Welcome” and comment on two passages', async () => {

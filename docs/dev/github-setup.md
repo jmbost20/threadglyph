@@ -73,7 +73,7 @@ These are paid features on private repositories.
      -F "security_and_analysis[secret_scanning][status]=enabled" \
      -F "security_and_analysis[secret_scanning_push_protection][status]=enabled"
    ```
-2. **Private vulnerability reporting** (SECURITY.md and the Code of Conduct use it):
+2. **Private vulnerability reporting** (SECURITY.md offers it beside email; until it is on, reports come by email):
    ```sh
    gh api -X PUT repos/jmbost20/threadglyph/private-vulnerability-reporting
    ```

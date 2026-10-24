@@ -1,5 +1,5 @@
 /**
- * UAT: comment threads on text (docs/pilot.md steps 1–3, plus the October 1 feedback fixes).
+ * UAT: comment threads on text (docs/dev/pilot.md steps 1–3, plus the October 1 feedback fixes).
  * Everything is driven the way the owner does it: drag-select, ⌘/, typing, ⌘↩, panel clicks
  * and keys. Synthetic notes only.
  */

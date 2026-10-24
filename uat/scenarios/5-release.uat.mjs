@@ -1,5 +1,5 @@
 /**
- * UAT: the release candidate's install and removal (docs/dev/pilot.md steps 9 and 10).
+ * UAT: the release candidate's install and removal (docs/dev/pilot.md steps 9 and 11).
  * The harness installs the three release files (main.js, manifest.json, styles.css) into a
  * fresh synthetic vault for every case; this one checks that switching the plugin off leaves
  * nothing behind in the note.
@@ -21,7 +21,7 @@ export default {
         { option: 'Keep the thread files when the plugin is off or removed', downside: 'Removing the plugin leaves two folders behind until you delete them.', chosen: true },
         { option: 'Delete the thread files on removal', downside: 'Tidier, but a reinstall would lose every comment.' },
       ],
-      summary: 'Pilot steps 9–10: with a thread on “list item”, disable the plugin. The highlight goes, the note is unchanged, the thread file stays, and nothing is logged as an error.',
+      summary: 'Pilot steps 9 and 11: with a thread on “list item”, disable the plugin. The highlight goes, the note is unchanged, the thread file stays, and nothing is logged as an error.',
       fixtures: { [WELCOME]: welcome },
       async run(s) {
         await s.step('Open “Welcome” and comment on “list item”', async () => {

@@ -1,4 +1,4 @@
-/** UAT: image titles and image threads (docs/pilot.md step 4). Synthetic gradient images only. */
+/** UAT: image titles and image threads (docs/dev/pilot.md step 4). Synthetic gradient images only. */
 import { DIR, cards, imageFiles, imageTitles, images, open } from '../fixtures.mjs';
 
 const TITLES = `${DIR}/Image titles.md`;

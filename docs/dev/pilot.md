@@ -59,7 +59,7 @@ One row per release candidate, filled in by the maintainer after running the scr
 
 | Date | Version / commit | Obsidian / OS | Steps run | Result | Notes |
 |---|---|---|---|---|---|
-| | 0.3.0 / | | 1–10 | | |
+| | 0.3.0 / | | 1–11 | | |
 
 ## Evidence for the walkthrough
 
