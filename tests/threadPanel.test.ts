@@ -1164,6 +1164,29 @@ describe('thread list feedback (owner UAT 2026-10-01)', () => {
     expect(button('Reattach to selection')).toBeDefined();
   });
 
+  it('leaves the keyboard in the Ask AI preview when the post\'s first update opens it (UAT 2026-10-24)', async () => {
+    // The plugin's first refresh after posting "@Local …" can carry both the new focused thread and
+    // its preview. The preview takes the keyboard; the reply box must not take it back.
+    const local = [{ id: 'local', name: 'Local', detail: 'qwen3:8b', destination: 'Stays on this computer' }];
+    const preview: AiCardView = { state: { phase: 'preview', scope: 'section', assistant: 'local', attempts: 0 }, items: [], scopes: [], exactText: '', canSend: true };
+    const rerender = actions.rerender;
+    actions.rerender = () => {
+      const id = store.forNote(note).at(-1)?.id ?? null;
+      panel.update(state({ assistants: local, focusedThreadId: id, ai: id ? { [id]: preview } : {} }));
+    };
+    ctl.beginThread(note, doc, ...range('The passage'));
+    panel.update(state({ assistants: local }));
+    const input = q<HTMLTextAreaElement>('.tg-card-new textarea')!;
+    input.focus();
+    type(input, '@Local is this right?');
+    button('Comment')!.click();
+    await flush();
+    actions.rerender = rerender;
+    const thread = store.forNote(note)[0];
+    expect(document.activeElement?.closest('.tg-ai')).not.toBeNull();
+    expect((document.activeElement as HTMLElement).dataset.draftKey).not.toBe(draftKey.reply(thread.id));
+  });
+
   it('moves the keyboard into the new thread\'s reply box after posting it', async () => {
     // As in the plugin: a posted thread becomes the focused one before the panel re-renders.
     const rerender = actions.rerender;
