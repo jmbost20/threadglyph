@@ -1,5 +1,5 @@
 import type { ProcessRunner } from './claudeCli';
-import { buildPromptText, systemPromptFor } from './prompt';
+import { SYSTEM_PROMPT, buildPromptText } from './prompt';
 import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
 
 /**
@@ -7,8 +7,8 @@ import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
  * owner's own Gemini API key. Verified against Gemini CLI 0.60.
  *
  * Isolation: the CLI runs in Threadglyph's own folder (never the vault), in
- * read-only `plan` mode with extensions off and every built-in tool excluded
- * by that folder's settings. The request text goes in on stdin, so note text
+ * read-only `plan` mode with extensions off, no MCP servers, and every
+ * built-in tool excluded by that folder's settings. The request text goes in on stdin, so note text
  * never appears in the process list. An image is copied to a private temporary
  * folder for the one request and deleted afterwards.
  *
@@ -58,16 +58,23 @@ export interface GeminiCliOptions {
   files: GeminiFiles;
 }
 
+/**
+ * Gemini CLI starts every MCP server in the user's own settings unless an
+ * allow-list names the ones to keep, and it reads an empty list as "all". So
+ * the list names one server that cannot exist, and none is started.
+ */
+export const NO_MCP_SERVERS = 'threadglyph-no-mcp-servers';
+
 export function geminiArgs(model: string, image: string | null, imageDir: string | null): string[] {
   const args = ['-p', image ? `Attached image: @${image}` : 'Write your reply now.'];
   if (imageDir) args.push('--include-directories', imageDir);
-  args.push('-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', model.trim() || DEFAULT_GEMINI_MODEL);
+  args.push('--allowed-mcp-server-names', NO_MCP_SERVERS, '-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', model.trim() || DEFAULT_GEMINI_MODEL);
   return args;
 }
 
 /** The request as sent on stdin: standing instructions, then the fenced note material and thread. */
 export function geminiInput(request: AiRequest): string {
-  return `${systemPromptFor(request)}\n\n---\n\n${buildPromptText(request)}\n`;
+  return `${SYSTEM_PROMPT}\n\n---\n\n${buildPromptText(request)}\n`;
 }
 
 /** The reply text from `--output-format json`, or null when the output has no answer. */
@@ -147,7 +154,7 @@ export class GeminiCliAdapter implements AiAdapter {
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
     const { command, folder, ownsFolder, model, env, run, files } = this.options;
-    const timeoutMs = this.options.timeoutMs + (request.extraSeconds ?? 0) * 1000;
+    const timeoutMs = this.options.timeoutMs;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (ownsFolder) await files.prepareFolder(folder, `${JSON.stringify(GEMINI_FOLDER_SETTINGS, null, 2)}\n`);
 

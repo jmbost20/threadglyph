@@ -31,12 +31,6 @@ export interface AiRequest {
   /** Extra note text the user chose to include (a section or the whole note). */
   context: { label: string; text: string } | null;
   messages: AiContextMessage[];
-  /** Agent requests: the exact text the agent may propose changes to. */
-  target?: { label: string; text: string } | null;
-  /** Other notes the user allowed the agent to read. */
-  vaultNotes?: { path: string; text: string }[];
-  /** Extra seconds on top of the configured timeout, for requests that must write a lot (agent rewrites). */
-  extraSeconds?: number;
 }
 
 export type AiErrorKind =

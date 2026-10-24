@@ -14,7 +14,7 @@ Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude C
 | …performance | 1 |
 | Findings on the open knowledge-workflows PR (#12) | 10, all fixed on that branch |
 | Sonar quality-gate failures | 2: low coverage on new code (PR #1) and Reliability rating D, caused by two real bugs (PR #7) |
-| How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is about 99.5% today |
+| How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is about 99.8% today |
 
 **How the findings were counted:** every top-level Gitar review comment on a merged pull request, by its own category label. Two findings were posted on both #7 and #8 (#8 was stacked on #7); each is counted once. Coverage figures come from the development log and `npm run check`.
 
@@ -50,7 +50,7 @@ Each one now has a test that checks the thread files never hold the quoted text.
 
 ### 4. Accept could edit the wrong copy of a passage (PR #10)
 
-[Gitar's comment](https://github.com/jmbost20/threadglyph/pull/10#discussion_r4145848018): if the text an AI proposal was about had been edited, and the same text existed elsewhere in the note, Accept would rewrite the other copy. Proposals now remember the text around them, and Accept refuses unless the passage and its surroundings are unchanged and unique.
+[Gitar's comment](https://github.com/jmbost20/threadglyph/pull/10#discussion_r4145848018): if the text an AI proposal was about had been edited, and the same text existed elsewhere in the note, Accept would rewrite the other copy. The fix made proposals remember the text around them, so Accept refused unless the passage and its surroundings were unchanged and unique. (`@agent`, the feature behind this finding and the ones in section 2, was later removed: Threadglyph no longer writes to notes at all.)
 
 ### 5. Sonar: two real bugs behind a "D", and a finding declined with a reason (PR #7)
 
@@ -82,7 +82,7 @@ Before going public, the whole project was reviewed once more by a different age
 
 - The README called thread files free of note text, but comments and AI replies are stored as written and can quote the note. The docs now say exactly what is kept out (captured quotes) and what isn't.
 - An Ollama server on another machine was labelled "Stays on this computer". The label now comes from the configured address.
-- Gemini CLI's isolation was described as tools, MCP servers and settings all off. It runs in read-only plan mode with extensions off, but user-level settings still apply; the docs now say so.
+- Gemini CLI's isolation was described as tools, MCP servers and settings all off. It ran in read-only plan mode with extensions off, but MCP servers from the user's own settings still started. The docs were corrected, and Gemini now also gets an MCP allow-list that names no real server.
 - Text typed while a comment was saving could be lost, two overlapping restores could overwrite each other, and the sandbox scripts' vault guard could be bypassed through a parent folder or a symlink. Each is fixed, with a test or a scripted check.
 - Development dependencies carried 12 npm advisories (4 critical). Upgrading Vitest, happy-dom and esbuild left 3 moderate ones, triaged in [source-and-dependencies.md](source-and-dependencies.md).
 

@@ -13,7 +13,6 @@ The first public release.
 - Delete a comment or a whole thread, with a confirmation and **Deleted comments** to restore it.
 - Keyboard flow in the panel: Tab moves comment by comment, **E** edits, ⌘D / ⌘⇧D delete, ⌘⇧→ / ⌘⇧← step through threads, and the active card stays centered.
 - Open, Resolved and All tabs show counts; threads whose passage is gone are listed first.
-- `@agent` (legacy, on hold): proposes edits to a note as a diff, applied only on Accept.
 - How Gitar and SonarQube reviewed Threadglyph (`docs/gitar-and-sonar.md`), an architecture overview and a roadmap.
 - CodeQL and OpenSSF Scorecard checks, and build provenance for releases.
 
@@ -22,12 +21,19 @@ The first public release.
 - UI code follows Obsidian's official plugin lint rules.
 - The development sandbox scripts work on any machine, and refuse to use any existing vault that isn't a sandbox.
 
+### Removed
+- The experimental `@agent` from the private pilot, which proposed edits to a note and applied them on Accept. Threadglyph no longer writes to note files at all. Its code remains in the repository's history.
+
 ### Fixed
 - Escape no longer throws away an AI reply that could not be saved.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.
-- An AI rewrite containing a plain code block is no longer cut short, and its note text no longer reaches the saved reply.
-- Deleting a thread drops its pending `@agent` proposal.
+- Local (Ollama) requests with a long note get a context window large enough to keep the instructions; Ollama otherwise silently drops the start of the prompt.
+- Gemini CLI no longer starts MCP servers from your own Gemini settings for a Threadglyph request.
+- An Ollama server on another machine is no longer labelled "Stays on this computer"; the preview names its host.
+- Text typed into a comment box while it is saving is kept.
+- Two restores of the same thread at once can no longer overwrite each other.
+- An anchor file whose name does not match its thread is reported, and a fixed anchor clears its warning.
 
 ## [0.2.0] - 2026-09-30
 

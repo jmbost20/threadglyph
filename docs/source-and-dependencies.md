@@ -47,7 +47,7 @@ All three assistants are external programs the owner installs. None is an npm de
 | Assistant | Runtime | Where requests go | How it is called |
 |---|---|---|---|
 | Local (preferred) | [Ollama](https://ollama.com) app (MIT) with an open-weight model, e.g. `qwen3:8b` | This computer with the default `localhost` address. A server on another machine, and `:cloud` models, are labelled as leaving it | HTTP to `localhost:11434` `/api/chat` with Node's `http`; `/api/show` to check vision support |
-| Gemini | Gemini CLI (Apache-2.0, Google), owner's API key | Google | Child process, no shell, request on stdin; `--approval-mode plan` (read-only) and `-e none` (no extensions); runs in `~/.threadglyph/gemini`, where a settings file excluding Gemini's built-in tools is created if none exists. User-level Gemini settings, including MCP servers, still apply |
+| Gemini | Gemini CLI (Apache-2.0, Google), owner's API key | Google | Child process, no shell, request on stdin; `--approval-mode plan` (read-only), `-e none` (no extensions) and an MCP allow-list naming no real server (no MCP servers); runs in `~/.threadglyph/gemini`, where a settings file excluding Gemini's built-in tools is created if none exists. Other user-level Gemini settings still apply |
 | Claude | Claude Code CLI (proprietary, Anthropic), existing sign-in | Anthropic | Child process, no shell, request on stdin; `--tools ""`, `--strict-mcp-config`, `--setting-sources ""`; OS temp folder as working directory |
 
 Only the request shown in the preview is sent. Keys are never read or stored by the plugin: Gemini CLI reads its own `.env` file, and Claude Code its own sign-in.

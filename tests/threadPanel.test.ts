@@ -93,8 +93,6 @@ beforeEach(async () => {
     aiScope: vi.fn(),
     aiAssistant: vi.fn(),
     aiSend: vi.fn(),
-    proposalAccept: vi.fn(),
-    proposalReject: vi.fn(),
     aiCancel: vi.fn(),
     aiClose: vi.fn(),
     aiAdopt: vi.fn(async () => true),

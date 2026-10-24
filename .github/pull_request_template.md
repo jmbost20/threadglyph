@@ -7,6 +7,6 @@
 
 ## Data safety
 - [ ] No real vault content, screenshots of real notes, transcripts or secrets in this diff
-- [ ] The plugin writes to notes only on Accept of a previewed `@agent` proposal; captured quotes never reach `threadglyph/threads/`
+- [ ] The plugin never writes to note files; captured quotes never reach `threadglyph/threads/`
 
 ## Remaining limitations
