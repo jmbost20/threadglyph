@@ -421,6 +421,8 @@ export default class ThreadglyphPlugin extends Plugin {
           return false;
         }
         this.ai.close(id);
+        // A pending agent proposal belongs to the thread; it must not outlive it.
+        if (deleted) this.agents.reject(id);
         const ok = await attempt(() => c.setThreadDeleted(id, deleted));
         await this.refresh();
         return ok;

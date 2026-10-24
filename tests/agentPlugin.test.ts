@@ -148,6 +148,29 @@ describe('@Agent in a comment', () => {
     expect(notices.at(-1)).toContain('Undo');
   });
 
+  it('drops a pending proposal when its thread is deleted, so Accept can no longer edit (Gitar on #14)', async () => {
+    await propose();
+    expect(plugin.agents.forNote(NOTE)).toHaveLength(1);
+    expect(view.editor.cm!.dom.querySelector('.tg-inline-proposal')).not.toBeNull();
+    buttonIn(panelEl(), 'Delete thread')!.click();
+    buttonIn(openModals.at(-1)!.contentEl as HTMLElement, 'Delete')!.click();
+    await flush();
+    expect(plugin.agents.forNote(NOTE)).toHaveLength(0);
+    expect(view.editor.cm!.dom.querySelector('.tg-inline-proposal')).toBeNull();
+    expect(note()).toBe(NOTE_TEXT);
+  });
+
+  it('saves only the prose of a rewrite that holds a plain code block (Gitar on #14)', async () => {
+    await commentOn('Groceries', '@Agent regroup');
+    answers.push({ ok: true, text: 'Regrouped.\n```threadglyph-replace\n- [ ] Groceries\n```\nsecret-code\n```\n  - [ ] apples\n```' });
+    buttonIn(panelEl(), 'Send')!.click();
+    await flush();
+    const saved = threadFiles().join();
+    expect(saved).toContain('Regrouped.');
+    expect(saved).not.toContain('secret-code');
+    expect(saved).not.toContain('apples');
+  });
+
   it('says a local rewrite can take minutes while it runs', async () => {
     await commentOn('Groceries', '@Agent regroup');
     vi.spyOn(plugin.adapterFactory(plugin.settings)[0], 'ask').mockImplementation(() => new Promise(() => {}));

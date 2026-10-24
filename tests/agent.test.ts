@@ -86,6 +86,19 @@ describe('agent replies', () => {
     expect(fencedBlocks('````md\n```\nx\n````')).toEqual([{ lang: 'md', body: '```\nx', raw: '````md\n```\nx\n````', closed: true }]);
   });
 
+  it('keeps plain code blocks inside a rewrite whole, so no note text spills into the prose (Gitar on #14)', () => {
+    const rewrite = 'Done.\n```threadglyph-replace\n- a\n```\ncode\n```\n- b\n```';
+    expect(parseAgentReply(rewrite)).toEqual({ reply: 'Done.', edits: [], read: null, replacement: '- a\n```\ncode\n```\n- b' });
+    const markdown = 'Here it is.\n```markdown\n# Notes\n```\nnpm test\n```\nEnd.\n```\nThanks.';
+    expect(parseAgentReply(markdown)).toEqual({ reply: 'Here it is.\n\nThanks.', edits: [], read: null, replacement: '# Notes\n```\nnpm test\n```\nEnd.' });
+    // Small models sometimes put the rewrite in the threadglyph block itself.
+    const inBlock = '```threadglyph\n- a\n```\nx\n```\n- b\n```';
+    expect(parseAgentReply(inBlock)).toEqual({ reply: '', edits: [], read: null, replacement: '- a\n```\nx\n```\n- b' });
+    // A JSON edit block still ends at its own fence; later code stays in the prose.
+    const edits = '```threadglyph\n{"edits":[{"old":"a","new":"b"}]}\n```\nSee:\n```\nls\n```';
+    expect(parseAgentReply(edits)).toEqual({ reply: 'See:\n```\nls\n```', edits: [{ old: 'a', new: 'b' }], read: null });
+  });
+
   it('takes the json block that carries edits, not one before it (Gitar on #10)', () => {
     const reply = 'Ok.\n```json\n{"x":1}\n```\nThen:\n```json\n{"edits":[{"old":"a","new":"b"}]}\n```';
     expect(parseAgentReply(reply)).toEqual({ reply: 'Ok.\n```json\n{"x":1}\n```\nThen:', edits: [{ old: 'a', new: 'b' }], read: null });

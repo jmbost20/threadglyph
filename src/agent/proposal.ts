@@ -72,6 +72,32 @@ export function fencedBlocks(text: string): FencedBlock[] {
   return blocks;
 }
 
+/**
+ * A rewrite (the target's complete new text) runs to the LAST closing fence in the
+ * reply. The rewritten note may hold plain ``` code blocks of its own, and ending at
+ * the first one would cut the rewrite short and leave the rest of the note in the
+ * prose, which is saved to the thread. Taking too much shows up in the diff before
+ * Accept; taking too little would not.
+ */
+export function wholeTextBlock(text: string, block: FencedBlock): FencedBlock {
+  const lines = text.split('\n');
+  // The block's opening line; fencedBlocks found it in this same text.
+  const start = text.slice(0, text.indexOf(block.raw)).split('\n').length - 1;
+  const openLength = lines[start].trim().match(/^`+/)?.[0].length ?? 3;
+  for (let j = lines.length - 1; j > start; j--) {
+    const fence = FENCE.exec(lines[j]);
+    if (fence && !fence[2] && fence[1].length >= openLength && lines[j].trim() === fence[1]) {
+      return {
+        lang: block.lang,
+        body: lines.slice(start + 1, j).join('\n'),
+        raw: lines.slice(start, j + 1).join('\n'),
+        closed: true,
+      };
+    }
+  }
+  return block;
+}
+
 /** Small models often label the block `json`; it counts when it carries our keys. */
 const OUR_KEYS = /^\s*\{[\s\S]*"(?:edits|read)"/;
 
@@ -116,19 +142,23 @@ export function parseAgentReply(text: string): ParsedReply {
   const blocks = fencedBlocks(text);
   const without = (block: FencedBlock) => text.replace(block.raw, '').trim();
   // A rewrite cut off before its closing fence would delete the rest of the target.
-  const rewrite = (block: FencedBlock, body: string): ParsedReply =>
-    block.closed ? { reply: without(block), edits: [], read: null, replacement: body } : { reply: without(block), edits: [], read: null, malformed: true };
+  const rewrite = (found: FencedBlock): ParsedReply => {
+    const block = wholeTextBlock(text, found);
+    return block.closed
+      ? { reply: without(block), edits: [], read: null, replacement: block.body }
+      : { reply: without(block), edits: [], read: null, malformed: true };
+  };
   const replace = blocks.find((b) => b.lang === 'threadglyph-replace');
-  if (replace) return rewrite(replace, replace.body);
+  if (replace) return rewrite(replace);
   const match = blocks.find((b) => b.lang === 'threadglyph') ?? blocks.find((b) => b.lang === 'json' && OUR_KEYS.test(b.body));
   if (!match) {
     // ...and the rewritten text `markdown`; in an agent reply, that block is the new text.
     const markdown = blocks.find((b) => b.lang === 'markdown' || b.lang === 'md');
-    return markdown ? rewrite(markdown, markdown.body) : { reply: text.trim(), edits: [], read: null };
+    return markdown ? rewrite(markdown) : { reply: text.trim(), edits: [], read: null };
   }
   const prose = without(match);
   // Small models sometimes put the rewritten Markdown itself in the threadglyph block.
-  if (!match.body.trim().startsWith('{')) return rewrite(match, match.body);
+  if (!match.body.trim().startsWith('{')) return rewrite(match);
   let data: unknown;
   try {
     data = parseJson(match.body);
