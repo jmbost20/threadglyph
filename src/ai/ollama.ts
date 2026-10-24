@@ -45,6 +45,26 @@ export function agentContextTokens(request: AiRequest, promptChars: number): num
   return Math.min(MAX_AGENT_CONTEXT, Math.ceil(needed / OLLAMA_DEFAULT_CONTEXT) * OLLAMA_DEFAULT_CONTEXT);
 }
 
+/** The host part of an address, or the address itself when it cannot be parsed. */
+function hostName(address: string): string {
+  try {
+    return new URL(address).hostname.replace(/^\[|\]$/g, '');
+  } catch {
+    return address;
+  }
+}
+
+/** True for an address on this computer (localhost, 127.x.x.x, ::1). Anything unparseable counts as remote. */
+export function isLoopback(address: string): boolean {
+  try {
+    new URL(address);
+  } catch {
+    return false;
+  }
+  const host = hostName(address).toLowerCase();
+  return host === 'localhost' || host === '::1' || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
 export class OllamaAdapter implements AiAdapter {
   readonly id = 'local';
   readonly name = 'Local';
@@ -61,8 +81,15 @@ export class OllamaAdapter implements AiAdapter {
     return this.options.model;
   }
 
+  /** Local only when the server is on this computer and the model is not an Ollama cloud model. */
   get egress() {
-    return isCloudModel(this.options.model) ? ('cloud' as const) : ('local' as const);
+    return isCloudModel(this.options.model) || !isLoopback(this.host) ? ('cloud' as const) : ('local' as const);
+  }
+
+  /** The machine a non-local request goes to: the configured host, or ollama.com for a cloud model. */
+  get recipient(): string | undefined {
+    if (!isLoopback(this.host)) return hostName(this.host);
+    return isCloudModel(this.options.model) ? 'ollama.com' : undefined;
   }
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {

@@ -1116,6 +1116,7 @@ describe('Threadglyph plugin with several assistants', () => {
     expect(destination(fake('gemini', 'Gemini', 'cloud'))).toBe('Sent to Google');
     expect(destination(fake('claude', 'Claude', 'cloud'))).toBe('Sent to Anthropic');
     expect(destination(fake('other', 'Other', 'cloud'))).toBe('Sent to the provider');
+    expect(destination({ ...fake('local', 'Local', 'cloud'), recipient: 'gpu-box.lan' })).toBe('Sent to gpu-box.lan');
   });
 });
 
