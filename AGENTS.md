@@ -1,5 +1,7 @@
 # Agent instructions: Threadglyph
 
+Rules for AI coding agents working in this repository. Threadglyph was built this way; see [docs/dev/](docs/dev/README.md) for the logs. "The owner" means the maintainer.
+
 ## Standing authority (repository-scoped)
 
 The owner has authorized coding agents working **in this repository**, without asking each time, to:
@@ -18,7 +20,7 @@ The owner has authorized coding agents working **in this repository**, without a
 - The plugin changes a note only when the user explicitly asks in the moment: **Accept** on a previewed agent proposal (one undoable editor transaction, refused if the text changed since the preview), or choosing `@agent` from the editor's autocomplete (which only removes the `@a…` just typed and opens the ask window). Nothing else writes to note files (owner decision 2026-09-30). Tracked thread records must never contain quoted note text, and agent proposals, which do, stay in memory only (see `README.md`, "Where data lives").
 - Only one actor writes a branch at a time. Fetch and compare before building on bot or remediation commits, and never force-push over them.
 - Stop an automated repair loop after two failed attempts at the same failure, and report the evidence. Never weaken tests, coverage or the quality gate to get a green check.
-- Record decisions, PR links and blockers in `docs/implementation-progress.md`, and Sonar/Gitar evidence in `docs/sonar-experiments.md`.
+- Record decisions, PR links and blockers in `docs/dev/implementation-progress.md`, and Sonar/Gitar evidence in `docs/dev/sonar-experiments.md`.
 
 ## Commands
 
