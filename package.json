@@ -16,7 +16,12 @@
     "sandbox": "node scripts/sandbox-vault.mjs",
     "sandbox:pull": "node scripts/sandbox-pull-production.mjs",
     "package": "node scripts/package.mjs",
-    "version": "node scripts/version-bump.mjs && git add manifest.json versions.json"
+    "version": "node scripts/version-bump.mjs && git add manifest.json versions.json",
+    "uat": "node ../obsidian-uat/cli.mjs run",
+    "uat:review": "node ../obsidian-uat/cli.mjs review",
+    "uat:feedback": "node ../obsidian-uat/cli.mjs feedback",
+    "uat:status": "node ../obsidian-uat/cli.mjs status",
+    "uat:stop": "node ../obsidian-uat/cli.mjs stop"
   },
   "devDependencies": {
     "@codemirror/state": "6.5.0",

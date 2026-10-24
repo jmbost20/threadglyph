@@ -3,7 +3,8 @@ import obsidianmd from 'eslint-plugin-obsidianmd';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['main.js', 'coverage/**', 'node_modules/**', 'dist/**'] },
+  // uat/ scenarios run inside the Obsidian sandbox page (obsidian-uat), with its globals.
+  { ignores: ['main.js', 'coverage/**', 'node_modules/**', 'dist/**', 'uat/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

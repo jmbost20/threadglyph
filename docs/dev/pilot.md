@@ -52,6 +52,8 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 
 ## Acceptance record
 
+The script is also automated: `npm run uat -- --track release-0.3.0` runs it in a sandboxed Obsidian with the maintainer's `obsidian-uat` harness and produces a review deck. Approving that deck is the row below; the steps it cannot run (cloud assistants) are listed in it as not run.
+
 One row per release candidate, filled in by the maintainer after running the script above in Obsidian. A release is tagged only after its row says *pass*.
 
 | Date | Version / commit | Obsidian / OS | Steps run | Result | Notes |

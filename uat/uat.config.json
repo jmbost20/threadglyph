@@ -1,0 +1,15 @@
+{
+  "pluginId": "threadglyph",
+  "build": "npm run build",
+  "unit": "npm test",
+  "files": ["main.js", "manifest.json", "styles.css"],
+  "scenarios": "uat/scenarios",
+  "reports": "uat/reports",
+  "retention": 8,
+  "hotkeys": {
+    "threadglyph:comment-on-selection": [{ "modifiers": ["Mod"], "key": "/" }],
+    "threadglyph:reply-at-cursor": [{ "modifiers": ["Mod", "Alt"], "key": "/" }],
+    "threadglyph:next-thread": [{ "modifiers": ["Mod", "Alt"], "key": "]" }],
+    "threadglyph:previous-thread": [{ "modifiers": ["Mod", "Alt"], "key": "[" }]
+  }
+}
