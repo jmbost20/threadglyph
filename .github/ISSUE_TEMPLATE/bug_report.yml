@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Threadglyph doesn't work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please don't paste private note content. A short synthetic note that shows the problem is ideal.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Select "…" in a note
+        2. Run Threadglyph: Comment on selection
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: threadglyph
+    attributes:
+      label: Threadglyph version
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: obsidian
+    attributes:
+      label: Obsidian version and operating system
+      placeholder: 1.9.10 on macOS 15
+    validations:
+      required: true
+  - type: dropdown
+    id: assistant
+    attributes:
+      label: AI assistant involved
+      options: [None, Local (Ollama), Gemini, Claude]
+  - type: textarea
+    id: console
+    attributes:
+      label: Errors from the developer console (optional)
+      description: View → Toggle Developer Tools → Console. Remove anything personal.
+      render: text
