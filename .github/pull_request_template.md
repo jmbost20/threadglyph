@@ -4,6 +4,7 @@
 - [ ] `npm run check` passes locally
 - [ ] CI green on the current head SHA
 - [ ] Manual check in the sandbox vault (if UI changed)
+- [ ] Commits are signed off (`git commit -s`, see CONTRIBUTING.md)
 
 ## Data safety
 - [ ] No real vault content, screenshots of real notes, transcripts or secrets in this diff

@@ -6,3 +6,4 @@ dist/
 .env*
 # Local sandbox vault content never belongs in the repository.
 sandbox-vault/
+uat/reports/

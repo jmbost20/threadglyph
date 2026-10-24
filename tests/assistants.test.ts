@@ -70,7 +70,8 @@ describe('assistant settings', () => {
   });
 
   it('keeps Gemini in its own folder, never the vault', () => {
-    expect(geminiFolderPath({ geminiFolder: '' }, '/Users/me')).toBe('/Users/me/.threadglyph/gemini');
+    // Node's own separators, so this reads \\Users\\me\\… on Windows.
+    expect(geminiFolderPath({ geminiFolder: '' }, '/Users/me')).toBe(join('/Users/me', '.threadglyph', 'gemini'));
     expect(geminiFolderPath({ geminiFolder: '~/.ilc/gemini' }, '/Users/me')).toBe('/Users/me/.ilc/gemini');
     expect(geminiFolderPath({ geminiFolder: '/abs/dir' }, '/Users/me')).toBe('/abs/dir');
   });
@@ -84,12 +85,20 @@ describe('command-line tool environment', () => {
   });
 
   it('puts the tool folder and install folders ahead of the inherited PATH, without repeats', () => {
-    const path = toolPath('/Users/me/.npm-global/bin/gemini', '/usr/bin:/bin:/opt/homebrew/bin:', '/Users/me').split(':');
+    const path = toolPath('/Users/me/.npm-global/bin/gemini', '/usr/bin:/bin:/opt/homebrew/bin:', '/Users/me', ':').split(':');
     expect(path.slice(0, 3)).toEqual(['/Users/me/.npm-global/bin', '/opt/homebrew/bin', '/usr/local/bin']);
     expect(path.filter((d) => d === '/opt/homebrew/bin')).toHaveLength(1);
     expect(path).toContain('/usr/bin');
     expect(path).not.toContain('');
-    expect(toolPath('gemini', '', '/h').split(':')[0]).toBe('/h/.npm-global/bin');
+    expect(toolPath('gemini', '', '/h', ':').split(':')[0]).toBe('/h/.npm-global/bin');
+  });
+
+  it('keeps Windows PATH entries whole: they are separated by ";" and contain "C:"', () => {
+    const path = toolPath('C:\\Users\\me\\npm\\gemini.cmd', 'C:\\Windows;C:\\Program Files\\nodejs;', 'C:\\Users\\me', ';').split(';');
+    expect(path[0]).toBe('C:\\Users\\me\\npm');
+    expect(path).toContain('C:\\Windows');
+    expect(path).toContain('C:\\Program Files\\nodejs');
+    expect(path).not.toContain('C');
   });
 });
 

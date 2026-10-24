@@ -1,0 +1,29 @@
+{
+  "projectName": "threadglyph",
+  "projectOwner": "jmbost20",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 80,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributorsPerLine": 7,
+  "contributors": [
+    {
+      "login": "jmbost20",
+      "name": "Jonah Bostrom",
+      "avatar_url": "https://avatars.githubusercontent.com/u/84430322?v=4",
+      "profile": "https://jonahbostrom.com",
+      "contributions": [
+        "code",
+        "doc",
+        "design",
+        "maintenance",
+        "test",
+        "ideas"
+      ]
+    }
+  ]
+}

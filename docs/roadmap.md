@@ -17,6 +17,7 @@ Where Threadglyph is heading, roughly in order. Nothing here has a date; it is a
 
 ## Known limitations
 
+- Gemini and Claude on Windows are unverified: npm installs them as `.cmd` launchers, which Node will not start without a shell, and Threadglyph never uses one. Local (Ollama) does not depend on this. Help checking is welcome ([#23](https://github.com/jmbost20/threadglyph/issues/23)).
 - Desktop only. Sync carries thread messages but not anchors (they quote note text and stay local), so another device shows threads as needing a reattach.
 - Anchors match exact text: editing the quoted words themselves detaches the thread.
 - Reading view cannot highlight a quote that crosses a formatting boundary; the editor and panel still show it.

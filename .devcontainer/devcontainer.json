@@ -1,0 +1,13 @@
+{
+  // A ready-made environment for GitHub Codespaces or VS Code Dev Containers:
+  // Node 22 with the dependencies installed. Typecheck, lint, tests and the build
+  // all run here; trying the plugin inside Obsidian still needs a desktop vault.
+  "name": "Threadglyph",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "postCreateCommand": "npm ci",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "vitest.explorer"]
+    }
+  }
+}

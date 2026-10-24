@@ -15,6 +15,8 @@ The first public release.
 - Open, Resolved and All tabs show counts; threads whose passage is gone are listed first.
 - How Gitar and SonarQube reviewed Threadglyph (`docs/gitar-and-sonar.md`), an architecture overview and a roadmap.
 - CodeQL and OpenSSF Scorecard checks, and build provenance for releases.
+- A Code of Conduct (Contributor Covenant 2.1), support and governance pages, architecture decision records, CODEOWNERS, a dev container for Codespaces, a contributor list, and a documentation site.
+- CI also runs the tests on Windows and macOS, and checks that every commit in a pull request is signed off (DCO).
 
 ### Changed
 - ⌘↩ posts in every comment box; Enter makes a new line. The Ask AI preview is a small keyboard tree, and Esc cancels the whole request.
@@ -28,6 +30,8 @@ The first public release.
 - Escape no longer throws away an AI reply that could not be saved.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.
+- Posting a new comment that mentions an assistant leaves the keyboard in the Ask AI preview, so Enter sends; it could jump to the reply box instead.
+- On Windows, the PATH given to the Gemini and Claude tools keeps its entries whole (they are separated by `;`, not `:`).
 - Local (Ollama) requests with a long note get a context window large enough to keep the instructions; Ollama otherwise silently drops the start of the prompt.
 - Gemini CLI no longer starts MCP servers from your own Gemini settings for a Threadglyph request.
 - An Ollama server on another machine is no longer labelled "Stays on this computer"; the preview names its host.

@@ -16,6 +16,7 @@ The owner has authorized coding agents working **in this repository**, without a
 
 ## Rules
 
+- Sign off every commit (`git commit -s`), as [CONTRIBUTING.md](CONTRIBUTING.md#sign-off-dco) asks of everyone; the sign-off is the owner's, so only for work the owner asked for.
 - Stage explicit files and inspect the diff before every commit. Never commit real vault content, screenshots of real notes, transcripts, provider output or secrets. Test fixtures are synthetic.
 - The plugin never writes to note files. (The experimental `@agent`, which could edit a note after Accept, was removed before 0.3.0; owner decision 2026-10-24.) Tracked thread records must never contain quoted note text (see `README.md`, "Where data lives").
 - Only one actor writes a branch at a time. Fetch and compare before building on bot or remediation commits, and never force-push over them.

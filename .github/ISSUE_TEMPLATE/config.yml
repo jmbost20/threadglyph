@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question
+    url: https://github.com/jmbost20/threadglyph/discussions
+    about: Questions, ideas and setups belong in Discussions; issues are for bugs and feature requests.
   - name: Report a security problem
     url: https://github.com/jmbost20/threadglyph/security/advisories/new
     about: Please report vulnerabilities privately, not as an issue.

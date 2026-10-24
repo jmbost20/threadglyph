@@ -265,7 +265,8 @@ export class ThreadPanel extends ItemView {
     this.aiCentered = false;
     this.render();
     // Used by the first update after posting (the new thread is already the focused one), then dropped.
-    const toReply = this.replyAfterCreate && !this.pendingAiFocus && !!state.focusedThreadId;
+    // Not when this update's render just put the keyboard in an Ask AI preview (aiCentered).
+    const toReply = this.replyAfterCreate && !this.pendingAiFocus && !this.aiCentered && !!state.focusedThreadId;
     this.replyAfterCreate = false;
     if (newComposer) this.focusNewThread();
     else if (toReply) this.scrollToThread(state.focusedThreadId!, true);

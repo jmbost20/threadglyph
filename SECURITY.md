@@ -6,7 +6,7 @@ Only the latest release gets fixes.
 
 ## Reporting a vulnerability
 
-Please report it privately through GitHub: **Security → Report a vulnerability** on this repository. Don't open a public issue. You should get a reply within a week.
+Please report it privately: through GitHub (**Security → Report a vulnerability** on this repository), or by email to **jmbost20@gmail.com** with "Threadglyph security" in the subject. Don't open a public issue. You should get a reply within a week.
 
 Reports that matter most here:
 
