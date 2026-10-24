@@ -1,0 +1,54 @@
+name: Release
+
+# Pushing a bare version tag (for example `0.3.0`, made by `npm version 0.3.0`) builds
+# the plugin and opens a DRAFT GitHub release with the three files Obsidian and BRAT
+# download. A maintainer reviews the draft and publishes it by hand.
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and draft the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Tag, manifest and versions.json agree
+        run: |
+          node -e '
+            const tag = process.env.GITHUB_REF_NAME;
+            const manifest = require("./manifest.json");
+            const versions = require("./versions.json");
+            const pkg = require("./package.json");
+            const problems = [];
+            if (manifest.version !== tag) problems.push(`manifest.json is ${manifest.version}`);
+            if (pkg.version !== tag) problems.push(`package.json is ${pkg.version}`);
+            if (versions[tag] !== manifest.minAppVersion) problems.push(`versions.json has no ${tag}: ${manifest.minAppVersion} entry`);
+            if (problems.length) { console.error(`Tag ${tag}: ${problems.join("; ")}`); process.exit(1); }
+          '
+      - run: npm run check
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="$GITHUB_REF_NAME" '
+            $0 ~ "^## \\[?" v "\\]?" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md || { echo "CHANGELOG.md has no section for $GITHUB_REF_NAME"; exit 1; }
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css
+          --draft --verify-tag --title "$GITHUB_REF_NAME" --notes-file release-notes.md
