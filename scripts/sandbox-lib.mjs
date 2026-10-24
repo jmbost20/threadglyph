@@ -1,24 +1,67 @@
 /**
  * Shared helpers for the sandbox scripts. Every write goes through `inside`,
- * which refuses any path outside the sandbox vault, so the owner's real vault
- * can only ever be read.
+ * which refuses any path outside the sandbox vault, so a real vault can only
+ * ever be read.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
-export const PRODUCTION_VAULT = join(homedir(), 'Documents', "Jonah's Space");
+/**
+ * The vault `npm run sandbox:pull` copies settings from. There is no default:
+ * set THREADGLYPH_SOURCE_VAULT to your own vault's folder to use it.
+ */
+export const SOURCE_VAULT = process.env.THREADGLYPH_SOURCE_VAULT
+  ? resolve(expandHome(process.env.THREADGLYPH_SOURCE_VAULT))
+  : null;
 export const DEFAULT_SANDBOX = join(homedir(), 'Developer', 'threadglyph-sandbox-vault');
 /** Where the sandbox keeps its test notes, so they are easy to find. */
 export const TEST_DATA = 'Test data';
 export const SAMPLES = `${TEST_DATA}/Threadglyph samples`;
+/** Written into every sandbox, so a sandbox can be told apart from a real vault. */
+export const SANDBOX_MARKER = '.threadglyph-sandbox';
 
-/** Resolves the sandbox path and refuses anything that is, or is inside, the real vault. */
-export function sandboxPath(arg) {
-  const vault = resolve(arg ?? DEFAULT_SANDBOX);
-  const prod = resolve(PRODUCTION_VAULT);
-  if (vault.includes("Jonah's Space") || vault === prod || vault.startsWith(prod + sep) || prod.startsWith(vault + sep)) {
-    console.error('Refusing to touch the live vault. Point this script at a disposable folder.');
+export function expandHome(path) {
+  return path === '~' || path.startsWith('~/') ? join(homedir(), path.slice(1)) : path;
+}
+
+/** Vault folders Obsidian knows about on this computer (its own vault list). */
+export function registeredVaults() {
+  const configDir =
+    process.platform === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support', 'obsidian')
+      : process.platform === 'win32'
+        ? join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'obsidian')
+        : join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'obsidian');
+  try {
+    const { vaults } = JSON.parse(readFileSync(join(configDir, 'obsidian.json'), 'utf8'));
+    return Object.values(vaults ?? {})
+      .map((v) => v?.path)
+      .filter((p) => typeof p === 'string')
+      .map((p) => resolve(p));
+  } catch {
+    return [];
+  }
+}
+
+/** True for a folder these scripts set up before (marker file, or the sample notes of older sandboxes). */
+export function isSandbox(vault) {
+  return existsSync(join(vault, SANDBOX_MARKER)) || existsSync(join(vault, SAMPLES, 'Welcome.md'));
+}
+
+const overlaps = (a, b) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
+
+/**
+ * Resolves the sandbox path. Refuses the source vault, and any vault Obsidian has
+ * registered that is not already a sandbox (or a folder inside or around one), so a
+ * real vault can only ever be read.
+ */
+export function sandboxPath(arg, protectedVaults = [...registeredVaults(), ...(SOURCE_VAULT ? [SOURCE_VAULT] : [])]) {
+  const vault = resolve(expandHome(arg ?? DEFAULT_SANDBOX));
+  const sandbox = isSandbox(vault);
+  const clash = protectedVaults.find((p) => (p === vault ? !sandbox || p === SOURCE_VAULT : overlaps(p, vault)));
+  if (clash) {
+    console.error(`Refusing to use ${vault}: it is, or overlaps, a real vault (${clash}). Point this script at a disposable folder.`);
     process.exit(1);
   }
   return vault;

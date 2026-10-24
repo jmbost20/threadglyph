@@ -6,15 +6,17 @@
  *   npm run build && npm run sandbox [-- <vault-path>]
  */
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, rmdirSync, lstatSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
-import { SAMPLES, moveNote, sandboxPath } from './sandbox-lib.mjs';
+import { SAMPLES, SANDBOX_MARKER, expandHome, moveNote, sandboxPath } from './sandbox-lib.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const vault = sandboxPath(process.argv[2]);
+mkdirSync(vault, { recursive: true });
+const marker = join(vault, SANDBOX_MARKER);
+if (!existsSync(marker)) writeFileSync(marker, 'Disposable Threadglyph test vault, made by `npm run sandbox`.\n');
 
 const notes = {
   'Welcome.md': `# Welcome to the Threadglyph sandbox
@@ -106,7 +108,7 @@ for (const empty of ['Folder', 'Attachments']) {
   try {
     rmdirSync(join(vault, empty));
   } catch {
-    // Not there, or the owner keeps files in it.
+    // Not there, or it holds other files.
   }
 }
 
@@ -137,21 +139,22 @@ for (const file of ['main.js', 'manifest.json', 'styles.css']) {
   symlinkSync(join(repo, file), target);
 }
 
-// Sandbox only: Ask AI starts switched on (Local first). If Agent Comments already has a
-// Gemini folder with a key, the sandbox borrows it read-only so Gemini works without setup.
-// An existing settings file is kept.
+// Sandbox only: Ask AI starts switched on (Local first). If THREADGLYPH_GEMINI_FOLDER names a
+// Gemini folder that already holds a key (.env), the sandbox borrows it read-only so Gemini
+// works without setup. An existing settings file is kept.
 const pluginData = join(pluginDir, 'data.json');
 if (!existsSync(pluginData)) {
-  const sharedGemini = join(homedir(), '.ilc', 'gemini');
-  const settings = { aiEnabled: true, ...(existsSync(join(sharedGemini, '.env')) ? { geminiFolder: '~/.ilc/gemini' } : {}) };
+  const sharedGemini = process.env.THREADGLYPH_GEMINI_FOLDER;
+  const borrow = sharedGemini && existsSync(join(expandHome(sharedGemini), '.env'));
+  const settings = { aiEnabled: true, ...(borrow ? { geminiFolder: sharedGemini } : {}) };
   writeFileSync(pluginData, JSON.stringify(settings, null, 2));
 }
 
 const communityPlugins = join(vault, '.obsidian', 'community-plugins.json');
 if (!existsSync(communityPlugins)) writeFileSync(communityPlugins, JSON.stringify(['threadglyph'], null, 2));
 
-// Sandbox-only shortcuts mirroring the main vault's comment key (Cmd/Ctrl+/). The plugin
-// itself ships without default hotkeys so it never collides with Agent Comments.
+// Sandbox-only shortcuts (Cmd/Ctrl+/ to comment). The plugin itself ships without
+// default hotkeys so it never collides with other comment plugins.
 // Existing bindings in the sandbox are kept.
 const hotkeysPath = join(vault, '.obsidian', 'hotkeys.json');
 const hotkeys = existsSync(hotkeysPath) ? JSON.parse(readFileSync(hotkeysPath, 'utf8')) : {};

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Makes the sandbox feel like the owner's real vault: copies its plugins and
- * their settings, core plugins, hotkeys, CSS snippets, templates and today's
- * daily note. The real vault is only ever READ; every write is checked to land
- * inside the sandbox. Nothing copied here is committed: the sandbox lives
- * outside this repository.
+ * Makes the sandbox feel like your real vault: copies its plugins and their
+ * settings, core plugins, hotkeys, CSS snippets, templates and today's daily
+ * note. The real vault is only ever READ; every write is checked to land inside
+ * the sandbox. Nothing copied here is committed: the sandbox lives outside this
+ * repository.
  *
- *   npm run sandbox:pull [-- <sandbox-path>] [--refresh-daily]
+ *   THREADGLYPH_SOURCE_VAULT=<your vault> npm run sandbox:pull [-- <sandbox-path>] [--refresh-daily]
  *
  * Sandbox-only safety changes to the copies:
  * - Obsidian Sync and Publish stay off, so the sandbox never joins a real remote vault.
@@ -16,12 +16,16 @@
  */
 import { cpSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PRODUCTION_VAULT, TEST_DATA, dailyNoteName, inside, sandboxPath, writeInside } from './sandbox-lib.mjs';
+import { SOURCE_VAULT, TEST_DATA, dailyNoteName, inside, sandboxPath, writeInside } from './sandbox-lib.mjs';
 
+if (!SOURCE_VAULT) {
+  console.error('Set THREADGLYPH_SOURCE_VAULT to the vault to copy settings from (it is only read).');
+  process.exit(1);
+}
 const args = process.argv.slice(2);
 const vault = sandboxPath(args.find((a) => !a.startsWith('--')));
 const refreshDaily = args.includes('--refresh-daily');
-const prod = PRODUCTION_VAULT;
+const prod = SOURCE_VAULT;
 const prodConfig = join(prod, '.obsidian');
 if (!existsSync(prodConfig)) {
   console.error(`No Obsidian config found at ${prodConfig}.`);
