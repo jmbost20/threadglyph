@@ -76,10 +76,12 @@ export class ThreadStore {
     const id = idFromPath(ANCHORS_DIR, path);
     if (!id) return null;
     const raw = await this.fs.read(path);
+    // A fixed or deleted file no longer has a problem.
+    this.problems.delete(path);
     const parsed = raw === null ? null : parseAnchor(raw);
     if (!parsed?.ok || parsed.value.threadId !== id) {
       this.anchors.delete(id);
-      if (parsed && !parsed.ok) this.problems.set(path, parsed.error);
+      if (parsed) this.problems.set(path, parsed.ok ? 'file name does not match its id' : parsed.error);
       return null;
     }
     this.anchors.set(id, parsed.value);

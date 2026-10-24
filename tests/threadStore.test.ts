@@ -101,6 +101,21 @@ describe('ThreadStore', () => {
     expect(fs.files).toEqual(snapshot);
   });
 
+  it('reports a misnamed anchor file, and forgets an anchor problem once the file is fixed (Codex review)', async () => {
+    const { fs, store, thread, anchor } = await setup();
+    const misnamed = `${ANCHORS_DIR}/other-id-0001.json`;
+    fs.files.set(misnamed, fs.files.get(anchorPath(thread.id)) ?? '');
+    expect(await store.reloadAnchorFile(misnamed)).toBeNull();
+    expect(store.loadProblems()).toContainEqual({ path: misnamed, error: 'file name does not match its id' });
+
+    fs.files.set(anchorPath(thread.id), '{"schema":1}');
+    expect(await store.reloadAnchorFile(anchorPath(thread.id))).toBeNull();
+    expect(store.loadProblems().map((p) => p.path)).toContain(anchorPath(thread.id));
+    fs.files.set(anchorPath(thread.id), JSON.stringify(anchor));
+    expect(await store.reloadAnchorFile(anchorPath(thread.id))).not.toBeNull();
+    expect(store.loadProblems().map((p) => p.path)).not.toContain(anchorPath(thread.id));
+  });
+
   it('reloads a single file after an external change or deletion', async () => {
     const { fs, clock, store, thread } = await setup();
     const external = addReply(thread, human, 'From another device', clock);
