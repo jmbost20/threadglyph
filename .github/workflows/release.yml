@@ -17,6 +17,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      # Build provenance: a signed record that these files were built from this tag.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -38,6 +41,15 @@ jobs:
             if (problems.length) { console.error(`Tag ${tag}: ${problems.join("; ")}`); process.exit(1); }
           '
       - run: npm run check
+      - name: Record build provenance
+        # Free for public repositories; a private one has nowhere to publish it yet.
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
       - name: Release notes from CHANGELOG.md
         run: |
           awk -v v="$GITHUB_REF_NAME" '

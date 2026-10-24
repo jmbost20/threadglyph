@@ -14,11 +14,20 @@ The first public release.
 - Keyboard flow in the panel: Tab moves comment by comment, **E** edits, ⌘D / ⌘⇧D delete, ⌘⇧→ / ⌘⇧← step through threads, and the active card stays centered.
 - Open, Resolved and All tabs show counts; threads whose passage is gone are listed first.
 - `@agent` (legacy, on hold): proposes edits to a note as a diff, applied only on Accept.
+- How Gitar and SonarQube reviewed Threadglyph (`docs/gitar-and-sonar.md`), an architecture overview and a roadmap.
+- CodeQL and OpenSSF Scorecard checks, and build provenance for releases.
 
 ### Changed
 - ⌘↩ posts in every comment box; Enter makes a new line. The Ask AI preview is a small keyboard tree, and Esc cancels the whole request.
 - UI code follows Obsidian's official plugin lint rules.
-- The development sandbox scripts work on any machine, and refuse to use any vault Obsidian already knows about.
+- The development sandbox scripts work on any machine, and refuse to use any existing vault that isn't a sandbox.
+
+### Fixed
+- Escape no longer throws away an AI reply that could not be saved.
+- Custom filter controls keep keyboard focus after a change.
+- Enter and the arrow keys navigate from a clicked comment, as from its card.
+- An AI rewrite containing a plain code block is no longer cut short, and its note text no longer reaches the saved reply.
+- Deleting a thread drops its pending `@agent` proposal.
 
 ## [0.2.0] - 2026-09-30
 

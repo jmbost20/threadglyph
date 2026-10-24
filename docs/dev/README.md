@@ -8,4 +8,4 @@ Threadglyph was built with AI coding agents (OpenAI Codex and Anthropic Claude C
 | [`sonar-experiments.md`](sonar-experiments.md) | Each Gitar and Sonar finding: the problem, the tool's feedback, the decision, the fix, and the test that proves it. |
 | [`pilot.md`](pilot.md) | The pilot package, install and rollback steps, and the manual test script. |
 
-User-facing docs live one level up: [`compatibility.md`](../compatibility.md) and [`source-and-dependencies.md`](../source-and-dependencies.md).
+For the curated summary, start with [How Gitar and SonarQube reviewed Threadglyph](../gitar-and-sonar.md). Other docs live one level up: [`architecture.md`](../architecture.md), [`compatibility.md`](../compatibility.md), [`roadmap.md`](../roadmap.md) and [`source-and-dependencies.md`](../source-and-dependencies.md).

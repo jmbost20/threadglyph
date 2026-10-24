@@ -438,7 +438,8 @@ export class ThreadPanel extends ItemView {
     const select = (label: string, value: string, options: [string, string][], change: (value: string) => void) => {
       const row = details.createEl('label', { cls: 'tg-custom-filter' });
       row.createSpan({ text: label });
-      const input = row.createEl('select', { attr: { 'aria-label': label } });
+      // A stable key brings focus back to the control after the panel re-renders.
+      const input = row.createEl('select', { attr: { 'aria-label': label, 'data-draft-key': `filter:${label}` } });
       for (const [key, text] of options) input.createEl('option', { text, attr: { value: key } });
       input.value = value;
       input.onchange = () => { this.customOpen = true; change(input.value); this.render(); };
@@ -453,7 +454,7 @@ export class ThreadPanel extends ItemView {
     for (const [key, label] of [['from', 'Comment from'], ['to', 'Comment through']] as const) {
       const row = details.createEl('label', { cls: 'tg-custom-filter' });
       row.createSpan({ text: label });
-      const input = row.createEl('input', { attr: { type: 'date', 'aria-label': label } });
+      const input = row.createEl('input', { attr: { type: 'date', 'aria-label': label, 'data-draft-key': `filter:${key}` } });
       input.value = this.custom[key];
       input.onchange = () => { this.customOpen = true; this.custom[key] = input.value; this.render(); };
     }
@@ -501,15 +502,23 @@ export class ThreadPanel extends ItemView {
     return 'No resolved threads.';
   }
 
-  /** Arrow keys move between cards and Enter jumps to the passage, only when the card itself has focus. */
+  /**
+   * Arrow keys move between cards and Enter jumps to the passage, when the card or
+   * one of its comments has focus (never while typing).
+   */
   private onCardKey(e: KeyboardEvent, card: HTMLElement, threadId: string): void {
-    if (e.key === 'Escape' && this.state.ai[threadId]) {
-      if (this.state.ai[threadId].state.phase !== 'saving') this.exitAi(threadId);
+    // Escape ends a request before its answer (preview, running) or closes an error. A
+    // reply that could not be saved is the only copy of the answer, so Escape leaves it
+    // (and a save in progress) alone.
+    const phase = this.state.ai[threadId]?.state.phase;
+    if (e.key === 'Escape' && (phase === 'preview' || phase === 'running' || phase === 'error')) {
+      this.exitAi(threadId);
       e.preventDefault();
       e.stopPropagation();
       return;
     }
-    if (e.target !== card) return;
+    const target = e.target as HTMLElement;
+    if (target !== card && !target.classList.contains('tg-message')) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       void this.actions.goTo(threadId);
