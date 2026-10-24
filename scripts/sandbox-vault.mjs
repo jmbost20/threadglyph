@@ -5,20 +5,16 @@
  *
  *   npm run build && npm run sandbox [-- <vault-path>]
  */
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, lstatSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, rmdirSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
+import { SAMPLES, moveNote, sandboxPath } from './sandbox-lib.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const vault = resolve(process.argv[2] ?? join(homedir(), 'Developer', 'threadglyph-sandbox-vault'));
-
-if (vault.includes("Jonah's Space")) {
-  console.error('Refusing to touch the live vault. Point this script at a disposable folder.');
-  process.exit(1);
-}
+const vault = sandboxPath(process.argv[2]);
 
 const notes = {
   'Welcome.md': `# Welcome to the Threadglyph sandbox
@@ -29,6 +25,35 @@ The same phrase appears twice: repeat me. And again: repeat me.
 
 - A list item worth discussing.
 - Another item with **formatting** inside.
+`,
+  'Agent playground.md': `# Agent playground
+
+Synthetic notes for trying @agent. Nothing changes until you press Accept.
+
+## Groceries
+- [ ] Shopping list
+  - [ ] milk
+  - [ ] apples
+  - [ ] bread
+  - [ ] coffee
+
+## Weekend
+- [ ] Clean the garage @agent sort these tasks by how long they take
+  - [ ] sweep the floor
+  - [ ] sort the tool drawer
+  - [ ] fix the shelf
+
+## Ideas
+A few ideas for the reading group:
+- Short stories
+`,
+  'Recipes.md': `# Recipes
+
+## Pasta
+Boil water, salt it well, cook the pasta two minutes short of the packet time, finish in the sauce.
+
+## Pancakes
+Flour, milk, eggs, a pinch of salt. Rest the batter for ten minutes.
 `,
   'Long note.md': Array.from({ length: 400 }, (_, i) => `Paragraph ${i + 1}: synthetic filler text for scrolling tests.`).join('\n\n'),
   'Folder/Nested note.md': '# Nested\n\nRename this folder to check that threads follow.\n',
@@ -72,8 +97,21 @@ Also {==compost the fallen leaves==}{>>user|2026-09-17 09:00|important: Shred th
 `,
 };
 
+// Samples live under Test data/ so they are easy to tell apart. Older sandboxes kept them
+// at the top level; move those (with their threads) instead of writing second copies.
+for (const name of [...Object.keys(notes), 'Sandbox sky.png', 'Attachments/Sandbox meadow.png', 'Not supported.heic']) {
+  moveNote(vault, name, `${SAMPLES}/${name}`);
+}
+for (const empty of ['Folder', 'Attachments']) {
+  try {
+    rmdirSync(join(vault, empty));
+  } catch {
+    // Not there, or the owner keeps files in it.
+  }
+}
+
 for (const [name, body] of Object.entries(notes)) {
-  const path = join(vault, name);
+  const path = join(vault, SAMPLES, name);
   mkdirSync(dirname(path), { recursive: true });
   if (!existsSync(path)) writeFileSync(path, body);
 }
@@ -84,11 +122,11 @@ const images = {
   'Attachments/Sandbox meadow.png': [80, 170, 90],
 };
 for (const [name, rgb] of Object.entries(images)) {
-  const path = join(vault, name);
+  const path = join(vault, SAMPLES, name);
   mkdirSync(dirname(path), { recursive: true });
   if (!existsSync(path)) writeFileSync(path, gradientPng(240, 140, rgb));
 }
-const heic = join(vault, 'Not supported.heic');
+const heic = join(vault, SAMPLES, 'Not supported.heic');
 if (!existsSync(heic)) writeFileSync(heic, 'placeholder, not a real HEIC file');
 
 const pluginDir = join(vault, '.obsidian', 'plugins', 'threadglyph');
@@ -122,6 +160,9 @@ const defaults = {
   'threadglyph:reply-at-cursor': [{ modifiers: ['Mod', 'Alt'], key: '/' }],
   'threadglyph:next-thread': [{ modifiers: ['Mod', 'Alt'], key: ']' }],
   'threadglyph:previous-thread': [{ modifiers: ['Mod', 'Alt'], key: '[' }],
+  // Cmd+Enter already toggles checkboxes, so the inline agent takes Cmd+Shift+Enter.
+  'threadglyph:run-agent-on-line': [{ modifiers: ['Mod', 'Shift'], key: 'Enter' }],
+  'threadglyph:open-agent-chat': [{ modifiers: ['Mod', 'Shift'], key: 'A' }],
 };
 for (const [command, keys] of Object.entries(defaults)) hotkeys[command] ??= keys;
 writeFileSync(hotkeysPath, JSON.stringify(hotkeys, null, 2));

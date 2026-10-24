@@ -166,3 +166,137 @@ Main had been red since PR #2 (Dependabot, ten dev-dependency updates) merged: `
 
 - `package.json` and `package-lock.json` restored to the last green set (commit `42c882f`); `npm ci && npm run check` passes from a clean install.
 - `.github/dependabot.yml`: `@codemirror/*` is ignored (it follows the `obsidian` package, which supplies CodeMirror at runtime), and the grouped PR now carries only minor and patch updates, so each major update (TypeScript 7, Vitest 5, ESLint 10, happy-dom 20) arrives as its own PR and must pass CI on its own.
+
+## September 30 — @agent: proposed edits, previewed before anything changes
+
+Owner request: let the local agent act on notes (sort a checkbox's children, generate a list, pull in other notes), started with `@`, previewing the change without making it. Branch `codex/embedded-agent`, stacked on PR #9.
+
+**Owner decisions (2026-09-30)**
+- **Write rule changed.** It was "the plugin never writes notes". It is now "changes a note only on an explicit Accept of a previewed diff". Accept is one editor transaction (a single ⌘Z), refused if the target text changed since the preview. `AGENTS.md` and `README.md` are updated.
+- **Surfaces:** all three, with the same `@` trigger: `@Agent` in a comment (panel), a sidebar agent chat, and inline `@agent …` in the note.
+- **Other notes:** the agent may ask to read them; a dialog asks first (Allow / Deny, Deny by default). Searches skip daily notes and the current note; named daily notes are flagged in the dialog.
+
+**Design**
+- `src/agent/`:
+  - `proposal.ts`: reply parsing. The model answers in prose plus one ```` ```threadglyph ```` JSON block with `edits: [{old, new}]` or `read: {search, notes}`. Every `old` must match exactly once; nothing is guessed.
+  - `diff.ts`: line LCS diff.
+  - `target.ts`: what may change. It is picked by scope: the list item with its children, the passage's lines, the section, or the note.
+  - `apply.ts`: builds and checks proposals; `applyProposal` makes the single transaction.
+  - `vaultRead.ts`: the permission-gated read loop, with at most 2 rounds.
+  - `inline.ts`: finds and removes an `@agent …` request line.
+  - `service.ts`: an in-memory proposal store shared by all surfaces.
+- **Prompt:** agent requests use `AGENT_SYSTEM_PROMPT` and an `<edit-target>` block. Other notes travel as fenced `<vault-note>` data. Plain `@Local` / `@Gemini` replies keep the old prompt.
+- **Privacy:**
+  - Proposals and chat turns hold note text, so they are never persisted. Thread records keep only the agent's prose; a test asserts that no proposal text or JSON reaches `threadglyph/threads/`.
+  - Chat and inline requests to a cloud assistant ask first.
+  - The panel request goes through the existing Ask AI preview, whose scope choice decides what the agent may edit.
+- **In the note:** the target text is dimmed, and a block widget below it shows the added and removed lines with Accept / Reject.
+- **Sandbox:** new synthetic notes `Agent playground.md` and `Recipes.md`. Sandbox-only shortcuts: ⌘⇧↩ runs `@agent` on the line (⌘↩ already toggles checkboxes), and ⌘⇧A opens the chat.
+
+**Evidence:** 374 tests pass (`tests/agent.test.ts`, `tests/agentPlugin.test.ts`), including:
+- no write without Accept, and Reject writes nothing;
+- stale refusal at Accept and on refresh;
+- Deny reads nothing, and searches exclude daily notes;
+- the inline request is removed only on Accept.
+
+**Known limits**
+- Proposals are lost on reload.
+- The chat's target is taken at send time (selection, or the section at the cursor); it is named in the chat log.
+- Search is plain word counting over at most 2,000 notes.
+- Small local models may produce edits whose `old` does not match. These are refused with the reason shown.
+
+## September 30 — A more realistic sandbox
+
+Owner request: bring the production plugins and shortcuts into the sandbox, organize test data, and add a copy of today's daily note.
+
+- `npm run sandbox:pull` (`scripts/sandbox-pull-production.mjs`) **reads** the real vault and writes only inside the sandbox. `scripts/sandbox-lib.mjs` checks every write path and refuses the real vault. The script copies:
+  - the 18 plugins with their settings, and the same 12 enabled, plus Threadglyph;
+  - core plugins, appearance, CSS snippets and property types;
+  - the templates folder;
+  - hotkeys, merged;
+  - today's daily note, as `Test data/Daily notes/<date>.md`. An existing copy is kept unless `--refresh-daily` is passed.
+- **Changes in the sandbox copies only:**
+  - Obsidian Sync and Publish are off.
+  - Inline Comments' `autoDispatchOnMention` is off, and its Gemini agent loses `cloudConsent`, so daily-note text is never sent on its own.
+  - Threadglyph's sandbox keys win conflicts: ⌘/ over `inline-comments:add-inline-comment`, and ⌘⇧/ over `app:toggle-right-sidebar`.
+- **Layout:** samples now live in `Test data/Threadglyph samples/`, and the owner's own test notes in `Test data/My test notes/`. New notes and attachments go to `Test data/Inbox` and `Test data/Attachments`. Moves update the thread and anchor paths (56 threads kept).
+- The sandbox is outside the repository, so the daily-note copy is never committed. Repository fixtures stay synthetic.
+
+## September 30 — Agent on a real daily note (sandbox copy)
+
+The owner's first real `@Agent` request, "consolidate the cards under this item into three head bullets", timed out: `qwen3:8b did not answer within 180 seconds`. The target was the list item and its children, 6,609 characters over 127 lines. Local reproduction printed sizes and timings only, never the note text. Two causes:
+1. **Wrong fence label.** The model labelled its block ```` ```json ````, so the parser ignored it and reported no change. A `json` block carrying `edits` or `read` now counts.
+2. **The edit format was too slow for a rewrite.** Copying every line as `old` and then writing `new`, JSON-escaped, came to about 14,000 output characters in 240–310 s. The agent can now answer with a ```` ```threadglyph-replace ```` block holding the complete new target as plain Markdown. Agent requests also get extra time: 45 s per 1,000 target characters on top of the configured timeout, which gives 495 s here.
+
+**After the fix,** the same request finished in 136 s and then 103 s. The parent stayed first, there were exactly 3 head bullets, and the proposal applied. It shrank 127 lines to 61–91, so the owner should review the diff before accepting. The running box now warns that local rewrites take minutes. 381 tests pass.
+
+## September 30 — Owner feedback from the sandbox: keys, preview tree, agent results
+
+**Owner requests (2026-09-30)**
+- ⌘↩ posts from every comment box, whatever it contains. Enter makes a new line; Enter-to-post with an @mention is gone. Later steps (the Ask AI preview) take Enter or ⌘↩.
+- The Ask AI preview should be navigable by keyboard as a tree: what to send, then the model. Enter continues with the defaults.
+- Esc in Ask AI cancels the whole thing, including the comment that asked.
+- Agent diffs should be readable, as original vs. proposed.
+- Inline `@agent` was not offered. ⌘⇧⌫ did not delete a comment when an agent reply was on it.
+
+**Causes found**
+- **⌘↩ did nothing:** with the panel focused, the note stays Obsidian's active editor, so its ⌘↩ (toggle checkbox) took the key. The panel and chat now register ⌘↩, and ⌘⇧⌫/⌦, in their own shortcut scope, which Obsidian consults first while they have focus.
+- **Empty agent reply** ("Here is the updated content:" with nothing after it): qwen put the rewritten Markdown in a `threadglyph` block instead of JSON. The block was stripped as unreadable and the proposal was lost. Markdown in that block now counts as a whole-block rewrite, and an unreadable answer is shown in the card instead of being dropped.
+- **No `@agent` in the note:** the Inline Comments plugin's "@" member menu answered first, and Obsidian shows only the first suggester that responds. Ours now moves to the front and answers only from `@a…`, so a bare `@` still reaches Inline Comments.
+
+**Changes**
+- The preview tree has rows "What to send", "Model" (with several assistants) and "Exact text", collapsed by default. ↑/↓ move, → opens, ← closes or returns to the row, and moving onto an option chooses it. The first row is focused on open.
+- Esc or Cancel before an answer soft-deletes the asking comment, which is restorable under *Deleted comments*. After Send, the question is never removed.
+- Diffs wrap and show "N removed · M added". **Compare** opens an Original | Proposed side-by-side view, where each removed run faces its replacement. In the note, the widget shows the proposed version, with new lines highlighted, under the dimmed original.
+- The agent chat uses the same keys: ⌘↩ sends, Enter makes a new line.
+- **Superseded tests:** "Enter posts with an @mention", "exact text starts expanded" and "Escape keeps the question" were rewritten to the new behavior, as the owner asked; they were not weakened. 392 tests pass.
+
+## October 1 — @agent window, and why the agent was not changing anything
+
+**Owner requests (2026-10-01)**
+- Choosing `@agent` inline should open a window for the instruction, separate from comments.
+- The agent still made no change, even from a comment.
+- Diffs: original vs. what will change.
+
+**Causes found** (reproduced on the sandbox copy of the daily note with qwen3:8b; only sizes and counts were printed)
+1. **Raw tabs in the JSON.** The model copied tab-indented lines into `"old"` with literal tab characters, which strict JSON rejects. The whole answer was flagged unreadable. Tabs, line breaks and carriage returns inside JSON strings are now escaped before a second parse.
+2. **Prompt cut off by Ollama.** Ollama ran the model with its default 4,096-token window, and the 127-line target plus a full rewrite needs about 5,000 tokens. Ollama silently drops the start of an over-long prompt, which is where the instructions are, so the model ignored the format rules. Agent requests now set `num_ctx` to fit the prompt plus a rewrite of the target, in 4,096-token steps up to 32,768. Ordinary comment replies keep the default.
+3. **Long quotes cannot be copied exactly.** The model's `"old"` drifted from the note after about 3,000 of its 5,000 characters. Targets over 15 lines now get a rewrite-only prompt (`threadglyph-replace`, keep every item). A `markdown`-labelled block counts as that rewrite. As a fallback, a quote of 3 or more lines whose first and last lines each appear once, with a span of 0.5–2× its length, is matched by those lines, and the proposal says so: "check the diff before accepting".
+
+**After the fixes:** the same request returns a proposal that keeps every item (136–169 s). qwen3:8b is timid on a 127-line regroup, though: it removed 7 lines and added none. qwen3:14b timed out at 495 s. Small requests on the synthetic playground took 4–17 s each: sort, add items, group into categories.
+
+**Changes**
+- **Ask window:** choosing `@agent` from the `@a` menu removes the typed `@a…` and opens the window, as does **Ask @agent here** (⌘⇧↩ in the sandbox) anywhere without a typed `@agent …` line.
+  - The window has the instruction, *It may change* (the list item, the section or the whole note, with sizes; a list item or selection is the default, otherwise the section), and who answers.
+  - ⌘↩ sends. The result is a diff with **Changes / Side by side**; ⌘↩ accepts.
+  - Cancel or closing while it runs aborts, and a late answer is dropped. Closing with a proposal open leaves it under the text in the note.
+- **In-note widget:** the widget is now a real diff (− struck in red, + in green), with unchanged lines folded.
+- **Tests:** the inline suggester and bare `@agent` tests were rewritten for the window.
+- **Gitar follow-up:** fenced blocks are now found by a line scanner, so a rewrite holding code is not cut short and a cut-off rewrite is refused. The `json` fallback stays within one block, and the sandbox pull honors the daily-note format (see `docs/sonar-experiments.md`). 407 tests pass.
+
+## October 1 — @agent put on hold (legacy)
+
+The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-group restructure in 34 s; Gemini 3.5 Flash was overloaded and Flash-Lite only sorted. The owner then decided to put the embedded agent on the side burner. It is **not removed**: every agent surface (the comment's Ask AI preview for `@Agent`, the `@agent` ask window, the agent chat, the `@a` menu and the two commands) now says "Legacy: @agent is on hold. For help with a comment, use @Gemini or @Local instead." Comment help continues through the `@Gemini` / `@Local` mentions.
+
+## October 1 — Owner UAT: thread layout, keyboard, delete thread, orphans
+
+**Feedback (2026-10-01)** and what was done:
+- **⌘⇧⌫ did nothing from the reply box.** This was by design, since the key was ignored inside text boxes, but the owner expects it to work there. **⌘D** (and ⌘⇧⌫) now deletes the focused comment, or the latest one from the reply box; editing a comment still keeps the keys. **⌘⇧D** deletes the whole thread from anywhere in its card. A focused comment takes **E** to edit.
+- **Not thread-like; the Delete button was big and sat before the author.** A comment now reads author · time · *edited*, then the text, then small Edit / Delete links under it on the right. Comments are separated by a thin rule. The original time is kept; *edited* shows the edit time on hover.
+- **No way to delete a thread.** **Delete thread** sits in the card footer. One write marks every remaining comment deleted, and *Deleted comments* lists the thread once with **Restore thread**. Restoring brings back exactly those comments; one deleted earlier on its own stays deleted.
+- **Two cards highlighted at once.** The remembered "current thread" (`tg-card-focused`) and the card holding keyboard focus (`:focus-within`) could differ. While focus is in the list, only the focused card is highlighted. The card's aria-label, which Obsidian showed as a "Thread 2" hover tooltip, is now a hidden label.
+- **After ⌘↩ on a new thread, focus should be in its reply box.** Done, unless an @mention opened the Ask AI preview, which keeps focus.
+- **Tab went through Delete and Edit.** Those links and the composer buttons are out of the Tab order. Tab goes card → comments → reply box → footer links → next card.
+- **No Reattach after deleting the passage.** Threads that lost their passage were sorted to the bottom, below every anchored thread. They now come first, and the header says how many need reattaching. Numbers still follow reading order.
+- **Counts on Open / Resolved / All,** capped at 99+.
+- **Tooltip storm and "note changed meanwhile" in `Agent Comments.md`:** these come from the Inline Comments plugin (pulled from production into the sandbox) reacting to its own markup. Not Threadglyph. That plugin is to be disabled before production, after its comments are imported (see the migration note).
+
+414 tests pass.
+
+## October 1 — Production cut-over (owner request)
+
+- Owner asked to move Threadglyph into the live vault and retire Agent Comments. Installed the PR #10 build (97ea7f8) into the vault's plugins folder; the owner enables it and disables Agent Comments.
+- One-time migration, run from a local script with the plugin's own importer, anchor capture and store: 44 Agent Comments threads from 5 notes became Threadglyph threads. 12 are resolved: 9 were resolved in Agent Comments, and 3 more because their replies record a created card (`nid:`), as the owner asked. `[@Name](agent:…)` mentions became `@Name`.
+- The Agent Comments markup was removed from those notes so they read normally without that plugin; each anchor was checked to resolve to its exact passage in the cleaned note. Originals were backed up in the vault first.
+- Skipped on purpose: notes that only document the markup syntax (ADRs, templates, audit write-ups) and existing backup copies. Document Comments had no live comments left (only mentions in docs and backups).
+- Fix from the same feedback: the delete confirmation deletes on Enter even if focus landed on Cancel.

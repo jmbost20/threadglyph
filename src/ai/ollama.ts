@@ -1,5 +1,5 @@
 import type { HttpFn } from './http';
-import { SYSTEM_PROMPT, buildPromptText } from './prompt';
+import { buildPromptText, systemPromptFor } from './prompt';
 import type { AiAdapter, AiRequest, AiResult } from './types';
 
 /**
@@ -28,6 +28,23 @@ export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
 
+/** Ollama's usual context window, in tokens. */
+export const OLLAMA_DEFAULT_CONTEXT = 4_096;
+const MAX_AGENT_CONTEXT = 32_768;
+
+/**
+ * The context an agent request needs: its prompt plus an answer as long as the
+ * text it may rewrite (about 3 characters a token), in steps of 4,096 tokens.
+ * Ollama otherwise keeps its default window and silently drops the start of a
+ * longer prompt, which is where the instructions are. Null leaves the default.
+ */
+export function agentContextTokens(request: AiRequest, promptChars: number): number | null {
+  if (!request.target) return null;
+  const needed = Math.ceil((promptChars + request.target.text.length) / 3) + 1_024;
+  if (needed <= OLLAMA_DEFAULT_CONTEXT) return null;
+  return Math.min(MAX_AGENT_CONTEXT, Math.ceil(needed / OLLAMA_DEFAULT_CONTEXT) * OLLAMA_DEFAULT_CONTEXT);
+}
+
 export class OllamaAdapter implements AiAdapter {
   readonly id = 'local';
   readonly name = 'Local';
@@ -49,7 +66,8 @@ export class OllamaAdapter implements AiAdapter {
   }
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
-    const { model, timeoutMs, http } = this.options;
+    const { model, http } = this.options;
+    const timeoutMs = this.options.timeoutMs + (request.extraSeconds ?? 0) * 1000;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (!model.trim()) {
       return { ok: false, kind: 'not-installed', message: 'No Local model is set. Choose one in Threadglyph settings.' };
@@ -59,14 +77,18 @@ export class OllamaAdapter implements AiAdapter {
       if (refusal) return refusal;
     }
 
-    const user: Record<string, unknown> = { role: 'user', content: buildPromptText(request) };
+    const system = systemPromptFor(request);
+    const content = buildPromptText(request);
+    const user: Record<string, unknown> = { role: 'user', content };
     if (request.image) user.images = [request.image.data];
+    const contextTokens = agentContextTokens(request, system.length + content.length);
     const body = JSON.stringify({
       model,
       stream: false,
       // Reasoning models answer far faster without thinking, and a comment reply rarely needs it.
       think: false,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, user],
+      messages: [{ role: 'system', content: system }, user],
+      ...(contextTokens ? { options: { num_ctx: contextTokens } } : {}),
     });
 
     const out = await http({ url: `${this.host}/api/chat`, method: 'POST', body, timeoutMs, signal });

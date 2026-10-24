@@ -97,6 +97,8 @@ describe('Claude Code adapter', () => {
     expect(command).toBe('/bin/claude');
     expect(JSON.parse(input).message.content[0].text).toContain('The passage');
     expect(options).toMatchObject({ cwd: '/tmp', timeoutMs: 30_000 });
+    await adapter.ask(request({ extraSeconds: 5 }), new AbortController().signal);
+    expect(run.mock.calls[1][3]).toMatchObject({ timeoutMs: 35_000 });
     expect(adapter.capabilities).toEqual({ text: true, images: true });
   });
 

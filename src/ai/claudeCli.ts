@@ -1,4 +1,4 @@
-import { SYSTEM_PROMPT, buildPromptText } from './prompt';
+import { SYSTEM_PROMPT, buildPromptText, systemPromptFor } from './prompt';
 import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
 
 /**
@@ -40,7 +40,7 @@ export interface ClaudeCliOptions {
   run: ProcessRunner;
 }
 
-export function claudeArgs(model: string): string[] {
+export function claudeArgs(model: string, systemPrompt = SYSTEM_PROMPT): string[] {
   const args = [
     '-p',
     '--input-format', 'stream-json',
@@ -51,7 +51,7 @@ export function claudeArgs(model: string): string[] {
     '--setting-sources', '',
     '--no-session-persistence',
     '--disable-slash-commands',
-    '--system-prompt', SYSTEM_PROMPT,
+    '--system-prompt', systemPrompt,
   ];
   if (model.trim()) args.push('--model', model.trim());
   return args;
@@ -118,9 +118,10 @@ export class ClaudeCliAdapter implements AiAdapter {
   }
 
   async ask(request: AiRequest, signal: AbortSignal): Promise<AiResult> {
-    const { command, cwd, timeoutMs, model, env, run } = this.options;
+    const { command, cwd, model, env, run } = this.options;
+    const timeoutMs = this.options.timeoutMs + (request.extraSeconds ?? 0) * 1000;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
-    const out = await run(command, claudeArgs(model), claudeInput(request), { cwd, timeoutMs, signal, env });
+    const out = await run(command, claudeArgs(model, systemPromptFor(request)), claudeInput(request), { cwd, timeoutMs, signal, env });
     if (out.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (out.timedOut) {
       return { ok: false, kind: 'timeout', message: `Claude did not answer within ${Math.round(timeoutMs / 1000)} seconds.` };

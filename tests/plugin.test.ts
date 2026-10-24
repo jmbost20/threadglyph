@@ -27,6 +27,9 @@ const files = (dir: string) => [...app.vault.adapter.files.keys()].filter((p) =>
 const threads = (): ThreadRecord[] => files(THREADS_DIR).map((p) => JSON.parse(app.vault.adapter.files.get(p)!));
 const panelEl = () => document.querySelector<HTMLElement>('.tg-panel')!;
 const q = <T extends HTMLElement = HTMLElement>(sel: string) => panelEl()?.querySelector<T>(sel) ?? null;
+const expandAll = () => {
+  for (let head = q<HTMLElement>('.tg-ai-group[aria-expanded="false"]'); head; head = q<HTMLElement>('.tg-ai-group[aria-expanded="false"]')) head.click();
+};
 const button = (label: string) =>
   [...panelEl().querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === label);
 const command = (id: string) => (plugin as unknown as { commands: { id: string; editorCheckCallback?: (...a: unknown[]) => boolean; callback?: () => void }[] }).commands.find((c) => c.id === id)!;
@@ -209,7 +212,7 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
   it('reports a stale edit through a notice', async () => {
     await commentOn('worth a comment', 'Mine');
     const [thread] = threads();
-    (panelEl().querySelector('.tg-icon-button') as HTMLButtonElement).click();
+    ([...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!).click();
     await flush();
     const path = files(THREADS_DIR)[0];
     const edited = { ...thread, revision: 2, messages: [{ ...thread.messages[0], body: 'Changed on phone' }] };
@@ -315,13 +318,13 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(q('.tg-card-new')).toBeNull();
 
     await commentOn('worth a comment', 'Edit me');
-    (panelEl().querySelector('.tg-icon-button') as HTMLButtonElement).click();
+    ([...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!).click();
     await flush();
     button('Cancel')!.click();
     await flush();
     expect(q('.tg-card textarea[data-draft-key^="edit:"]')).toBeNull();
 
-    (panelEl().querySelector('.tg-icon-button') as HTMLButtonElement).click();
+    ([...panelEl().querySelectorAll<HTMLButtonElement>('.tg-message-action')].find((b) => b.textContent === 'Edit')!).click();
     await flush();
     const input = q<HTMLTextAreaElement>('textarea[data-draft-key^="edit:"]')!;
     input.value = 'Edited';
@@ -643,6 +646,7 @@ describe('Threadglyph plugin AI', () => {
     await enable();
     await commentOn('worth a comment', 'What do you think, @claude?');
     expect(q('.tg-ai-title')?.textContent).toBe('Ask AI');
+    expandAll();
     expect([...panelEl().querySelectorAll('.tg-ai-items li')].map((li) => li.textContent)).toEqual([
       'The passage (15 characters)',
       '1 message in this thread',
@@ -745,6 +749,7 @@ describe('Threadglyph plugin AI', () => {
 
     it('sends the image file’s real bytes, not a caption', async () => {
       await imageThread();
+      expandAll();
       expect(panelEl().querySelector('.tg-ai-items li')?.textContent).toBe('The image sky.png');
       button('Send')!.click();
       await flush();
@@ -981,6 +986,7 @@ describe('Threadglyph plugin with several assistants', () => {
     await commentOn('worth a comment', 'Plain');
     button('Ask AI')!.click();
     await flush();
+    expandAll();
     expect((q<HTMLInputElement>('.tg-ai-assistant input:checked'))?.value).toBe('local');
     expect(q('.tg-ai-note')?.textContent).toBe('Local will receive the items below. Stays on this computer.');
     button('Send')!.click();
@@ -991,6 +997,7 @@ describe('Threadglyph plugin with several assistants', () => {
 
   it('opens with the mentioned assistant, and can switch before sending', async () => {
     await commentOn('worth a comment', 'Over to you @Gemini');
+    expandAll();
     expect(q<HTMLInputElement>('.tg-ai-assistant input:checked')?.value).toBe('gemini');
     q<HTMLInputElement>('.tg-ai-assistant input[value="claude"]')!.dispatchEvent(new Event('change'));
     await flush();
@@ -1003,6 +1010,7 @@ describe('Threadglyph plugin with several assistants', () => {
 
   it('uses the first mention when several assistants are named', async () => {
     await commentOn('worth a comment', '@Claude or maybe @Local?');
+    expandAll();
     expect(q<HTMLInputElement>('.tg-ai-assistant input:checked')?.value).toBe('claude');
   });
 
@@ -1011,6 +1019,7 @@ describe('Threadglyph plugin with several assistants', () => {
     await commentOn('worth a comment', 'Plain');
     button('Ask AI')!.click();
     await flush();
+    expandAll();
     expect(q<HTMLInputElement>('.tg-ai-assistant input:checked')?.value).toBe('gemini');
     plugin.adapterFactory = () => [];
     await plugin.refresh();
@@ -1035,21 +1044,28 @@ describe('Threadglyph plugin with several assistants', () => {
     expect(threads()[0].messages.at(-1)?.author).toEqual({ kind: 'ai', name: 'gemini' });
   });
 
-  it('sends Local with two Enter presses, previews the section, and automatically appends one reply', async () => {
+  it('posts with Cmd+Enter, sends with Enter from the preview, and automatically appends one reply', async () => {
     await commentOn('worth a comment', 'Start');
     const input = q<HTMLTextAreaElement>('textarea[data-draft-key^="reply:"]')!;
     input.focus();
     input.value = 'Explain this @Local';
     input.setSelectionRange(input.value.length, input.value.length);
     input.dispatchEvent(new Event('input'));
-    const enter = () => new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    const enter = (metaKey = false) => new KeyboardEvent('keydown', { key: 'Enter', metaKey, bubbles: true, cancelable: true });
+    // Enter is a new line in a comment box, even with an @mention; Cmd+Enter posts.
     input.dispatchEvent(enter());
     await flush();
+    expect(q('.tg-ai')).toBeNull();
+    input.dispatchEvent(enter(true));
+    await flush();
     expect(asked).toEqual([]);
+    const first = document.activeElement as HTMLElement;
+    expect(first.textContent).toContain('What to send');
+    expandAll();
     expect(q<HTMLInputElement>('.tg-ai-scope input:checked')?.value).toBe('section');
-    expect(q<HTMLDetailsElement>('.tg-ai-exact')?.open).toBe(true);
+    expect(q('.tg-ai-exact pre')).not.toBeNull();
     const send = button('Send')!;
-    expect(document.activeElement).toBe(send);
+    send.focus();
     send.dispatchEvent(enter());
     send.dispatchEvent(enter());
     await flush();
@@ -1059,7 +1075,7 @@ describe('Threadglyph plugin with several assistants', () => {
     expect(q('.tg-ai')).toBeNull();
   });
 
-  it('Escape exits the AI interaction without deleting the posted question', async () => {
+  it('Escape cancels the whole request, discarding the question (restorable)', async () => {
     await commentOn('worth a comment', '@Local explain');
     const send = button('Send')!;
     send.focus();
@@ -1067,7 +1083,28 @@ describe('Threadglyph plugin with several assistants', () => {
     await flush();
     expect(q('.tg-ai')).toBeNull();
     expect(asked).toEqual([]);
-    expect(threads()[0].messages[0].body).toBe('@Local explain');
+    expect(threads()[0].messages[0]).toMatchObject({ body: '@Local explain', deletedAt: expect.any(String) });
+    expect(q('.tg-card[data-thread-id]')).toBeNull();
+  });
+
+  it('Escape discards only an unsent question: a reply that asked, not the thread before it', async () => {
+    await commentOn('worth a comment', 'Plain start');
+    const input = q<HTMLTextAreaElement>('textarea[data-draft-key^="reply:"]')!;
+    input.value = '@Local what now?';
+    input.dispatchEvent(new Event('input'));
+    button('Reply')!.click();
+    await flush();
+    const row = q<HTMLElement>('.tg-ai-group')!;
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await flush();
+    expect(threads()[0].messages.map((m) => [m.body, !!m.deletedAt])).toEqual([['Plain start', false], ['@Local what now?', true]]);
+
+    // After Send, the question belongs to the thread: closing never removes it.
+    button('Ask AI')!.click();
+    await flush();
+    button('Send')!.click();
+    await flush();
+    expect(threads()[0].messages.filter((m) => !m.deletedAt)).toHaveLength(2);
   });
 
   it('describes where each assistant sends requests', () => {

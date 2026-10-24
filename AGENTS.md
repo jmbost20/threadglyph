@@ -15,7 +15,7 @@ The owner has authorized coding agents working **in this repository**, without a
 ## Rules
 
 - Stage explicit files and inspect the diff before every commit. Never commit real vault content, screenshots of real notes, transcripts, provider output or secrets. Test fixtures are synthetic.
-- The plugin must never write to note files. Tracked thread records must never contain quoted note text (see `README.md`, "Where data lives").
+- The plugin changes a note only when the user explicitly asks in the moment: **Accept** on a previewed agent proposal (one undoable editor transaction, refused if the text changed since the preview), or choosing `@agent` from the editor's autocomplete (which only removes the `@a…` just typed and opens the ask window). Nothing else writes to note files (owner decision 2026-09-30). Tracked thread records must never contain quoted note text, and agent proposals, which do, stay in memory only (see `README.md`, "Where data lives").
 - Only one actor writes a branch at a time. Fetch and compare before building on bot or remediation commits, and never force-push over them.
 - Stop an automated repair loop after two failed attempts at the same failure, and report the evidence. Never weaken tests, coverage or the quality gate to get a green check.
 - Record decisions, PR links and blockers in `docs/implementation-progress.md`, and Sonar/Gitar evidence in `docs/sonar-experiments.md`.

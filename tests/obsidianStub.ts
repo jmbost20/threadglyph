@@ -15,7 +15,7 @@ type Helpers = {
   createSpan(o?: ElOptions): HTMLSpanElement;
   empty(): void;
   setText(text: string): void;
-  addClass(cls: string): void;
+  addClass(...cls: string[]): void;
   setAttr(name: string, value: string): void;
 };
 
@@ -42,8 +42,8 @@ proto.empty = function (this: HTMLElement) {
 proto.setText = function (this: HTMLElement, text: string) {
   this.textContent = text;
 };
-proto.addClass = function (this: HTMLElement, cls: string) {
-  this.classList.add(cls);
+proto.addClass = function (this: HTMLElement, ...cls: string[]) {
+  this.classList.add(...cls);
 };
 proto.setAttr = function (this: HTMLElement, name: string, value: string) {
   this.setAttribute(name, value);
@@ -77,6 +77,8 @@ export const openModals: Modal[] = [];
 export class Modal {
   contentEl = document.createElement('div');
   titleEl = document.createElement('div');
+  modalEl = document.createElement('div');
+  scope = new Scope();
   constructor(public app: unknown) {}
   open() {
     document.body.append(this.titleEl, this.contentEl);
@@ -89,6 +91,17 @@ export class Modal {
     this.contentEl.remove();
     openModals.splice(openModals.indexOf(this), 1);
   }
+}
+
+/** Obsidian's @-style editor autocomplete; tests drive onTrigger and selectSuggestion directly. */
+export class EditorSuggest<T> {
+  context: { editor: FakeEditor; start: unknown; end: unknown; query: string } | null = null;
+  closed = 0;
+  constructor(public app: unknown) {}
+  close() {
+    this.closed++;
+  }
+  declare getSuggestions: (context: unknown) => T[];
 }
 
 export function setIcon(el: HTMLElement, icon: string): void {
@@ -177,6 +190,9 @@ export class FakeVault extends Events {
     const bytes = this.binaries.get(file.path) ?? new TextEncoder().encode(await this.adapter.read(file.path));
     return bytes.slice().buffer;
   }
+  getMarkdownFiles() {
+    return [...this.adapter.files.keys()].filter((p) => p.endsWith('.md')).sort().map((p) => new TFile(p));
+  }
   getResourcePath(file: TFile) {
     return `app://local/${encodeURI(file.path)}`;
   }
@@ -187,7 +203,9 @@ export class FakeMetadataCache {
   constructor(private readonly vault: FakeVault) {}
   getFirstLinkpathDest(link: string) {
     const paths = [...this.vault.adapter.files.keys()];
-    const hit = paths.find((p) => p === link) ?? paths.find((p) => p.split('/').pop() === link);
+    const name = (p: string) => p.split('/').pop();
+    // Like Obsidian, a note link may leave out the .md extension.
+    const hit = paths.find((p) => p === link) ?? paths.find((p) => name(p) === link) ?? paths.find((p) => name(p) === `${link}.md`);
     return hit ? new TFile(hit) : null;
   }
 }
@@ -218,6 +236,20 @@ export class FakeEditor {
   }
   scrollIntoView(range: unknown) {
     this.scrolled = range;
+  }
+  /** Edits made through the editor, newest last; each is one undo step in Obsidian. */
+  transactions: { from: number; to: number; text: string }[][] = [];
+  /** Set by the fake workspace so edits land in the note's text. */
+  write: (text: string) => void = () => {};
+  transaction(tx: { changes: { from: { offset: number }; to?: { offset: number }; text: string }[] }) {
+    const changes = tx.changes.map((c) => ({ from: c.from.offset, to: (c.to ?? c.from).offset, text: c.text }));
+    let doc = this.getValue();
+    for (const c of [...changes].sort((a, b) => b.from - a.from)) doc = doc.slice(0, c.from) + c.text + doc.slice(c.to);
+    this.transactions.push(changes);
+    this.write(doc);
+  }
+  replaceRange(text: string, from: { offset: number }, to?: { offset: number }) {
+    this.transaction({ changes: [{ from, to, text }] });
   }
 }
 
@@ -254,6 +286,9 @@ export class MarkdownView {
     vault: FakeVault,
   ) {
     this.editor = new FakeEditor(() => (file ? (vault.adapter.files.get(file.path) ?? '') : ''));
+    this.editor.write = (text) => {
+      if (file) vault.adapter.files.set(file.path, text);
+    };
   }
 }
 
@@ -261,6 +296,8 @@ export class FakeWorkspace extends Events {
   leaves: WorkspaceLeafImpl[] = [];
   activeFile: TFile | null = null;
   activeLeaf: WorkspaceLeafImpl | null = null;
+  /** Obsidian's editor-suggest registry, in the order it asks them. */
+  editorSuggest = { suggests: [] as unknown[] };
   factories = new Map<string, (leaf: WorkspaceLeafImpl) => unknown>();
   constructor(public vault: FakeVault) {
     super();
@@ -319,6 +356,11 @@ export class Plugin {
   constructor(public app: FakeApp) {}
   registerView(type: string, factory: (leaf: WorkspaceLeafImpl) => unknown) {
     this.app.workspace.factories.set(type, factory);
+  }
+  suggests: unknown[] = [];
+  registerEditorSuggest(suggest: unknown) {
+    this.suggests.push(suggest);
+    this.app.workspace.editorSuggest.suggests.push(suggest);
   }
   registerEditorExtension(ext: unknown) {
     this.extensions.push(ext);

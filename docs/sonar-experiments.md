@@ -104,3 +104,30 @@ Local baseline on `7b9a5f4`: 301 tests passed. The first restricted run could no
 - Three maintainability findings accepted: use a Set for mention membership, separate focus restoration from panel rendering (cognitive complexity 20 > 15), and extract a nested context-label template. These are clarity changes; the existing behavior regressions remain the validation contract.
 - Gitar's check succeeded on this SHA, with no review comments or inline findings returned by GitHub at inspection. This records the observed check, not a claim about unreported review coverage.
 - The follow-up commit reruns the full local suite and GitHub checks; its final results are on PR #8. Owner Obsidian UX validation remains pending.
+
+## September 30 — @agent batch (PR #10)
+
+PR: https://github.com/jmbost20/threadglyph/pull/10 (stacked on #9). First commit `7ed9463`.
+
+### PR #10, first cloud scan on `7ed9463`
+
+- CI, SonarQube Cloud and Gitar checks all passed. Sonar quality gate passed, but reports 15 new issues. The project is private, so the issue list could not be read without a token; the owner should review them in the Sonar dashboard. Nothing is inferred about their content.
+- Gitar requested changes with 4 findings. All were accepted, and each fix was preceded by a test that failed:
+  1. **Accept could rewrite a different copy of the text.** When the reviewed text was edited and an identical copy existed elsewhere, `locateRegion` took the copy. Regions now carry 40 characters of surrounding text, and relocation needs text plus surroundings unchanged and unique. Test: "never moves onto another copy…".
+  2. **Unreadable edit JSON could be saved to a thread record.** The block, which quotes the note, went into the thread when its JSON failed to parse or when there was no prose. The block is now always stripped, and a fixed message stands in. Test: "never saves an edit block to the thread…".
+  3. **The chat's "May change" label understated a selection inside a list item,** which expands to the whole item. The label now says so.
+  4. **The progress log's test count was stale.** Corrected.
+
+### PR #10 on `bfea29e` (ask window, agent fixes)
+
+- CI, SonarQube Cloud and Gitar checks passed. The Sonar gate passed with 27 new issues; their content is not readable without a token, so nothing is inferred about it.
+- Gitar still requested changes, with 3 open findings. All were accepted and fixed in the next commit, each with a test:
+  1. **A rewrite was cut off at a code fence inside it.** The lazy fence regexes ended a `threadglyph-replace` block at the first ```` ``` ```` inside the rewritten text, so the rest would have been deleted on Accept. Fenced blocks are now found by a line scanner: the block ends at a bare fence at least as long as its opening one, and fenced blocks nested inside it are skipped. A rewrite cut off before its closing fence is refused as unreadable, never applied. Test: "keeps code blocks inside a rewrite…".
+  2. **The `json` fallback could span two blocks.** It now takes the first `json` block whose own body carries `edits` or `read`. Test: "takes the json block that carries edits…".
+  3. **The sandbox daily-note copy ignored the configured format.** `dailyNoteName` formats `YYYY`, `YY`, `MM`, `M`, `DD`, `D` and `[literals]`, including folders such as `YYYY/MM/…`. Any other token skips the copy with a message instead of guessing. The owner's vault uses the default `YYYY-MM-DD`.
+
+### PR #10 on `1d88717` (UAT: thread layout, delete thread)
+
+- CI, Sonar and Gitar checks passed. Gitar requested changes with 2 new findings; both were accepted and fixed with tests:
+  1. **A stale "focus the reply box" flag could steal focus later.** It is now used by the first update after posting and then dropped.
+  2. **The deleted-thread row counted and previewed comments that Restore won't bring back** (one deleted earlier on its own). It now counts and previews only the comments deleted with the thread.

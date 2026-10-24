@@ -8,12 +8,8 @@ export interface NoteContext {
   text: string;
 }
 
-/**
- * The Markdown section containing `offset`: from the nearest heading above it
- * to the next heading of the same or a higher level. Headings inside fenced
- * code blocks are ignored.
- */
-export function sectionAround(doc: string, offset: number): NoteContext {
+/** Where the Markdown section containing `offset` starts and ends in `doc`, and its label. */
+export function sectionRange(doc: string, offset: number): { from: number; to: number; label: string } {
   const lines = doc.split('\n');
   const starts: number[] = [];
   let pos = 0;
@@ -32,12 +28,21 @@ export function sectionAround(doc: string, offset: number): NoteContext {
   while (lineOfOffset + 1 < starts.length && starts[lineOfOffset + 1] <= offset) lineOfOffset++;
   const owner = [...headings].reverse().find((h) => h.line <= lineOfOffset);
   const end = headings.find((h) => h.line > (owner?.line ?? -1) && (!owner || h.level <= owner.level));
-  const from = owner ? starts[owner.line] : 0;
-  const to = end ? starts[end.line] : doc.length;
-  return limit({
+  return {
+    from: owner ? starts[owner.line] : 0,
+    to: end ? starts[end.line] : doc.length,
     label: owner ? `The section “${owner.title}”` : 'The text before the first heading',
-    text: doc.slice(from, to).trimEnd(),
-  });
+  };
+}
+
+/**
+ * The Markdown section containing `offset`: from the nearest heading above it
+ * to the next heading of the same or a higher level. Headings inside fenced
+ * code blocks are ignored.
+ */
+export function sectionAround(doc: string, offset: number): NoteContext {
+  const { from, to, label } = sectionRange(doc, offset);
+  return limit({ label, text: doc.slice(from, to).trimEnd() });
 }
 
 export function wholeNote(doc: string): NoteContext {
