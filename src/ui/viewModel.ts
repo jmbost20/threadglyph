@@ -54,7 +54,9 @@ export function buildThreadViews(
   doc: string,
   resolveLink?: LinkResolver,
 ): ThreadView[] {
-  const views: ThreadView[] = source.forNote(notePath).map((thread) => {
+  const views: ThreadView[] = source.forNote(notePath)
+    .map((t) => ({ ...t, messages: t.messages.filter((m) => !m.deletedAt) }))
+    .filter((t) => t.messages.length > 0).map((thread) => {
     const anchor = source.anchorFor(thread.id);
     return {
       thread,

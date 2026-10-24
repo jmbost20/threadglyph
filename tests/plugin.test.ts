@@ -245,6 +245,23 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(notices.at(-1)).toMatch(/note for this thread is missing/);
   });
 
+  it('panel navigation highlights the passage but leaves the keyboard in the panel', async () => {
+    await commentOn('worth a comment', 'Stay in panel');
+    const [thread] = threads();
+    const focus = vi.spyOn(app.workspace, 'setActiveLeaf');
+    const reveal = (plugin as unknown as { revealPassage(id: string, focusEditor: boolean): Promise<void> }).revealPassage.bind(plugin);
+    await reveal(thread.id, false);
+    const from = NOTE_TEXT.indexOf('worth a comment');
+    expect(view.editor.selection).toEqual([from, from + 15]);
+    expect(focus).not.toHaveBeenCalled();
+    // A lost passage is still stepped onto, without a notice.
+    app.vault.adapter.files.set(NOTE, 'Rewritten.\n');
+    const before = notices.length;
+    await reveal(thread.id, false);
+    expect(notices).toHaveLength(before);
+    expect((plugin as unknown as { focusedThreadId: string }).focusedThreadId).toBe(thread.id);
+  });
+
   it('opens a closed note before navigating to its passage', async () => {
     await commentOn('worth a comment', 'Reopen');
     app.workspace.leaves = app.workspace.leaves.filter((l) => l.view !== view);

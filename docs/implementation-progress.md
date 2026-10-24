@@ -148,3 +148,21 @@ Branch: `codex/ai-review-ux`, isolated from the ongoing `codex/local-gemini-pilo
 - Knowledge integration remains a separate draft design; no knowledge publication or Anki functionality is claimed here.
 
 Owner sandbox validation still needed: (1) question + `@Local`, Enter, review the expanded section preview, Enter and observe one saved AI reply; (2) Escape from preview/running returns to the note without deleting the question; (3) narrow the panel and inspect button wrapping/scope separators; (4) filter AI replies by agent/date and reset. Existing edit, resolve/reopen, image-anchor and backup flows remain covered by the automated suite.
+
+## September 30 — Comment deletion and panel centering
+
+The owner's sandbox was still loading the PR #7 build, so the PR #8 changes (Enter after an @mention, Escape, expanded exact text with counts) had not been seen. The sandbox now links to this branch's build.
+
+- **Delete:** a Delete button on each comment, and ⌘⇧Delete (or Ctrl+Shift+Delete) on a clicked comment. Deletion is soft (`deletedAt`); the text stays in the record, is left out of AI requests, and can be restored from **Deleted comments → Undo delete** in the panel header. A thread whose comments are all deleted is hidden.
+- **Centering:** a new comment box, a newly focused card and an opened Ask AI box are centered in the panel. Re-renders keep the scroll position, and focus no longer scrolls on its own.
+- **Fix:** after posting a comment with an @mention, the panel stays on the Ask AI box and its Send button instead of re-scrolling to the card's top.
+- **Delete confirmation:** both the Delete button and ⌘⇧Delete ask “Delete this comment?” first; Enter confirms, Escape cancels.
+- **Panel navigation:** ⌘⇧→ / ⌘⇧← step through the visible cards (wrapping), highlight the passage without moving focus to the note, and keep focus on the card. Inside a text box they still select text. The note keeps ⌥⌘] / ⌥⌘[ (owner's choice), so ⌘⇧←/→ still selects to line start/end there.
+- Started by Codex (uncommitted when it hit its usage limit), finished here.
+
+## September 30 — CI repair after the Dependabot merge
+
+Main had been red since PR #2 (Dependabot, ten dev-dependency updates) merged: `npm ci` failed because `@codemirror/state` 6.7.6 and `@codemirror/view` 6.43.13 conflict with the exact peer versions `obsidian@1.13.1` requires (6.5.0 / 6.38.6), and TypeScript 7 is outside `typescript-eslint`'s supported range. Local checks passed only because `node_modules` predated the merge.
+
+- `package.json` and `package-lock.json` restored to the last green set (commit `42c882f`); `npm ci && npm run check` passes from a clean install.
+- `.github/dependabot.yml`: `@codemirror/*` is ignored (it follows the `obsidian` package, which supplies CodeMirror at runtime), and the grouped PR now carries only minor and patch updates, so each major update (TypeScript 7, Vitest 5, ESLint 10, happy-dom 20) arrives as its own PR and must pass CI on its own.

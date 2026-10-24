@@ -1,7 +1,7 @@
 import { imageSupport } from './anchor/imageEmbed';
 import { captureTextAnchor } from './anchor/textAnchor';
 import { importedThread, type ImportPeople, type LegacyThread } from './import/agentComments';
-import { addReply, createThread, editMessage, setStatus, type Clock, systemClock, ThreadError } from './model/thread';
+import { addReply, createThread, editMessage, setMessageDeleted, setStatus, type Clock, systemClock, ThreadError } from './model/thread';
 import type { Author, TextAnchor, ThreadRecord } from './model/types';
 import type { ThreadStore } from './storage/threadStore';
 import { draftKey } from './ui/viewModel';
@@ -135,6 +135,12 @@ export class ThreadController {
       this.editBase.delete(key);
     }
     return result;
+  }
+
+  async setMessageDeleted(threadId: string, messageId: string, deleted: boolean): Promise<Outcome> {
+    const outcome = await this.update(threadId, (t) => setMessageDeleted(t, messageId, deleted, this.clock));
+    if (outcome.ok) this.cancelEdit(threadId, messageId);
+    return outcome;
   }
 
   async setResolved(threadId: string, resolved: boolean): Promise<Outcome> {

@@ -35,6 +35,8 @@ export interface Message {
   createdAt: string;
   body: string;
   editedAt?: string;
+  /** Soft deletion retains content/history for Undo and backup recovery. */
+  deletedAt?: string;
   revisions: MessageRevision[];
 }
 

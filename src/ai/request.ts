@@ -28,7 +28,7 @@ export function buildAiRequest(inputs: RequestInputs, scope: ContextScope, image
     quote: inputs.imagePath === null ? inputs.quote : null,
     image,
     context,
-    messages: inputs.thread.messages.map((m) => ({ author: m.author.name, origin: m.origin, body: m.body })),
+    messages: inputs.thread.messages.filter((m) => !m.deletedAt).map((m) => ({ author: m.author.name, origin: m.origin, body: m.body })),
   };
 }
 

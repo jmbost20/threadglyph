@@ -279,6 +279,16 @@ export default class ThreadglyphPlugin extends Plugin {
         c.cancelEdit(id, messageId);
         void this.refresh();
       },
+      setMessageDeleted: async (id, messageId, deleted) => {
+        if (this.ai.get(id)?.phase === 'saving') {
+          new Notice('The AI reply is saving. Try deleting again in a moment.');
+          return false;
+        }
+        this.ai.close(id);
+        const ok = await attempt(() => c.setMessageDeleted(id, messageId, deleted));
+        await this.refresh();
+        return ok;
+      },
       setResolved: async (id, resolved) => {
         await attempt(() => c.setResolved(id, resolved));
         await this.refresh();
@@ -314,6 +324,7 @@ export default class ThreadglyphPlugin extends Plugin {
         return file instanceof TFile ? this.app.vault.getResourcePath(file) : null;
       },
       goTo: (id) => this.goTo(id),
+      select: (id) => this.revealPassage(id, false),
       setFilter: (filter) => {
         this.filter = filter;
         void this.refresh();
@@ -362,7 +373,10 @@ export default class ThreadglyphPlugin extends Plugin {
 
     const panels = this.panels();
     if (!panels.length) return;
+    const deletedMessages = note ? this.store.forNote(note.path).flatMap((t) =>
+      t.messages.filter((m) => m.deletedAt).map((message) => ({ threadId: t.id, message }))) : [];
     const base = {
+      deletedMessages,
       notePath: note?.path ?? null,
       noteName: note?.basename ?? '',
       problems: this.store.loadProblems(),
@@ -616,7 +630,15 @@ export default class ThreadglyphPlugin extends Plugin {
     panel?.scrollToThread(threadId, focusComposer);
   }
 
-  private async goTo(threadId: string): Promise<void> {
+  private goTo(threadId: string): Promise<void> {
+    return this.revealPassage(threadId, true);
+  }
+
+  /**
+   * Selects a thread's passage in its note and makes it the focused card.
+   * With `focusEditor` false (panel navigation) the keyboard stays in the panel.
+   */
+  private async revealPassage(threadId: string, focusEditor: boolean): Promise<void> {
     const thread = this.store.get(threadId);
     if (!thread) return;
     const file = this.app.vault.getAbstractFileByPath(thread.notePath);
@@ -636,15 +658,17 @@ export default class ThreadglyphPlugin extends Plugin {
       view.editor.getValue(),
       this.resolveLink,
     );
-    if (match?.anchor.kind !== 'found') {
+    if (match?.anchor.kind === 'found') {
+      if (focusEditor) this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
+      const from = view.editor.offsetToPos(match.anchor.from);
+      const to = view.editor.offsetToPos(match.anchor.to);
+      view.editor.setSelection(from, to);
+      view.editor.scrollIntoView({ from, to }, true);
+    } else if (focusEditor) {
       new Notice('This thread’s passage could not be located.');
       return;
     }
-    this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
-    const from = view.editor.offsetToPos(match.anchor.from);
-    const to = view.editor.offsetToPos(match.anchor.to);
-    view.editor.setSelection(from, to);
-    view.editor.scrollIntoView({ from, to }, true);
+    // Panel navigation still steps onto a thread whose passage is gone; it just has nothing to highlight.
     this.focusedThreadId = threadId;
     await this.refresh();
   }
