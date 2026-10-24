@@ -28,6 +28,24 @@ export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
 
+/** Ollama's usual context window, in tokens. */
+export const OLLAMA_DEFAULT_CONTEXT = 4_096;
+const MAX_CONTEXT_TOKENS = 32_768;
+/** Room left for the answer, in tokens. */
+const ANSWER_TOKENS = 1_024;
+
+/**
+ * The context window a request needs: its prompt (about 3 characters a token)
+ * plus room for the answer, in steps of 4,096 tokens. Ollama otherwise keeps
+ * its default window and silently drops the start of a longer prompt, which is
+ * where the instructions are. Null leaves the default.
+ */
+export function contextTokens(promptChars: number): number | null {
+  const needed = Math.ceil(promptChars / 3) + ANSWER_TOKENS;
+  if (needed <= OLLAMA_DEFAULT_CONTEXT) return null;
+  return Math.min(MAX_CONTEXT_TOKENS, Math.ceil(needed / OLLAMA_DEFAULT_CONTEXT) * OLLAMA_DEFAULT_CONTEXT);
+}
+
 /** The host part of an address, or the address itself when it cannot be parsed. */
 function hostName(address: string): string {
   try {
@@ -90,12 +108,14 @@ export class OllamaAdapter implements AiAdapter {
     const content = buildPromptText(request);
     const user: Record<string, unknown> = { role: 'user', content };
     if (request.image) user.images = [request.image.data];
+    const numCtx = contextTokens(SYSTEM_PROMPT.length + content.length);
     const body = JSON.stringify({
       model,
       stream: false,
       // Reasoning models answer far faster without thinking, and a comment reply rarely needs it.
       think: false,
       messages: [{ role: 'system', content: SYSTEM_PROMPT }, user],
+      ...(numCtx ? { options: { num_ctx: numCtx } } : {}),
     });
 
     const out = await http({ url: `${this.host}/api/chat`, method: 'POST', body, timeoutMs, signal });

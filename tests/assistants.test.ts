@@ -25,7 +25,7 @@ import {
   type GeminiFiles,
 } from '../src/ai/geminiCli';
 import { nodeHttp, type HttpCall, type HttpFn, type HttpOutcome } from '../src/ai/http';
-import { OllamaAdapter, isCloudModel, stripThinking } from '../src/ai/ollama';
+import { OLLAMA_DEFAULT_CONTEXT, OllamaAdapter, contextTokens, isCloudModel, stripThinking } from '../src/ai/ollama';
 import { SYSTEM_PROMPT } from '../src/ai/prompt';
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter, AiRequest } from '../src/ai/types';
@@ -160,6 +160,19 @@ describe('Local (Ollama) adapter', () => {
     const call = http.mock.calls[0][0];
     expect(call.timeoutMs).toBe(60_000);
     expect(JSON.parse(call.body!).options).toBeUndefined();
+  });
+
+  it('widens the context window for a long note, so the instructions are not cut off', async () => {
+    const { http, adapter } = ollama({ '/api/chat': chat('ok') });
+    const text = 'A long paragraph of synthetic note text. '.repeat(900);
+    await adapter.ask(request({ context: { label: 'The whole note', text } }), live());
+    const body = JSON.parse(http.mock.calls[0][0].body!);
+    expect(body.options.num_ctx % OLLAMA_DEFAULT_CONTEXT).toBe(0);
+    expect(body.options.num_ctx).toBeGreaterThan(OLLAMA_DEFAULT_CONTEXT);
+    expect(body.messages[0].content).toBe(SYSTEM_PROMPT);
+    expect(contextTokens(9_000)).toBeNull();
+    expect(contextTokens(9_300)).toBe(8_192);
+    expect(contextTokens(500_000)).toBe(32_768);
   });
 
   it('refuses images for a model that cannot see, before sending anything', async () => {
