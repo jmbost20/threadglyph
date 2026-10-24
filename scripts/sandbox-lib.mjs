@@ -25,40 +25,59 @@ export function expandHome(path) {
   return path === '~' || path.startsWith('~/') ? join(homedir(), path.slice(1)) : path;
 }
 
-/** Vault folders Obsidian knows about on this computer (its own vault list). */
-export function registeredVaults() {
-  const configDir =
-    process.platform === 'darwin'
-      ? join(homedir(), 'Library', 'Application Support', 'obsidian')
-      : process.platform === 'win32'
-        ? join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'obsidian')
-        : join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'obsidian');
-  try {
-    const { vaults } = JSON.parse(readFileSync(join(configDir, 'obsidian.json'), 'utf8'));
-    return Object.values(vaults ?? {})
-      .map((v) => v?.path)
-      .filter((p) => typeof p === 'string')
-      .map((p) => resolve(p));
-  } catch {
-    return [];
-  }
+/** Where Obsidian keeps its vault list (obsidian.json) on this platform, including Linux Flatpak and Snap installs. */
+export function obsidianConfigDirs() {
+  if (process.platform === 'darwin') return [join(homedir(), 'Library', 'Application Support', 'obsidian')];
+  if (process.platform === 'win32') return [join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'obsidian')];
+  return [
+    join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'obsidian'),
+    join(homedir(), '.var', 'app', 'md.obsidian.Obsidian', 'config', 'obsidian'),
+    join(homedir(), 'snap', 'obsidian', 'current', '.config', 'obsidian'),
+  ];
 }
 
-/** True for a folder these scripts set up before (marker file, or the sample notes of older sandboxes). */
+/** Vault folders Obsidian knows about on this computer (its own vault list). */
+export function registeredVaults(configDirs = obsidianConfigDirs()) {
+  const found = [];
+  let readAny = false;
+  for (const dir of configDirs) {
+    try {
+      const { vaults } = JSON.parse(readFileSync(join(dir, 'obsidian.json'), 'utf8'));
+      readAny = true;
+      for (const v of Object.values(vaults ?? {})) if (typeof v?.path === 'string') found.push(resolve(v.path));
+    } catch {
+      // Not installed here, or unreadable; the other checks still apply.
+    }
+  }
+  if (!readAny) console.warn("Could not read Obsidian's vault list, so registered vaults can't be checked. Folders that already hold a vault are still refused.");
+  return found;
+}
+
+/** True for a folder these scripts set up before: the marker, or the sample notes of older sandboxes (in Test data/ or at the top level). */
 export function isSandbox(vault) {
-  return existsSync(join(vault, SANDBOX_MARKER)) || existsSync(join(vault, SAMPLES, 'Welcome.md'));
+  return (
+    existsSync(join(vault, SANDBOX_MARKER)) ||
+    existsSync(join(vault, SAMPLES, 'Welcome.md')) ||
+    (existsSync(join(vault, 'Welcome.md')) && existsSync(join(vault, 'Sandbox sky.png')))
+  );
 }
 
 const overlaps = (a, b) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
 /**
- * Resolves the sandbox path. Refuses the source vault, and any vault Obsidian has
- * registered that is not already a sandbox (or a folder inside or around one), so a
- * real vault can only ever be read.
+ * Resolves the sandbox path. Refuses the source vault, any folder that already holds
+ * an Obsidian vault and is not a sandbox, and any vault Obsidian has registered that
+ * is not a sandbox (or a folder inside or around one), so a real vault can only ever
+ * be read.
  */
 export function sandboxPath(arg, protectedVaults = [...registeredVaults(), ...(SOURCE_VAULT ? [SOURCE_VAULT] : [])]) {
   const vault = resolve(expandHome(arg ?? DEFAULT_SANDBOX));
   const sandbox = isSandbox(vault);
+  // Any existing vault that is not a sandbox is refused, even if Obsidian's list could not be read.
+  if (!sandbox && existsSync(join(vault, '.obsidian'))) {
+    console.error(`Refusing to use ${vault}: it is already an Obsidian vault. Point this script at a disposable folder.`);
+    process.exit(1);
+  }
   const clash = protectedVaults.find((p) => (p === vault ? !sandbox || p === SOURCE_VAULT : overlaps(p, vault)));
   if (clash) {
     console.error(`Refusing to use ${vault}: it is, or overlaps, a real vault (${clash}). Point this script at a disposable folder.`);
