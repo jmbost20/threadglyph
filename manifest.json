@@ -1,7 +1,7 @@
 {
   "id": "threadglyph",
   "name": "Threadglyph",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.7.2",
   "description": "Editable comment threads on text and images in your notes, with optional AI replies. Comments live beside your notes, never inside them.",
   "author": "Jonah Bostrom",
