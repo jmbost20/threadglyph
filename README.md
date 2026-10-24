@@ -15,26 +15,26 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 
 > **Status: alpha (0.3.0), desktop only.** It is used daily by its author, but expect rough edges. Bug reports are welcome.
 
-## How it was built
-
-Threadglyph was written by AI coding agents, one pull request at a time, and nothing merged without two outside reviews: [Gitar](https://gitar.ai) read every diff, and [SonarQube Cloud](https://sonarcloud.io) held every change to a quality gate. The agents' rule: reproduce a finding with a test that fails before fixing it, and answer in writing any finding they disagree with.
-
-- **35 Gitar findings on merged code, all resolved:** 15 bugs, 1 security issue, 11 edge cases, 7 test or code-quality problems, 1 performance issue.
-- **Examples:** two quick clicks [could silently lose a reply](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4122849310); an AI rewrite containing a code block [could leak note text into a file meant to be committed](https://github.com/jmbost20/threadglyph/pull/14#discussion_r4366902160); and several tests [could not actually fail](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4128873979).
-- **Sonar's gate was met with tests, never by excluding code:** coverage went from 72.8% to 99.8% on the first PR, and is 99.6% today.
-
-The full story, with links to every review, is in [How Gitar and SonarQube reviewed Threadglyph](docs/gitar-and-sonar.md).
-
 ## What it does
 
 - **Comment on any passage.** Select text and run **Threadglyph: Comment on selection** (command palette or right-click). The passage is highlighted, numbered to match its card, and marked in the margin.
 - **Threads in a side panel.** Reply, edit any message (the earlier text is kept), resolve or reopen, delete with undo, and search with ⌘F. Open, Resolved and All tabs, plus filters by author, age and date.
 - **Comment on images.** Every PNG, JPEG or WebP embed gets a title pill with a **Comment** button.
-- **Your notes stay untouched.** Threads live in separate JSON files beside your notes, never inside them.
+- **Comments live beside your notes.** Threads are stored in separate JSON files, never inside the note.
 - **Anchors that survive edits.** Edits around a passage don't break its thread. If the passage is deleted, or repeated so the original copy can't be told apart, the thread says so instead of guessing, and offers **Reattach to selection**.
-- **Optional AI replies (off by default).** Mention `@Local`, `@Gemini` or `@Claude` in a comment, or press **Ask AI**. Before anything is sent you see a preview of exactly what goes, and where ("Stays on this computer", "Sent to Google", "Sent to Anthropic"). The answer is added to the thread, labelled as AI, and stays editable.
+- **Optional AI replies (off by default).** Mention `@Local`, `@Gemini` or `@Claude` in a comment, or press **Ask AI**. Before anything is sent you see a preview of exactly what goes, and where ("Stays on this computer", "Sent to Google", "Sent to Anthropic", or the host of an Ollama server on another machine). The answer is added to the thread, labelled as AI, and stays editable.
 - **Import from Agent Comments.** Turns the `{==…==}{>>…<<}` comments of the [Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) plugin into threads, without changing the note.
-- *`@agent` (legacy, on hold): proposes edits to the note as a diff and changes nothing until you press Accept. New work goes into `@Local` / `@Gemini` replies instead.*
+- *`@agent` (legacy, experimental, on hold): proposes edits to the note as a diff and changes nothing until you press Accept, apart from removing the `@a` you typed when you pick it from the menu. Its confirmations show what it may change and where the request goes, not the full request text. New work goes into `@Local` / `@Gemini` replies instead.*
+
+## How it was built
+
+Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude Code), one pull request at a time, with the maintainer setting direction, reviewing and merging. Every feature pull request was reviewed by [Gitar](https://gitar.ai) and analysed by [SonarQube Cloud](https://sonarcloud.io) before it merged. The agents' rule: reproduce a finding with a test that fails before fixing it, and answer in writing any finding they disagree with. The record includes the misses too: an early dependency update (#2) merged with failing CI and broke main until #9, and a later whole-project review found problems the per-PR reviews had not (now fixed).
+
+- **35 distinct Gitar findings on merged code, all resolved:** 15 bugs, 1 security issue, 11 edge cases, 7 test or code-quality problems, 1 performance issue. (Two comments repeated on stacked PRs are counted once.)
+- **Examples:** two quick clicks [could silently lose a reply](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4122849310); an AI rewrite containing a code block [could leak quoted note text into a thread file](https://github.com/jmbost20/threadglyph/pull/14#discussion_r4366902160); and several tests [could not actually fail](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4128873979).
+- **Sonar's coverage gate was met with tests, never by excluding code:** line coverage went from 72.8% to 99.8% on the first PR, and is about 99.5% today.
+
+The full story, with links to the reviews, is in [How Gitar and SonarQube reviewed Threadglyph](docs/gitar-and-sonar.md).
 
 ## Install
 
@@ -70,7 +70,7 @@ Turn on **Settings → Threadglyph → Enable Ask AI**. Each assistant is a prog
 
 | Assistant | You need | Where your text goes |
 |---|---|---|
-| **Local** (preferred) | [Ollama](https://ollama.com) running, with a model pulled (default `qwen3:8b`; a vision model such as `qwen2.5vl:7b` for images) | Nowhere: `localhost:11434` on your computer. Ollama `:cloud` models are labelled as leaving it. |
+| **Local** (preferred) | [Ollama](https://ollama.com) running, with a model pulled (default `qwen3:8b`; a vision model such as `qwen2.5vl:7b` for images) | Nowhere, with the default `localhost:11434`. An Ollama server on another machine, and Ollama `:cloud` models, are labelled as leaving the computer. |
 | **Gemini** | [Gemini CLI](https://github.com/google-gemini/gemini-cli) and an API key in `~/.threadglyph/gemini/.gemini/.env` as `GEMINI_API_KEY=…` | Google |
 | **Claude** | [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in | Anthropic |
 
@@ -80,22 +80,24 @@ By default a request holds the selected passage, the thread and the section arou
 
 As Obsidian's [developer policies](https://docs.obsidian.md/Developer+policies) require:
 
-- **Network use:** none unless you turn on Ask AI. Then requests go only to the assistant you pick: Ollama on `localhost`, or Google or Anthropic through their own command-line tools.
-- **Runs external programs:** the Gemini and Claude assistants start the `gemini` and `claude` command-line tools you installed. They run without a shell, with their tools, MCP servers and settings files turned off, and get the request on standard input. This is why the plugin is desktop only.
-- **Files outside your vault:** the Gemini assistant uses `~/.threadglyph/gemini/` (or a folder you choose) as its working folder, and writes a settings file there that switches off every Gemini tool. An image you ask about is copied to your system's temp folder for the request and deleted afterwards.
+- **Network use:** none unless you turn on Ask AI. Then requests go only to the assistant you pick: Ollama at the address you set (`localhost` by default; any other address is shown as leaving the computer), or Google or Anthropic through their own command-line tools.
+- **Runs external programs:** the Gemini and Claude assistants start the `gemini` and `claude` command-line tools you installed, without a shell, with the request on standard input. This is why the plugin is desktop only.
+  - Claude Code runs with its built-in tools, MCP servers and settings files turned off.
+  - Gemini CLI runs in read-only plan mode with extensions off. In Threadglyph's own folder it also gets a settings file that excludes Gemini's built-in tools. Your user-level Gemini settings, including any MCP servers you configured there, still apply; if that matters, use Local or a Gemini setup without MCP servers.
+- **Files outside your vault:** the Gemini assistant uses `~/.threadglyph/gemini/` (or a folder you choose) as its working folder. In its own folder it writes a settings file once, if none exists; a folder you choose is never written to. An image you ask about is copied to your system's temp folder for the request and deleted afterwards.
 - **No telemetry, no ads, no account.** Threadglyph itself sends nothing anywhere.
 
 ## Where data lives
 
 | Folder (inside the vault) | Contents | Commit to a vault's Git? |
 |---|---|---|
-| `threadglyph/threads/<id>.json` | Thread ids, authors, timestamps, messages, edit history, resolved state. **No note text.** | Yes |
+| `threadglyph/threads/<id>.json` | Thread ids, authors, timestamps, messages, edit history, resolved state. The quoted passage is kept out of these files, but comments and AI replies are free text and can quote or summarise your note. | If you're comfortable publishing your comments |
 | `.threadglyph/anchors/<id>.json` | The quoted passage and its surrounding context, used to find the passage again. | **No.** Add `.threadglyph/` to `.gitignore` |
 | `.threadglyph/exports/*.json` | Backups from *Back up all threads* (threads and anchors). | **No** (same folder) |
 
 If an anchor file is missing (for example, on a fresh clone), the thread still shows with all its messages and offers **Reattach to selection**. **Back up all threads** and **Restore threads from a backup** are in the command palette; a restore only adds threads that are missing and never overwrites.
 
-Sync carries thread messages but not anchors, and the plugin does not run on mobile. See [docs/compatibility.md](docs/compatibility.md) for measured performance on large notes and other limits.
+Anchors sit in a dot-folder. Git (with the suggested `.gitignore`) and some sync tools skip it, so another device may show threads that need a reattach; check how your sync tool treats hidden folders. The plugin does not run on mobile. See [docs/compatibility.md](docs/compatibility.md) for measured performance on large notes and other limits.
 
 ## Development
 

@@ -13,7 +13,7 @@ flowchart LR
   Anchor["Anchors<br/>(anchor/)"]
   Store["Thread store<br/>(storage/)"]
   AI["AI boundary<br/>(ai/)"]
-  Tracked[("threadglyph/threads/*.json<br/>no note text, safe to commit")]
+  Tracked[("threadglyph/threads/*.json<br/>messages; no captured quotes")]
   Local[(".threadglyph/anchors/*.json<br/>quotes, local only")]
   Ollama["Ollama on localhost"]
   CLIs["gemini / claude CLIs"]
@@ -54,10 +54,10 @@ Rebuilding a note's anchors runs after edits (debounced 300 ms), not on each key
 
 ## Rules the code keeps
 
-- **Notes are read, not written.** The only path that changes a note is Accept on a previewed `@agent` proposal: one undoable edit, refused if the text changed since the preview.
-- **Tracked files hold no note text.** Quotes, context and image paths live only in `.threadglyph/`. Agent proposals, which hold note text, stay in memory and are never saved.
-- **Nothing is sent without a preview.** Every AI request is built first, shown with its destination and exact text, and only then sent.
-- **External tools are fenced in.** The CLIs run without a shell, get the request on stdin, and have their tools, MCP servers and settings files turned off. Threadglyph never reads API keys.
+- **Notes are read, not written.** The only path that changes a note is Accept on a previewed `@agent` proposal (one undoable edit, refused if the text changed since the preview), plus removing the `@a` just typed when `@agent` is picked from the editor menu.
+- **Captured quotes stay out of tracked files.** Quotes, context and image paths live only in `.threadglyph/`. Agent proposals, which hold note text, stay in memory and are never saved. Messages, including AI replies, are stored as written and can repeat note text a user or model chose to include.
+- **Ask AI is previewed.** Ask AI and @mention requests are built first, shown with their destination and exact text, and only then sent. The legacy `@agent` uses a different consent model: it asks before a cloud request and before reading other notes, showing scope and destination but not the full text. Destinations come from where a request actually goes (a non-local Ollama address counts as leaving the computer).
+- **External tools are fenced in, to the extent each CLI allows.** Both run without a shell and get the request on stdin. Claude Code runs with `--tools ""`, `--strict-mcp-config` and `--setting-sources ""`. Gemini CLI runs with `--approval-mode plan` (read-only) and `-e none`, plus a tool-exclusion settings file in Threadglyph's own folder; user-level Gemini settings still apply. Threadglyph never reads API keys.
 - **Data is validated on the way in.** Every thread, anchor and backup record is checked against its schema; invalid records are skipped and reported, never half-loaded.
 
 ## Tests

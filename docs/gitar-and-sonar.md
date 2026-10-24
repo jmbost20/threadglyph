@@ -1,20 +1,22 @@
 # How Gitar and SonarQube reviewed Threadglyph
 
-Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude Code), working on a pull request at a time. Every pull request was reviewed by [Gitar](https://gitar.ai) and analysed by [SonarQube Cloud](https://sonarcloud.io) before it was merged. This page is the short version of what those tools found and what changed because of it, with links to the original review comments. The full working log is in [docs/dev/sonar-experiments.md](dev/sonar-experiments.md).
+Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude Code), working on a pull request at a time. Every feature pull request was reviewed by [Gitar](https://gitar.ai) and analysed by [SonarQube Cloud](https://sonarcloud.io) before it was merged (the exceptions are listed under [What the tools did not do](#what-the-tools-did-not-do)). This page is the short version of what those tools found and what changed because of it, with links to the original review comments. The full working log is in [docs/dev/sonar-experiments.md](dev/sonar-experiments.md).
 
 ## In numbers
 
 | | |
 |---|---|
 | Pull requests with Gitar findings | 11 (10 merged, 1 open) |
-| Gitar findings on merged code | **35**, all resolved: 34 fixed, 1 made moot by a later redesign |
+| Gitar findings on merged code | **35** distinct findings, all resolved: 34 fixed, 1 made moot by a later redesign |
 | …of which bugs or security issues | 16 (15 bugs, 1 security) |
 | …edge cases | 11 |
 | …test or code quality | 7 (including tests that could not fail) |
 | …performance | 1 |
 | Findings on the open knowledge-workflows PR (#12) | 10, all fixed on that branch |
 | Sonar quality-gate failures | 2: low coverage on new code (PR #1) and Reliability rating D, caused by two real bugs (PR #7) |
-| How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is 99.6% today |
+| How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is about 99.5% today |
+
+**How the findings were counted:** every top-level Gitar review comment on a merged pull request, by its own category label. Two findings were posted on both #7 and #8 (#8 was stacked on #7); each is counted once. Coverage figures come from the development log and `npm run check`.
 
 ## How the loop works
 
@@ -52,7 +54,7 @@ Each one now has a test that checks the thread files never hold the quoted text.
 
 ### 5. Sonar: two real bugs behind a "D", and a finding declined with a reason (PR #7)
 
-The quality gate failed on Reliability rating D. Behind it were two real bugs: `Array.sort()` without a compare function, in the backup list and in the import's date ordering. Of Sonar's 21 maintainability findings, 19 were accepted, including four regular expressions at risk of catastrophic backtracking, which were rewritten. The other two, "`await` inside a loop" warnings, were declined: those writes are sequential on purpose, because parallel folder creation races in Obsidian's file adapter. The reason is recorded in the log rather than silenced.
+The quality gate failed on Reliability rating D. Behind it were two real bugs: `Array.sort()` without a compare function, in the backup list and in the import's date ordering. Of Sonar's 21 maintainability findings, 19 were accepted, including four regular expressions Sonar flagged for super-linear backtracking or excess complexity, which were rewritten. The other two, "`await` inside a loop" warnings, were declined: those writes are sequential on purpose, because parallel folder creation races in Obsidian's file adapter. The reason is recorded in the log rather than silenced.
 
 On PR #1 the gate failed on coverage (79.4% of new code, 80% required). The gap was the Obsidian wiring, at 0%. Instead of excluding it, 19 integration tests were written that drive the real plugin against an in-memory Obsidian.
 
@@ -68,9 +70,21 @@ Each fix was confirmed by breaking the code on purpose and watching the test fai
 
 ## What the tools did not do
 
-- **Gitar does not re-check a pull request after it is merged.** Six findings on PRs #7–#9 were still open when those PRs merged. An audit on October 24 found them. Five were fixed then, each with a test or a config change, and one had already been made moot by a redesign ([details](#closing-the-open-findings)).
+- **Findings still open when a pull request merged stayed open.** Gitar reviews new commits on an open PR, but nothing stopped a merge with findings outstanding, and nothing reminded anyone afterwards. Six findings on PRs #7–#9 were in that state. An audit on October 24 found them: five were fixed then, each with a test or a config change, and one had already been made moot by a redesign ([details](#closing-the-open-findings)).
+- **Not every merge went through the checks.** An early Dependabot update (#2) was merged with failing CI and without a Gitar review. It broke the build on main until #9 restored the dependency pins.
+- **A green Sonar job is not a passing gate.** CI's Sonar job uploads the analysis; it does not wait for the quality gate. The gate result arrives as a separate check from SonarQube Cloud, and while the project was private that check failed to process. Read the gate check, not the upload job.
 - **Neither tool tests the plugin inside Obsidian.** The maintainer checks behavior by hand in a disposable test vault. Automated in-app tests are on the [roadmap](roadmap.md).
 - **Sonar's issue details** were not readable from CI while the project was private, so some rounds record only the gate result.
+
+## A second opinion
+
+Before going public, the whole project was reviewed once more by a different agent (OpenAI Codex), reading the code and docs together rather than one diff at a time. It found problems the per-PR reviews had not, mostly where the documentation promised more than the code enforced:
+
+- The README called thread files free of note text, but comments and AI replies are stored as written and can quote the note. The docs now say exactly what is kept out (captured quotes) and what isn't.
+- An Ollama server on another machine was labelled "Stays on this computer". The label now comes from the configured address.
+- Gemini CLI's isolation was described as tools, MCP servers and settings all off. It runs in read-only plan mode with extensions off, but user-level settings still apply; the docs now say so.
+- Text typed while a comment was saving could be lost, two overlapping restores could overwrite each other, and the sandbox scripts' vault guard could be bypassed through a parent folder or a symlink. Each is fixed, with a test or a scripted check.
+- Development dependencies carried 12 npm advisories (4 critical). Upgrading Vitest, happy-dom and esbuild left 3 moderate ones, triaged in [source-and-dependencies.md](source-and-dependencies.md).
 
 ## Closing the open findings
 
