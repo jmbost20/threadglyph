@@ -111,7 +111,7 @@ function markImage(el: HTMLElement, section: string, mark: ReadingMark, sectionS
 function textNodes(root: Node, out: Text[] = []): Text[] {
   for (const child of Array.from(root.childNodes)) {
     if (child.nodeType === Node.TEXT_NODE) out.push(child as Text);
-    else if (child instanceof Element && !child.matches('.tg-anchor, .tg-badge')) textNodes(child, out);
+    else if (child.instanceOf(Element) && !child.matches('.tg-anchor, .tg-badge')) textNodes(child, out);
   }
   return out;
 }
@@ -135,7 +135,7 @@ function wrapOccurrence(el: HTMLElement, mark: ReadingMark, occurrence: number, 
 function wrap(node: Text, at: number, mark: ReadingMark, onOpen: (id: string) => void): void {
   const target = node.splitText(at);
   const rest = target.splitText(mark.quote.length);
-  const span = document.createElement('span');
+  const span = createSpan();
   span.className = mark.resolved ? 'tg-anchor tg-anchor-resolved' : 'tg-anchor';
   span.setAttribute('data-tg-thread', mark.threadId);
   target.replaceWith(span);
@@ -146,7 +146,7 @@ function wrap(node: Text, at: number, mark: ReadingMark, onOpen: (id: string) =>
 }
 
 function badge(mark: ReadingMark, onOpen: (id: string) => void): HTMLElement {
-  const el = document.createElement('span');
+  const el = createSpan();
   el.className = mark.resolved ? 'tg-badge tg-badge-resolved' : 'tg-badge';
   el.textContent = String(mark.number);
   el.setAttribute('role', 'button');

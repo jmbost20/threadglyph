@@ -25,7 +25,7 @@ const CONTEXT = 2;
 const SIGN = { same: ' ', add: '+', remove: '−' } as const;
 
 function row(className: string, text: string): HTMLElement {
-  const el = document.createElement('div');
+  const el = createDiv();
   el.className = className;
   el.textContent = text;
   return el;
@@ -44,7 +44,7 @@ class ProposalWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const box = document.createElement('div');
+    const box = createDiv();
     box.className = 'tg-inline-proposal';
     box.dataset.proposal = this.mark.key;
     box.setAttribute('role', 'group');
@@ -54,7 +54,7 @@ class ProposalWidget extends WidgetType {
     const diff = this.mark.diff;
     const removed = diff.filter((d) => d.kind === 'remove').length;
     const added = diff.filter((d) => d.kind === 'add').length;
-    const head = document.createElement('div');
+    const head = createDiv();
     head.className = 'tg-inline-head';
     head.textContent = `Proposed change · ${removed} line${removed === 1 ? '' : 's'} removed, ${added} added`;
     box.appendChild(head);
@@ -71,10 +71,10 @@ class ProposalWidget extends WidgetType {
       if (line.kind !== 'same') el.setAttribute('aria-label', `${line.kind === 'add' ? 'Added' : 'Removed'}: ${line.text}`);
       box.appendChild(el);
     });
-    const buttons = document.createElement('div');
+    const buttons = createDiv();
     buttons.className = 'tg-inline-buttons';
     const make = (text: string, cls: string, run: () => void) => {
-      const b = document.createElement('button');
+      const b = createEl('button');
       b.className = cls;
       b.textContent = text;
       b.addEventListener('mousedown', (e) => e.preventDefault());

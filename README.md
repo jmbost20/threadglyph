@@ -1,33 +1,72 @@
 # Threadglyph
 
-An Obsidian plugin for editable comment threads anchored to text in your notes.
+Comment threads for Obsidian, anchored to the text and images in your notes, with optional AI replies that can run entirely on your own computer.
 
-- Select text → **Threadglyph: Comment on selection** (command palette or right-click) → write a comment.
-- Threads open in a right-side panel. The passage is highlighted, with a number that matches its card, and a glyph appears in the margin.
-- Reply, **edit** any message (Edit → Save/Cancel; the prior text is kept), and resolve or reopen threads. Search the panel with ⌘F.
-- **Images:** every PNG, JPEG or WebP image gets a title pill with a **Comment** button. Image threads show a preview.
-- **Optional AI** (off by default): **Ask AI** or an @mention sends a previewed request to **Local** (Ollama on this computer, preferred), **Gemini** (Gemini CLI) or **Claude** (Claude Code). The answer is automatically appended to the thread with AI attribution and remains editable. A failed save keeps a recoverable draft.
-- **@agent (legacy, on hold; use @Gemini or @Local for comment help) — proposes edits, previewed:** ask the agent to change the note, for example to sort a checkbox's children or add a list. You can ask in a comment (`@Agent sort these`), in the **agent chat** sidebar, or inline: type `@a` in a note and choose **@agent** (or run **Ask @agent here**), and a window asks what it should do and what it may change. The change appears as a diff (or side by side) in the window, panel or chat, and under the dimmed text in the note. A line typed as `@agent sort these` still runs as written with **Ask @agent here**. **Nothing changes until you press Accept**, which applies it as one edit (⌘Z undoes it). Accept is refused if the text changed since the preview. If the agent wants other notes, it asks first (Allow / Deny). Searches skip daily notes; a cloud assistant asks before anything is sent.
-- **Agent Comments import:** turns `{==…==}{>>…<<}` comments in a note into threads, read-only.
-- **Your notes change only when you press Accept** on an agent proposal. Threads live in separate JSON files.
+[![Threadglyph demo: a comment thread beside a note, with a reply from a local model](docs/media/demo-poster.jpg)](https://www.jonahbostrom.com/demos/threadglyph-demo.mp4)
 
-Status: 0.2.0 pilot candidate (stages 1–7), desktop only. See [docs/implementation-progress.md](docs/implementation-progress.md), [docs/compatibility.md](docs/compatibility.md) and [docs/pilot.md](docs/pilot.md).
+*Click the image to watch the demo (50 s): highlight a passage, ask a local model with `@Local`, and the answer lands in the thread.*
 
-## Quick AI and filtering
+> **Status: alpha (0.3.0), desktop only.** It is used daily by its author, but expect rough edges. Bug reports are welcome.
 
-Every comment box works the same way: **⌘↩ posts**, and **Enter makes a new line**, even with an @mention. Posting `@Local …` (or `@Agent …`) opens the Ask AI preview. There, **Enter or ⌘↩ sends** with the defaults. The preview is a small tree: **What to send**, **Model** and **Exact text** start collapsed. **↑/↓** move between rows, **→** opens one, and moving onto an option chooses it. **Esc** or **Cancel** before the answer arrives cancels the whole request and removes the comment that asked. That comment can be restored from *Deleted comments*. The panel handles ⌘↩ and ⌘⇧⌫ itself, so Obsidian's editor shortcuts (⌘↩ toggles a checkbox) can't take them while the panel has focus.
+## What it does
 
-In the panel, after posting a new thread the keyboard lands in its **reply box**. **Tab** moves comment by comment (then the reply box, then the thread's links). The Edit, Delete and Reply buttons stay out of the Tab order, with keys instead:
-- on a focused comment, **E** edits it;
-- **⌘D** deletes the focused comment, or the latest one when you're in the reply box;
-- **⌘⇧D** deletes the whole thread, from anywhere in its card. **Delete thread** at the bottom of each card does the same, and *Deleted comments* restores the thread in one step;
-- **⌘⇧→ / ⌘⇧←** (or **↑/↓** on a card) move between threads.
+- **Comment on any passage.** Select text and run **Threadglyph: Comment on selection** (command palette or right-click). The passage is highlighted, numbered to match its card, and marked in the margin.
+- **Threads in a side panel.** Reply, edit any message (the earlier text is kept), resolve or reopen, delete with undo, and search with ⌘F. Open, Resolved and All tabs, plus filters by author, age and date.
+- **Comment on images.** Every PNG, JPEG or WebP embed gets a title pill with a **Comment** button.
+- **Your notes stay untouched.** Threads live in separate JSON files beside your notes, never inside them.
+- **Anchors that survive edits.** Edits around a passage don't break its thread. If the passage is deleted, or repeated so the original copy can't be told apart, the thread says so instead of guessing, and offers **Reattach to selection**.
+- **Optional AI replies (off by default).** Mention `@Local`, `@Gemini` or `@Claude` in a comment, or press **Ask AI**. Before anything is sent you see a preview of exactly what goes, and where ("Stays on this computer", "Sent to Google", "Sent to Anthropic"). The answer is added to the thread, labelled as AI, and stays editable.
+- **Import from Agent Comments.** Turns the `{==…==}{>>…<<}` comments of the [Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) plugin into threads, without changing the note.
+- *`@agent` (legacy, on hold): proposes edits to the note as a diff and changes nothing until you press Accept. New work goes into `@Local` / `@Gemini` replies instead.*
 
-The Open, Resolved and All tabs show counts (99+ beyond 99). Threads whose passage was deleted or rewritten are listed **first**, with **Reattach to selection**.
+## Install
 
-The default includes **the selected passage, the thread, and the containing section**. Open **Exact text** to see everything that will be sent; scope choices show character counts for instructions and request text (not image bytes or provider formatting). An unavailable anchor never causes an unrelated section to be guessed.
+Threadglyph is not yet in Obsidian's community plugin directory.
 
-Below **Open / Resolved / All**, expand **Custom filters** for agent, comment age, and an inclusive local date range. All selected predicates must match the same comment. These filters are local to the panel and do not change stored threads.
+**With BRAT (recommended):** install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin, choose **Add beta plugin**, and enter `jmbost20/threadglyph`.
+
+**Manually:** download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/jmbost20/threadglyph/releases/latest) into `<your vault>/.obsidian/plugins/threadglyph/`. Then reload Obsidian and enable **Threadglyph** under Settings → Community plugins.
+
+If your vault is in Git, add `.threadglyph/` to its `.gitignore` first (see [Where data lives](#where-data-lives)).
+
+## Quick start
+
+1. Select a sentence and run **Threadglyph: Comment on selection**. Bind it to a hotkey under Settings → Hotkeys; the plugin ships with none, so it never clashes with your setup.
+2. Write a comment and press **⌘↩** to post. **Enter** makes a new line.
+3. Run **Threadglyph: Open thread panel** to see every thread in the note.
+
+### Keyboard
+
+| Where | Key | Does |
+|---|---|---|
+| Any comment box | ⌘↩ | Post |
+| Panel | Tab | Move comment by comment, then to the reply box |
+| Focused comment | E | Edit it |
+| Panel | ⌘D | Delete the focused comment (or the latest one, from the reply box) |
+| Panel | ⌘⇧D | Delete the whole thread (restorable from *Deleted comments*) |
+| Panel | ⌘⇧→ / ⌘⇧← | Next / previous thread |
+| Ask AI preview | Enter or ⌘↩ | Send. Esc cancels the request and removes the comment that asked (restorable) |
+
+## AI assistants (optional)
+
+Turn on **Settings → Threadglyph → Enable Ask AI**. Each assistant is a program you install yourself; Threadglyph never reads or stores API keys.
+
+| Assistant | You need | Where your text goes |
+|---|---|---|
+| **Local** (preferred) | [Ollama](https://ollama.com) running, with a model pulled (default `qwen3:8b`; a vision model such as `qwen2.5vl:7b` for images) | Nowhere: `localhost:11434` on your computer. Ollama `:cloud` models are labelled as leaving it. |
+| **Gemini** | [Gemini CLI](https://github.com/google-gemini/gemini-cli) and an API key in `~/.threadglyph/gemini/.gemini/.env` as `GEMINI_API_KEY=…` | Google |
+| **Claude** | [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in | Anthropic |
+
+By default a request holds the selected passage, the thread and the section around it. Open **Exact text** in the preview to see every character that will be sent, or narrow the scope. For daily notes and other personal text, prefer **Local**.
+
+## Disclosures
+
+As Obsidian's [developer policies](https://docs.obsidian.md/Developer+policies) require:
+
+- **Network use:** none unless you turn on Ask AI. Then requests go only to the assistant you pick: Ollama on `localhost`, or Google or Anthropic through their own command-line tools.
+- **Runs external programs:** the Gemini and Claude assistants start the `gemini` and `claude` command-line tools you installed. They run without a shell, with their tools, MCP servers and settings files turned off, and get the request on standard input. This is why the plugin is desktop only.
+- **Files outside your vault:** the Gemini assistant uses `~/.threadglyph/gemini/` (or a folder you choose) as its working folder, and writes a settings file there that switches off every Gemini tool. An image you ask about is copied to your system's temp folder for the request and deleted afterwards.
+- **No telemetry, no ads, no account.** Threadglyph itself sends nothing anywhere.
 
 ## Where data lives
 
@@ -37,25 +76,33 @@ Below **Open / Resolved / All**, expand **Custom filters** for agent, comment ag
 | `.threadglyph/anchors/<id>.json` | The quoted passage and its surrounding context, used to find the passage again. | **No.** Add `.threadglyph/` to `.gitignore` |
 | `.threadglyph/exports/*.json` | Backups from *Back up all threads* (threads and anchors). | **No** (same folder) |
 
-Agent proposals and the agent chat contain note text, so they are kept in memory only and disappear when Obsidian closes. The thread keeps only the agent's short explanation.
+If an anchor file is missing (for example, on a fresh clone), the thread still shows with all its messages and offers **Reattach to selection**. **Back up all threads** and **Restore threads from a backup** are in the command palette; a restore only adds threads that are missing and never overwrites.
 
-If the anchor file is missing (for example, on a fresh clone), the thread still shows with all its messages and offers **Reattach to selection**.
+Sync carries thread messages but not anchors, and the plugin does not run on mobile. See [docs/compatibility.md](docs/compatibility.md) for measured performance on large notes and other limits.
 
-Anchors survive edits around the passage. If the quoted text is deleted, or repeated so that its original copy can't be identified, the thread says so instead of guessing.
-
-## Develop
+## Development
 
 ```sh
-npm install
+npm ci
 npm run check      # typecheck, lint, tests with coverage, production build
 npm run dev        # rebuild on change
-npm run sandbox    # create a disposable vault at ~/Developer/threadglyph-sandbox-vault and link the build
-npm run sandbox:pull  # copy the owner's plugins, settings, hotkeys, templates and today's daily note into it (real vault read only)
-npm run package    # pilot package in dist/ (installing it is a manual owner step, see docs/pilot.md)
+npm run sandbox    # make a disposable test vault at ~/Developer/threadglyph-sandbox-vault and link the build
 ```
 
-Open the sandbox folder in Obsidian as a vault and enable community plugins. Test notes live under `Test data/`: `Threadglyph samples/` (synthetic), `My test notes/`, and `Daily notes/`, which holds a copy of the owner's daily note from `sandbox:pull`. The sandbox sits outside this repository, so none of it is ever committed. Test fixtures in the repo stay synthetic. `sandbox:pull` only reads the real vault. In the sandbox copies it turns off Sync and Publish, and Inline Comments' auto-dispatch and Gemini cloud consent, so daily-note text never leaves the computer on its own. Never point development tooling at the real vault for writing.
+Open the sandbox folder in Obsidian as a vault and enable community plugins; sample notes are in `Test data/Threadglyph samples/`. The sandbox scripts refuse to use any vault Obsidian already knows about, unless it is a sandbox they made.
+
+Optional: `THREADGLYPH_SOURCE_VAULT=<your vault> npm run sandbox:pull` copies your plugins, hotkeys, templates and today's daily note into the sandbox. It only reads your vault, and turns off Sync and Publish in the copies. `THREADGLYPH_GEMINI_FOLDER=<folder>` lets a new sandbox borrow an existing Gemini folder.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Threadglyph was built with AI coding agents and reviewed on every PR by Gitar and SonarQube Cloud; the working logs are in [docs/dev/](docs/dev/README.md).
 
 ## Coexistence
 
-Threadglyph uses its own plugin id (`threadglyph`), view type, `tg-` CSS namespace and storage folders. It registers no default hotkey (the sandbox binds ⌘⇧↩ to *Ask @agent here* and ⌘⇧A to *Open agent chat*), so it can run beside other comment plugins without touching their data.
+Threadglyph uses its own plugin id, view type, `tg-` CSS namespace and storage folders, and registers no default hotkeys, so it runs beside other comment plugins without touching their data.
+
+## Prior art
+
+[Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) by IvyYang1999 showed what comment threads in Obsidian could feel like, and Threadglyph imports its comment format. Threadglyph's code is written from scratch; see [docs/source-and-dependencies.md](docs/source-and-dependencies.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Jonah Bostrom

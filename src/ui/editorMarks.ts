@@ -36,7 +36,7 @@ class BadgeWidget extends WidgetType {
   }
 
   toDOM(): HTMLElement {
-    const el = document.createElement('span');
+    const el = createSpan();
     el.className = ['tg-badge', this.mark.resolved && 'tg-badge-resolved', this.mark.focused && 'tg-badge-focused']
       .filter(Boolean)
       .join(' ');
@@ -113,7 +113,7 @@ class GlyphMarker extends GutterMarker {
   }
 
   toDOM(): Node {
-    const el = document.createElement('span');
+    const el = createSpan();
     el.className = this.resolvedOnly ? 'tg-glyph tg-glyph-resolved' : 'tg-glyph';
     el.setAttribute('role', 'button');
     el.setAttribute('aria-label', this.count === 1 ? 'Open thread' : `Open ${this.count} threads`);

@@ -4,8 +4,8 @@
 
 - **Stage:** 6–7 plus follow-ups to stages 3–5, on one end-to-end branch (`codex/local-gemini-pilot`) with one PR, at the owner's request (2026-09-29). See "Round 2026-09-29" below.
 - **Merged:** stages 1–2 via [PR #1](https://github.com/jmbost20/threadglyph/pull/1) (`a4182ff`); stages 3–5 via PRs [#3](https://github.com/jmbost20/threadglyph/pull/3), [#4](https://github.com/jmbost20/threadglyph/pull/4) and [#5](https://github.com/jmbost20/threadglyph/pull/5) (`2823ab3`).
-- **Repo:** https://github.com/jmbost20/threadglyph (private)
-- **Where to test:** the sandbox vault only (`~/Developer/threadglyph-sandbox-vault`). Installing into the live vault is the owner's step; see `docs/pilot.md`.
+- **Repo:** https://github.com/jmbost20/threadglyph
+- **Where to test:** the sandbox vault only (`~/Developer/threadglyph-sandbox-vault`). Installing into the live vault is the owner's step; see `docs/dev/pilot.md`.
 - **PR modes (owner, 2026-09-29):** *end-to-end* (one branch, one ready-for-review PR for a large batch; the current mode) or *incremental* (several smaller ready-for-review PRs). Drafts only for a strong reason.
 
 ## Decisions (stage 0)
@@ -114,17 +114,17 @@ Owner feedback from the first UAT pass: Local and Gemini should come before Clau
   - Opinion tags, reactions and resolve markers are not carried over as messages; a trailing `resolve` sets the thread resolved.
   - Suggestions keep their wording.
   - Re-running recognises what was already imported.
-- [x] **Stage 7: pilot.** `npm run package` builds `dist/threadglyph-0.2.0/` with checksums and the source commit. There are *Back up all threads* and *Restore threads from a backup* commands; backups are validated, go to the local-only folder, and a restore only adds what is missing. `docs/pilot.md` covers install and rollback, the owner test script and the walkthrough evidence.
+- [x] **Stage 7: pilot.** `npm run package` builds `dist/threadglyph-0.2.0/` with checksums and the source commit. There are *Back up all threads* and *Restore threads from a backup* commands; backups are validated, go to the local-only folder, and a restore only adds what is missing. `docs/dev/pilot.md` covers install and rollback, the owner test script and the walkthrough evidence.
 - [x] **Sandbox.**
   - New notes: `Image titles.md` and `Agent Comments sample.md` (synthetic).
-  - Ask AI starts on in the sandbox. When `~/.ilc/gemini/.env` exists, the sandbox borrows that Gemini folder read-only.
+  - Ask AI starts on in the sandbox. When `THREADGLYPH_GEMINI_FOLDER` names a Gemini folder with a `.env`, the sandbox borrows it read-only.
   - The owner's request to copy real commented notes from the live vault was **not** carried out: the privacy guard blocked scanning the live vault, and owner guidance says daily-note content must not leave it. Synthetic examples in the same markup stand in until the owner supplies copies.
 - [x] **Live checks, synthetic content only.**
   - Local `qwen3:8b` answered a follow-up on the imported sample thread in 23.6 s, and refused the image with the fix spelled out.
   - Gemini `gemini-3.1-flash-lite` answered the same follow-up in 21.7 s, and described the synthetic PNG from its real bytes in 7.3 s.
   - `gemini-3.5-flash` returned 503 "high demand" throughout.
   - The borrowed Gemini folder was unchanged afterwards, and no temporary images were left behind.
-- [ ] Owner UAT in the sandbox (script in `docs/pilot.md`)
+- [ ] Owner UAT in the sandbox (script in `docs/dev/pilot.md`)
 
 ## Known limitations
 
@@ -272,7 +272,7 @@ The owner's first real `@Agent` request, "consolidate the cards under this item 
   - Cancel or closing while it runs aborts, and a late answer is dropped. Closing with a proposal open leaves it under the text in the note.
 - **In-note widget:** the widget is now a real diff (− struck in red, + in green), with unchanged lines folded.
 - **Tests:** the inline suggester and bare `@agent` tests were rewritten for the window.
-- **Gitar follow-up:** fenced blocks are now found by a line scanner, so a rewrite holding code is not cut short and a cut-off rewrite is refused. The `json` fallback stays within one block, and the sandbox pull honors the daily-note format (see `docs/sonar-experiments.md`). 407 tests pass.
+- **Gitar follow-up:** fenced blocks are now found by a line scanner, so a rewrite holding code is not cut short and a cut-off rewrite is refused. The `json` fallback stays within one block, and the sandbox pull honors the daily-note format (see `docs/dev/sonar-experiments.md`). 407 tests pass.
 
 ## October 1 — @agent put on hold (legacy)
 

@@ -2,7 +2,7 @@
 /**
  * Builds a pilot package: the three files Obsidian loads, plus checksums and
  * the commit they came from, in dist/threadglyph-<version>/. Installing it
- * is a separate, manual owner step (see docs/pilot.md); this script never
+ * is a separate, manual step (see docs/dev/pilot.md); this script never
  * touches any vault.
  *
  *   npm run package
@@ -37,4 +37,4 @@ writeFileSync(
 );
 
 console.log(`Pilot package ready: ${out}`);
-console.log('Install by copying that folder to <vault>/.obsidian/plugins/threadglyph (see docs/pilot.md).');
+console.log('Install by copying that folder to <vault>/.obsidian/plugins/threadglyph (see docs/dev/pilot.md).');

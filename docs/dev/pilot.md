@@ -19,7 +19,7 @@ The folder contains `main.js`, `manifest.json` and `styles.css`, plus `SHA256SUM
 4. Optional: Settings → Hotkeys. The plugin ships with no hotkeys, so it never collides with Agent Comments. The sandbox uses ⌘/ (comment), ⌥⌘/ (reply at cursor), ⌥⌘] / ⌥⌘[ (next / previous thread).
 5. Optional AI: Settings → Threadglyph → **Enable Ask AI**.
    - **Local (Ollama):** preferred by default. Needs the Ollama app running and the model pulled (`qwen3:8b`). Image questions need a vision model such as `qwen2.5vl:7b`.
-   - **Gemini (Gemini CLI):** needs `gemini` installed and an API key in `~/.threadglyph/gemini/.gemini/.env` as `GEMINI_API_KEY=…`. Alternatively, point **Gemini folder** at an existing Gemini folder; the sandbox borrows `~/.ilc/gemini` that way. Threadglyph's own folder gets settings that switch off every Gemini tool. A borrowed folder keeps its own settings.
+   - **Gemini (Gemini CLI):** needs `gemini` installed and an API key in `~/.threadglyph/gemini/.gemini/.env` as `GEMINI_API_KEY=…`. Alternatively, point **Gemini folder** at an existing Gemini folder; the sandbox borrows the folder named by `THREADGLYPH_GEMINI_FOLDER` that way. Threadglyph's own folder gets settings that switch off every Gemini tool. A borrowed folder keeps its own settings.
    - **Claude (Claude Code):** uses the existing Claude Code sign-in.
    - For daily notes and other personal text, prefer **Local**. The preview always says where a request goes ("Stays on this computer" / "Sent to Google" / "Sent to Anthropic") before anything is sent.
 
@@ -60,7 +60,7 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 
 - **History:** PR #1 (bootstrap + stages 1–2), PR #3 (stage 3), PR #4 (stage 4) and PR #5 (stage 5) were merged by the owner. This round (stage 5 follow-up, stages 6–7) is one end-to-end PR, as the owner asked on 2026-09-29.
 - **Quality gate:** `npm run check` (typecheck, lint, tests with coverage, build). CI runs it on every push, alongside the SonarQube Cloud analysis and Gitar review.
-- **Tool findings that changed code:** see `docs/sonar-experiments.md`. That includes 7 Sonar maintainability issues and a coverage gate failure fixed by tests, not exclusions, plus 10 Gitar findings, all reproduced with failing tests first.
+- **Tool findings that changed code:** see `docs/dev/sonar-experiments.md`. That includes 7 Sonar maintainability issues and a coverage gate failure fixed by tests, not exclusions, plus 10 Gitar findings, all reproduced with failing tests first.
 - **Live AI checks, 2026-09-29, synthetic content only:**
   - Local `qwen3:8b` answered a follow-up on the imported sample thread (23.6 s) and refused the image with the fix spelled out.
   - Gemini `gemini-3.1-flash-lite` answered the same follow-up (21.7 s) and described the synthetic PNG ("Clear, solid blue sky.") from its real bytes (7.3 s).

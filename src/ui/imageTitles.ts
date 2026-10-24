@@ -16,13 +16,13 @@ export function commentable(embed: ImageEmbed): boolean {
 }
 
 export function titleElement(embed: ImageEmbed, onComment: CommentOnImage): HTMLElement {
-  const el = document.createElement('span');
+  const el = createSpan();
   el.className = 'tg-image-title';
   el.setAttribute('contenteditable', 'false');
-  const text = document.createElement('span');
+  const text = createSpan();
   text.className = 'tg-image-title-text';
   text.textContent = embed.title;
-  const button = document.createElement('button');
+  const button = createEl('button');
   button.className = 'tg-image-comment';
   button.textContent = 'Comment';
   button.setAttribute('aria-label', `Comment on image ${embed.title}`);

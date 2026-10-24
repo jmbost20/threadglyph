@@ -85,7 +85,7 @@ Each entry records: **problem → tool feedback → decision → changed behavio
 "Approved with suggestions". Each finding was reproduced with a failing test first (`tests/gitarPr7.test.ts`: 4 of 4 failed before the fix), then fixed:
 1. **Import, edge case.** The legacy pattern's lazy passage could run past a plain `{==a==}` with no comment and swallow it into the next commented highlight. The parser now scans by hand, and a passage ends at its own `==}`. This also drops the last backtracking regex in that file.
 2. **Restore, bug.** Restore skipped existing thread files but could overwrite an anchor file that had outlived its thread file, for example after a later reattach. Existing anchors are now kept, which matches the "never overwrite" promise.
-3. **Gemini folder, bug.** A folder pointed at in settings (the sandbox borrows `~/.ilc/gemini`) could still receive `.gemini/settings.json` if it had none. Only Threadglyph's own folder is prepared now; a borrowed folder is never written to.
+3. **Gemini folder, bug.** A folder pointed at in settings (the sandbox can borrow a shared one) could still receive `.gemini/settings.json` if it had none. Only Threadglyph's own folder is prepared now; a borrowed folder is never written to.
 4. **Sessions, edge case.** An `@Gemini` reply after a failed Local request did nothing. Mentioning a different assistant now switches a failed request, not only a preview, to a fresh preview for that assistant.
 
 - **Verification:** 301 tests, typecheck, lint and build pass.
@@ -124,7 +124,7 @@ PR: https://github.com/jmbost20/threadglyph/pull/10 (stacked on #9). First commi
 - Gitar still requested changes, with 3 open findings. All were accepted and fixed in the next commit, each with a test:
   1. **A rewrite was cut off at a code fence inside it.** The lazy fence regexes ended a `threadglyph-replace` block at the first ```` ``` ```` inside the rewritten text, so the rest would have been deleted on Accept. Fenced blocks are now found by a line scanner: the block ends at a bare fence at least as long as its opening one, and fenced blocks nested inside it are skipped. A rewrite cut off before its closing fence is refused as unreadable, never applied. Test: "keeps code blocks inside a rewrite…".
   2. **The `json` fallback could span two blocks.** It now takes the first `json` block whose own body carries `edits` or `read`. Test: "takes the json block that carries edits…".
-  3. **The sandbox daily-note copy ignored the configured format.** `dailyNoteName` formats `YYYY`, `YY`, `MM`, `M`, `DD`, `D` and `[literals]`, including folders such as `YYYY/MM/…`. Any other token skips the copy with a message instead of guessing. The owner's vault uses the default `YYYY-MM-DD`.
+  3. **The sandbox daily-note copy ignored the configured format.** `dailyNoteName` formats `YYYY`, `YY`, `MM`, `M`, `DD`, `D` and `[literals]`, including folders such as `YYYY/MM/…`. Any other token skips the copy with a message instead of guessing.
 
 ### PR #10 on `1d88717` (UAT: thread layout, delete thread)
 

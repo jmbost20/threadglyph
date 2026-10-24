@@ -44,7 +44,7 @@ export function parseThread(raw: string): Parsed<ThreadRecord> {
   if (t.anchorKind !== 'text' && t.anchorKind !== 'image') return { ok: false, error: 'anchorKind is invalid' };
   if (t.status !== 'open' && t.status !== 'resolved') return { ok: false, error: 'status is invalid' };
   if (!isStr(t.createdAt) || !isStr(t.updatedAt)) return { ok: false, error: 'timestamps are invalid' };
-  if (!isInt(t.revision) || (t.revision as number) < 1) return { ok: false, error: 'revision is invalid' };
+  if (!isInt(t.revision) || t.revision < 1) return { ok: false, error: 'revision is invalid' };
   if (!Array.isArray(t.messages) || t.messages.length === 0) return { ok: false, error: 'messages are missing' };
   for (let i = 0; i < t.messages.length; i++) {
     const problem = checkMessage(t.messages[i], i);
