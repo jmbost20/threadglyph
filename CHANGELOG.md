@@ -28,6 +28,10 @@ The first public release.
 - Escape no longer throws away an AI reply that could not be saved.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.
+- An Ollama server on another machine is no longer labelled "Stays on this computer"; the preview names its host.
+- Text typed into a comment box while it is saving is kept.
+- Two restores of the same thread at once can no longer overwrite each other.
+- An anchor file whose name does not match its thread is reported, and a fixed anchor clears its warning.
 
 ## [0.2.0] - 2026-09-30
 
