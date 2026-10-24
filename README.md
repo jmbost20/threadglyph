@@ -111,7 +111,33 @@ Open the sandbox folder in Obsidian as a vault and enable community plugins; sam
 
 Optional: `THREADGLYPH_SOURCE_VAULT=<your vault> npm run sandbox:pull` copies your plugins, hotkeys, templates and today's daily note into the sandbox. It only reads your vault, and turns off Sync and Publish in the copies. `THREADGLYPH_GEMINI_FOLDER=<folder>` lets a new sandbox borrow an existing Gemini folder.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and [docs/architecture.md](docs/architecture.md) for how the parts fit together. What's planned is in the [roadmap](docs/roadmap.md). The agents' working logs are in [docs/dev/](docs/dev/README.md).
+No local setup? The repository has a dev container, so **Code → Codespaces** gives you a ready environment for the checks (trying the plugin in Obsidian still needs a desktop vault).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, [docs/architecture.md](docs/architecture.md) for how the parts fit together, and the [decision records](docs/adr/README.md) for why. What's planned is in the [roadmap](docs/roadmap.md). The agents' working logs are in [docs/dev/](docs/dev/README.md).
+
+## Community
+
+Questions and ideas go to [Discussions](https://github.com/jmbost20/threadglyph/discussions); see [SUPPORT.md](SUPPORT.md) for where everything else goes. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). How decisions are made is in [GOVERNANCE.md](GOVERNANCE.md).
+
+### Contributors
+
+Every kind of contribution counts: code, docs, testing, bug reports, ideas and reviews ([emoji key](https://allcontributors.org/docs/en/emoji-key)).
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://jonahbostrom.com"><img src="https://avatars.githubusercontent.com/u/84430322?v=4?s=80" width="80px;" alt="Jonah Bostrom"/><br /><sub><b>Jonah Bostrom</b></sub></a><br /><a href="https://github.com/jmbost20/threadglyph/commits?author=jmbost20" title="Code">💻</a> <a href="https://github.com/jmbost20/threadglyph/commits?author=jmbost20" title="Documentation">📖</a> <a href="#design-jmbost20" title="Design">🎨</a> <a href="#maintenance-jmbost20" title="Maintenance">🚧</a> <a href="https://github.com/jmbost20/threadglyph/commits?author=jmbost20" title="Tests">⚠️</a> <a href="#ideas-jmbost20" title="Ideas, Planning, & Feedback">🤔</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
 
 ## Coexistence
 

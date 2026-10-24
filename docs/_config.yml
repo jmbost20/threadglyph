@@ -1,0 +1,6 @@
+# GitHub Pages site for Threadglyph's documentation, built from this folder
+# (Settings → Pages → Deploy from a branch → main, /docs). Pages on the free
+# plan needs the repository to be public.
+title: Threadglyph
+description: Comment threads for Obsidian, anchored to the text and images in your notes.
+theme: jekyll-theme-primer

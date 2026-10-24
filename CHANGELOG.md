@@ -15,6 +15,8 @@ The first public release.
 - Open, Resolved and All tabs show counts; threads whose passage is gone are listed first.
 - How Gitar and SonarQube reviewed Threadglyph (`docs/gitar-and-sonar.md`), an architecture overview and a roadmap.
 - CodeQL and OpenSSF Scorecard checks, and build provenance for releases.
+- A Code of Conduct (Contributor Covenant 2.1), support and governance pages, architecture decision records, CODEOWNERS, a dev container for Codespaces, a contributor list, and a documentation site.
+- CI also runs the tests on Windows and macOS, and checks that every commit in a pull request is signed off (DCO).
 
 ### Changed
 - ⌘↩ posts in every comment box; Enter makes a new line. The Ask AI preview is a small keyboard tree, and Esc cancels the whole request.
