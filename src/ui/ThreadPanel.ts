@@ -230,8 +230,8 @@ export class ThreadPanel extends ItemView {
    */
   deleteFocused(): boolean {
     const active = document.activeElement as HTMLElement | null;
-    if (!active || !this.contentEl.contains(active) || active instanceof HTMLInputElement) return true;
-    if (active instanceof HTMLTextAreaElement && !active.dataset.draftKey?.startsWith('reply:')) return true;
+    if (!active || !this.contentEl.contains(active) || active.instanceOf(HTMLInputElement)) return true;
+    if (active.instanceOf(HTMLTextAreaElement) && !active.dataset.draftKey?.startsWith('reply:')) return true;
     const card = active.closest<HTMLElement>('.tg-card[data-thread-id]');
     const el = active.closest<HTMLElement>('.tg-message[data-message-id]') ?? [...(card?.querySelectorAll<HTMLElement>('.tg-message[data-message-id]') ?? [])].at(-1);
     const threadId = card?.dataset.threadId;
@@ -336,7 +336,7 @@ export class ThreadPanel extends ItemView {
       const el = root.querySelector<HTMLTextAreaElement | HTMLInputElement>(`[data-draft-key="${CSS.escape(focusKey)}"]`);
       if (el) {
         el.focus({ preventScroll: true });
-        if (caret && (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.type === 'search'))) {
+        if (caret && (el.instanceOf(HTMLTextAreaElement) || (el.instanceOf(HTMLInputElement) && el.type === 'search'))) {
           el.setSelectionRange(caret[0], caret[1]);
         }
       }
@@ -695,7 +695,7 @@ export class ThreadPanel extends ItemView {
       next.focus({ preventScroll: true });
       this.center(next);
       // Moving onto an option chooses it, as in a radio group.
-      if (next instanceof HTMLInputElement && next.type === 'radio' && !next.checked) {
+      if (next.instanceOf(HTMLInputElement) && next.type === 'radio' && !next.checked) {
         next.checked = true;
         next.dispatchEvent(new Event('change'));
       }

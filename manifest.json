@@ -5,5 +5,6 @@
   "minAppVersion": "1.7.2",
   "description": "Editable comment threads on text and images in your notes, with optional AI replies. Comments live beside your notes, never inside them.",
   "author": "Jonah Bostrom",
+  "authorUrl": "https://www.jonahbostrom.com",
   "isDesktopOnly": true
 }

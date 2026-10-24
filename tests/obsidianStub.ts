@@ -36,6 +36,23 @@ proto.createDiv = function (this: HTMLElement, o?: ElOptions) {
 proto.createSpan = function (this: HTMLElement, o?: ElOptions) {
   return this.createEl('span', o);
 };
+// Obsidian's global DOM helpers (detached elements) and its cross-window instanceOf.
+const detached = <K extends keyof HTMLElementTagNameMap>(tag: K, o: ElOptions | string = {}) => {
+  const opts = typeof o === 'string' ? { cls: o } : o;
+  const el = document.createElement(tag);
+  if (opts.cls) el.className = opts.cls;
+  if (opts.text !== undefined) el.textContent = opts.text;
+  for (const [k, v] of Object.entries(opts.attr ?? {})) el.setAttribute(k, v);
+  return el;
+};
+const g = globalThis as unknown as Record<string, unknown>;
+g.createEl = detached;
+g.createDiv = (o?: ElOptions | string) => detached('div', o);
+g.createSpan = (o?: ElOptions | string) => detached('span', o);
+(Node.prototype as unknown as { instanceOf: (type: abstract new (...args: never[]) => unknown) => boolean }).instanceOf =
+  function (this: Node, type) {
+    return this instanceof type;
+  };
 proto.empty = function (this: HTMLElement) {
   while (this.firstChild) this.removeChild(this.firstChild);
 };
