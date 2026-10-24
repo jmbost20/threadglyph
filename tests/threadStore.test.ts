@@ -155,6 +155,17 @@ describe('ThreadStore write serialization', () => {
     expect(store.get(thread.id)!.messages.map((m) => m.body)).toEqual(['Why this?', 'one', 'two', 'three']);
   });
 
+  it('restores a missing thread once when two restores race, never overwriting (Codex review)', async () => {
+    const fs = new MemoryFs();
+    const clock = fakeClock();
+    const store = new ThreadStore(fs, clock);
+    const thread = createThread(note, human, 'From backup A', clock);
+    const other = { ...thread, messages: [{ ...thread.messages[0], body: 'From backup B' }] };
+    const results = await Promise.all([store.restore(thread, undefined), store.restore(other, undefined)]);
+    expect(results.sort()).toEqual(['exists', 'restored']);
+    expect(await fs.read(threadPath(thread.id))).toContain('From backup A');
+  });
+
   it('keeps the queue usable after a failed update', async () => {
     const { store, clock, thread } = await setup();
     await expect(
