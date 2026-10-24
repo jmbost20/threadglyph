@@ -1,5 +1,12 @@
 # Threadglyph
 
+[![CI](https://github.com/jmbost20/threadglyph/actions/workflows/ci.yml/badge.svg)](https://github.com/jmbost20/threadglyph/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=jmbost20_threadglyph&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jmbost20_threadglyph)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jmbost20_threadglyph&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jmbost20_threadglyph)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmbost20/threadglyph/badge)](https://scorecard.dev/viewer/?uri=github.com/jmbost20/threadglyph)
+[![Release](https://img.shields.io/github/v/release/jmbost20/threadglyph)](https://github.com/jmbost20/threadglyph/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Comment threads for Obsidian, anchored to the text and images in your notes, with optional AI replies that can run entirely on your own computer.
 
 [![Threadglyph demo: a comment thread beside a note, with a reply from a local model](docs/media/demo-poster.jpg)](https://www.jonahbostrom.com/demos/threadglyph-demo.mp4)
@@ -7,6 +14,16 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 *Click the image to watch the demo (50 s): highlight a passage, ask a local model with `@Local`, and the answer lands in the thread.*
 
 > **Status: alpha (0.3.0), desktop only.** It is used daily by its author, but expect rough edges. Bug reports are welcome.
+
+## How it was built
+
+Threadglyph was written by AI coding agents, one pull request at a time, and nothing merged without two outside reviews: [Gitar](https://gitar.ai) read every diff, and [SonarQube Cloud](https://sonarcloud.io) held every change to a quality gate. The agents' rule: reproduce a finding with a test that fails before fixing it, and answer in writing any finding they disagree with.
+
+- **35 Gitar findings on merged code, all resolved:** 15 bugs, 1 security issue, 11 edge cases, 7 test or code-quality problems, 1 performance issue.
+- **Examples:** two quick clicks [could silently lose a reply](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4122849310); an AI rewrite containing a code block [could leak note text into a file meant to be committed](https://github.com/jmbost20/threadglyph/pull/14#discussion_r4366902160); and several tests [could not actually fail](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4128873979).
+- **Sonar's gate was met with tests, never by excluding code:** coverage went from 72.8% to 99.8% on the first PR, and is 99.6% today.
+
+The full story, with links to every review, is in [How Gitar and SonarQube reviewed Threadglyph](docs/gitar-and-sonar.md).
 
 ## What it does
 
@@ -89,11 +106,11 @@ npm run dev        # rebuild on change
 npm run sandbox    # make a disposable test vault at ~/Developer/threadglyph-sandbox-vault and link the build
 ```
 
-Open the sandbox folder in Obsidian as a vault and enable community plugins; sample notes are in `Test data/Threadglyph samples/`. The sandbox scripts refuse to use any vault Obsidian already knows about, unless it is a sandbox they made.
+Open the sandbox folder in Obsidian as a vault and enable community plugins; sample notes are in `Test data/Threadglyph samples/`. The sandbox scripts refuse any existing vault, and any vault Obsidian knows about, unless it is a sandbox they made.
 
 Optional: `THREADGLYPH_SOURCE_VAULT=<your vault> npm run sandbox:pull` copies your plugins, hotkeys, templates and today's daily note into the sandbox. It only reads your vault, and turns off Sync and Publish in the copies. `THREADGLYPH_GEMINI_FOLDER=<folder>` lets a new sandbox borrow an existing Gemini folder.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Threadglyph was built with AI coding agents and reviewed on every PR by Gitar and SonarQube Cloud; the working logs are in [docs/dev/](docs/dev/README.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and [docs/architecture.md](docs/architecture.md) for how the parts fit together. What's planned is in the [roadmap](docs/roadmap.md). The agents' working logs are in [docs/dev/](docs/dev/README.md).
 
 ## Coexistence
 
