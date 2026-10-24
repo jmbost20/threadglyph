@@ -82,7 +82,7 @@ Before going public, the whole project was reviewed once more by a different age
 
 - The README called thread files free of note text, but comments and AI replies are stored as written and can quote the note. The docs now say exactly what is kept out (captured quotes) and what isn't.
 - An Ollama server on another machine was labelled "Stays on this computer". The label now comes from the configured address.
-- Gemini CLI's isolation was described as tools, MCP servers and settings all off. It runs in read-only plan mode with extensions off, but user-level settings still apply; the docs now say so.
+- Gemini CLI's isolation was described as tools, MCP servers and settings all off. It ran in read-only plan mode with extensions off, but MCP servers from the user's own settings still started. The docs were corrected, and Gemini now also gets an MCP allow-list that names no real server.
 - Text typed while a comment was saving could be lost, two overlapping restores could overwrite each other, and the sandbox scripts' vault guard could be bypassed through a parent folder or a symlink. Each is fixed, with a test or a scripted check.
 - Development dependencies carried 12 npm advisories (4 critical). Upgrading Vitest, happy-dom and esbuild left 3 moderate ones, triaged in [source-and-dependencies.md](source-and-dependencies.md).
 

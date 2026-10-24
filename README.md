@@ -82,7 +82,7 @@ As Obsidian's [developer policies](https://docs.obsidian.md/Developer+policies) 
 - **Network use:** none unless you turn on Ask AI. Then requests go only to the assistant you pick: Ollama at the address you set (`localhost` by default; any other address is shown as leaving the computer), or Google or Anthropic through their own command-line tools.
 - **Runs external programs:** the Gemini and Claude assistants start the `gemini` and `claude` command-line tools you installed, without a shell, with the request on standard input. This is why the plugin is desktop only.
   - Claude Code runs with its built-in tools, MCP servers and settings files turned off.
-  - Gemini CLI runs in read-only plan mode with extensions off. In Threadglyph's own folder it also gets a settings file that excludes Gemini's built-in tools. Your user-level Gemini settings, including any MCP servers you configured there, still apply; if that matters, use Local or a Gemini setup without MCP servers.
+  - Gemini CLI runs in read-only plan mode with extensions off and no MCP servers (an allow-list that names none of yours). In Threadglyph's own folder it also gets a settings file that excludes Gemini's built-in tools. Your other user-level Gemini settings still apply.
 - **Files outside your vault:** the Gemini assistant uses `~/.threadglyph/gemini/` (or a folder you choose) as its working folder. In its own folder it writes a settings file once, if none exists; a folder you choose is never written to. An image you ask about is copied to your system's temp folder for the request and deleted afterwards.
 - **No telemetry, no ads, no account.** Threadglyph itself sends nothing anywhere.
 

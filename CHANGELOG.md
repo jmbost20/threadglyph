@@ -28,6 +28,7 @@ The first public release.
 - Escape no longer throws away an AI reply that could not be saved.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.
+- Gemini CLI no longer starts MCP servers from your own Gemini settings for a Threadglyph request.
 - An Ollama server on another machine is no longer labelled "Stays on this computer"; the preview names its host.
 - Text typed into a comment box while it is saving is kept.
 - Two restores of the same thread at once can no longer overwrite each other.

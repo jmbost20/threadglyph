@@ -7,8 +7,8 @@ import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
  * owner's own Gemini API key. Verified against Gemini CLI 0.60.
  *
  * Isolation: the CLI runs in Threadglyph's own folder (never the vault), in
- * read-only `plan` mode with extensions off and every built-in tool excluded
- * by that folder's settings. The request text goes in on stdin, so note text
+ * read-only `plan` mode with extensions off, no MCP servers, and every
+ * built-in tool excluded by that folder's settings. The request text goes in on stdin, so note text
  * never appears in the process list. An image is copied to a private temporary
  * folder for the one request and deleted afterwards.
  *
@@ -58,10 +58,17 @@ export interface GeminiCliOptions {
   files: GeminiFiles;
 }
 
+/**
+ * Gemini CLI starts every MCP server in the user's own settings unless an
+ * allow-list names the ones to keep, and it reads an empty list as "all". So
+ * the list names one server that cannot exist, and none is started.
+ */
+export const NO_MCP_SERVERS = 'threadglyph-no-mcp-servers';
+
 export function geminiArgs(model: string, image: string | null, imageDir: string | null): string[] {
   const args = ['-p', image ? `Attached image: @${image}` : 'Write your reply now.'];
   if (imageDir) args.push('--include-directories', imageDir);
-  args.push('-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', model.trim() || DEFAULT_GEMINI_MODEL);
+  args.push('--allowed-mcp-server-names', NO_MCP_SERVERS, '-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', model.trim() || DEFAULT_GEMINI_MODEL);
   return args;
 }
 

@@ -18,6 +18,7 @@ import {
   GEMINI_FOLDER_SETTINGS,
   GeminiCliAdapter,
   classifyGeminiFailure,
+  NO_MCP_SERVERS,
   geminiArgs,
   geminiInput,
   geminiResponse,
@@ -232,12 +233,17 @@ describe('Gemini CLI adapter', () => {
     return { adapter, run, files };
   }
 
-  it('runs read-only with extensions off, the request on stdin, in its own folder', async () => {
+  it('runs read-only with extensions and MCP servers off, the request on stdin, in its own folder', async () => {
     const { adapter, run, files } = gemini(outcome({ stdout: `Warning\n${reply(' Hello. ')}` }));
     expect(await adapter.ask(request(), live())).toEqual({ ok: true, text: 'Hello.' });
     const [command, args, input, options] = run.mock.calls[0];
     expect(command).toBe('/bin/gemini');
-    expect(args).toEqual(['-p', 'Write your reply now.', '-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', DEFAULT_GEMINI_MODEL]);
+    expect(args).toEqual([
+      '-p', 'Write your reply now.', '--allowed-mcp-server-names', NO_MCP_SERVERS, '-e', 'none',
+      '--output-format', 'json', '--approval-mode', 'plan', '-m', DEFAULT_GEMINI_MODEL,
+    ]);
+    // Gemini CLI treats an empty allow-list as "allow all", so it must name something.
+    expect(NO_MCP_SERVERS).not.toBe('');
     expect(input).toBe(geminiInput(request()));
     expect(input.startsWith(SYSTEM_PROMPT)).toBe(true);
     expect(options).toMatchObject({ cwd: '/home/.threadglyph/gemini', timeoutMs: 90_000, env: { PATH: '/x' } });
