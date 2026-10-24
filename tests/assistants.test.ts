@@ -228,6 +228,9 @@ describe('Local (Ollama) adapter', () => {
     expect(at('https://remote.example.invalid:11434')).toMatchObject({ egress: 'cloud', recipient: 'remote.example.invalid' });
     expect(at('http://192.168.1.20:11434')).toMatchObject({ egress: 'cloud', recipient: '192.168.1.20' });
     expect(at('not a url')).toMatchObject({ egress: 'cloud', recipient: 'not a url' });
+    // No scheme: Node reads "gpu-box:" as the protocol. It is named as typed, never "ollama.com" (Gitar on #24).
+    expect(at('gpu-box:11434')).toMatchObject({ egress: 'cloud', recipient: 'gpu-box:11434' });
+    expect(at('localhost:11434')).toMatchObject({ egress: 'cloud', recipient: 'localhost:11434' });
     expect(at('http://localhost:11434', 'kimi-k3:cloud')).toMatchObject({ egress: 'cloud', recipient: 'ollama.com' });
   });
 

@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
-import { SAMPLES, SANDBOX_MARKER, expandHome, moveNote, sandboxPath } from './sandbox-lib.mjs';
+import { SAMPLES, SANDBOX_MARKER, expandHome, inside, moveNote, sandboxPath } from './sandbox-lib.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const vault = sandboxPath(process.argv[2]);
@@ -167,6 +167,8 @@ const defaults = {
 for (const [command, keys] of Object.entries(defaults)) hotkeys[command] ??= keys;
 // Commands that no longer exist (the removed @agent).
 for (const gone of ['threadglyph:run-agent-on-line', 'threadglyph:open-agent-chat']) delete hotkeys[gone];
+// ...and its sample note, in an existing sandbox (Gitar on #25).
+for (const old of ['Agent playground.md', `${SAMPLES}/Agent playground.md`]) rmSync(inside(vault, old), { force: true });
 writeFileSync(hotkeysPath, JSON.stringify(hotkeys, null, 2));
 
 console.log(`Sandbox vault ready at ${vault}`);

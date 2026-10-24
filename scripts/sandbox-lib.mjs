@@ -3,7 +3,7 @@
  * which refuses any path outside the sandbox vault, so a real vault can only
  * ever be read.
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
@@ -65,16 +65,27 @@ export function isSandbox(vault) {
 const overlaps = (a, b) => a === b || a.startsWith(b + sep) || b.startsWith(a + sep);
 
 /** `path` with symlinks resolved through its nearest existing ancestor (the rest may not exist yet). */
-export function realPath(path) {
+export function realPath(path, depth = 0) {
+  // lstat, not existsSync: a link whose target is missing still exists, and must be followed.
+  const present = (p) => { try { lstatSync(p); return true; } catch { return false; } };
   const rest = [];
   let at = resolve(path);
-  while (!existsSync(at)) {
+  while (!present(at)) {
     const parent = dirname(at);
     if (parent === at) break;
     rest.unshift(basename(at));
     at = parent;
   }
-  return join(existsSync(at) ? realpathSync(at) : at, ...rest);
+  if (!present(at)) return join(at, ...rest);
+  let real;
+  try {
+    real = realpathSync(at);
+  } catch {
+    // A dangling link: resolve its target by hand, so where a write would land is checked.
+    if (depth > 40) throw new Error(`Too many symbolic links: ${path}`);
+    real = realPath(resolve(realPath(dirname(at), depth + 1), readlinkSync(at)), depth + 1);
+  }
+  return join(real, ...rest);
 }
 
 /** The nearest folder above `path` that holds an Obsidian vault, if any. */
