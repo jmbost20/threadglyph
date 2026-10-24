@@ -36,6 +36,26 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+  # Threadglyph runs on every desktop Obsidian: Windows and macOS as well as Linux.
+  portability:
+    name: Tests on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
   # Kept separate so a SonarQube Cloud outage or missing token is not reported as a code failure.
   sonar:
     name: SonarQube Cloud
@@ -71,3 +91,7 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          # With the repository variable SONAR_WAIT_FOR_GATE=true, this job waits for
+          # the quality gate and fails when it fails. Off until the Sonar project is public.
+          args: ${{ vars.SONAR_WAIT_FOR_GATE == 'true' && '-Dsonar.qualitygate.wait=true' || '' }}
