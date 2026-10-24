@@ -148,9 +148,9 @@ export default {
       },
     },
     {
-      name: 'Gemini starts none of your MCP servers (live check, to discuss)',
+      name: 'Gemini starts none of your MCP servers (live check)',
       weight: 'minor',
-      skip: 'Not run yet, as agreed: it sends one synthetic request to Google with your Gemini key. To discuss first: a throwaway MCP server in your Gemini settings that writes a marker file if it is ever started, then one @Gemini request; pass = no marker file.',
+      skip: 'Checked live outside Obsidian instead, on 2026-10-24 with Gemini CLI 0.60.0 and your ~/.ilc/gemini key: node scripts/check-gemini-mcp.mjs ~/.ilc/gemini. A canary MCP server in a throwaway Gemini home started in the control run (no allow-list) and did NOT start under Threadglyph\'s flags; both runs answered "ok". It sends to Google, so it is not part of every rerun.',
       run: async () => {},
     },
     {

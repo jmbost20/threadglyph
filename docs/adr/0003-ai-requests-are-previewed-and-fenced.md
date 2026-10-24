@@ -21,4 +21,4 @@ AI replies are useful in a comment thread, but notes are personal, and an assist
 
 - Every new AI path must go through the same preview.
 - Gemini's other user-level settings still apply, because the CLI has no switch to ignore them all.
-- Whether each flag does what it says depends on the CLI version; the adapters name the version they were checked against, and a release's acceptance test checks them live.
+- Whether each flag does what it says depends on the CLI version; the adapters name the version they were checked against, and a release's acceptance test checks them live. For Gemini, `scripts/check-gemini-mcp.mjs` does this with a canary MCP server (passed on 0.60.0, 2026-10-24).
