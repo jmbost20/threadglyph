@@ -459,6 +459,32 @@ describe('ThreadPanel review tools', () => {
     expect(actions.goTo).toHaveBeenCalledWith(cards[0].dataset.threadId);
   });
 
+  it('navigates from a clicked comment as from its card (Gitar on #9)', async () => {
+    await threeThreads();
+    const cards = qa('.tg-card');
+    const message = cards[0].querySelector<HTMLElement>('.tg-message')!;
+    message.click();
+    expect(document.activeElement).toBe(message);
+    key(message, 'ArrowDown');
+    expect(document.activeElement).toBe(cards[1]);
+    const second = cards[1].querySelector<HTMLElement>('.tg-message')!;
+    second.click();
+    key(second, 'Enter');
+    expect(actions.goTo).toHaveBeenCalledWith(cards[1].dataset.threadId);
+  });
+
+  it('keeps keyboard focus on a custom filter after it changes (Gitar on #8)', async () => {
+    await threeThreads();
+    q<HTMLElement>('.tg-custom-filters summary')!.click();
+    for (const label of ['Comment age', 'Comment from']) {
+      const control = () => q<HTMLSelectElement | HTMLInputElement>(`[aria-label="${label}"]`)!;
+      control().focus();
+      control().value = label === 'Comment age' ? '7' : '2026-01-01';
+      control().dispatchEvent(new Event('change'));
+      expect(document.activeElement).toBe(control());
+    }
+  });
+
   it('leaves arrow keys alone while typing in a reply', async () => {
     await threeThreads();
     const reply = q<HTMLTextAreaElement>('.tg-card textarea')!;
@@ -603,6 +629,25 @@ describe('ThreadPanel AI', () => {
     expect(q('.tg-ai-title')?.textContent).toBe('Asking Claude…');
     button('Cancel')!.click();
     expect(actions.aiCancel).toHaveBeenCalledWith(thread.id);
+  });
+
+  it('keeps a reply that could not be saved when Escape is pressed in it (Gitar on #8)', async () => {
+    const thread = await withAi(preview({ state: { phase: 'draft', scope: 'anchor', assistant: 'claude', attempts: 1, text: 'Model draft' } }));
+    const input = q<HTMLTextAreaElement>(`textarea[data-draft-key="ai:${thread.id}"]`)!;
+    type(input, 'My edits');
+    key(input, 'Escape');
+    expect(actions.aiClose).not.toHaveBeenCalled();
+    expect(ctl.drafts.get(`ai:${thread.id}`)).toBe('My edits');
+    expect(q(`textarea[data-draft-key="ai:${thread.id}"]`)).not.toBeNull();
+  });
+
+  it('still cancels a running request, and closes an error, with Escape', async () => {
+    const thread = await withAi(preview({ state: { phase: 'running', scope: 'anchor', assistant: 'claude', attempts: 1 } }));
+    key(q<HTMLElement>('.tg-ai')!, 'Escape');
+    expect(actions.aiClose).toHaveBeenCalledWith(thread.id, true);
+    panel.update(state({ assistants: CLAUDE, ai: { [thread.id]: preview({ state: { phase: 'error', scope: 'anchor', assistant: 'claude', attempts: 1, kind: 'network', message: 'Offline' } }) } }));
+    key(q<HTMLElement>('.tg-ai')!, 'Escape');
+    expect(actions.aiClose).toHaveBeenLastCalledWith(thread.id, false);
   });
 
   it('lets the user edit, add, retry or discard a draft', async () => {

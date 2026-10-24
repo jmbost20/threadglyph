@@ -10,8 +10,12 @@ updates:
       # these follow the obsidian package, not the latest release.
       - dependency-name: '@codemirror/*'
     groups:
-      # Minor and patch updates travel together; each major update gets its own
-      # PR so a breaking release can't ride in with the rest.
+      # Vitest and its coverage plugin pin each other exactly, so they always move
+      # together, majors included; a lone major of either could never install.
+      vitest:
+        patterns: ['vitest', '@vitest/*']
+      # Other minor and patch updates travel together; each other major update gets
+      # its own PR so a breaking release can't ride in with the rest.
       dev-dependencies:
         patterns: ['*']
         update-types: [minor, patch]

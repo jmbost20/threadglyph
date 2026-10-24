@@ -257,12 +257,15 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     const from = NOTE_TEXT.indexOf('worth a comment');
     expect(view.editor.selection).toEqual([from, from + 15]);
     expect(focus).not.toHaveBeenCalled();
-    // A lost passage is still stepped onto, without a notice.
+    // A lost passage is still stepped onto, without a notice. Clear the focus first,
+    // so the check proves this second call set it (Gitar on #9).
     app.vault.adapter.files.set(NOTE, 'Rewritten.\n');
+    const focused = plugin as unknown as { focusedThreadId: string | null };
+    focused.focusedThreadId = null;
     const before = notices.length;
     await reveal(thread.id, false);
     expect(notices).toHaveLength(before);
-    expect((plugin as unknown as { focusedThreadId: string }).focusedThreadId).toBe(thread.id);
+    expect(focused.focusedThreadId).toBe(thread.id);
   });
 
   it('opens a closed note before navigating to its passage', async () => {
