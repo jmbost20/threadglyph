@@ -31,6 +31,7 @@ The first public release.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.
 - Posting a new comment that mentions an assistant leaves the keyboard in the Ask AI preview, so Enter sends; it could jump to the reply box instead.
+- On Windows, the PATH given to the Gemini and Claude tools keeps its entries whole (they are separated by `;`, not `:`).
 - Local (Ollama) requests with a long note get a context window large enough to keep the instructions; Ollama otherwise silently drops the start of the prompt.
 - Gemini CLI no longer starts MCP servers from your own Gemini settings for a Threadglyph request.
 - An Ollama server on another machine is no longer labelled "Stays on this computer"; the preview names its host.

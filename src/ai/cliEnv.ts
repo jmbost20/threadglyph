@@ -1,3 +1,5 @@
+import { delimiter } from 'node:path';
+
 /**
  * Obsidian started from the Dock inherits launchd's bare PATH (/usr/bin:/bin:…),
  * so command-line tools installed by npm or Homebrew are invisible to it. A
@@ -22,13 +24,15 @@ export function toolDirs(home: string): string[] {
  * PATH. Putting them first means a current Homebrew `node` wins over a stale one
  * left in an inherited folder.
  */
-export function toolPath(binary: string, inherited: string, home: string): string {
-  const own = binary.includes('/') ? [binary.slice(0, binary.lastIndexOf('/'))] : [];
+export function toolPath(binary: string, inherited: string, home: string, sep: string = delimiter): string {
+  // PATH entries are separated by ":" on macOS and Linux, ";" on Windows (where "C:\…" contains a colon).
+  const slash = Math.max(binary.lastIndexOf('/'), binary.lastIndexOf('\\'));
+  const own = slash > 0 ? [binary.slice(0, slash)] : [];
   const seen = new Set<string>();
-  return [...own, ...toolDirs(home), ...inherited.split(':')]
+  return [...own, ...toolDirs(home), ...inherited.split(sep)]
     .map((dir) => dir.trim())
     .filter((dir) => dir && !seen.has(dir) && seen.add(dir))
-    .join(':');
+    .join(sep);
 }
 
 /** The configured path when set, else the first install location that exists, else the bare name. */
