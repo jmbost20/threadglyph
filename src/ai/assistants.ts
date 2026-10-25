@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ClaudeCliAdapter, claudeCandidates } from './claudeCli';
@@ -69,15 +69,26 @@ export function findClaude(configured: string, exists: (path: string) => boolean
 }
 
 export const geminiFolderPath = (settings: Pick<AiSettings, 'geminiFolder'>, home = homedir()) =>
-  settings.geminiFolder.trim().replace(/^~(?=\/|$)/, home) || join(home, '.threadglyph', 'gemini');
+  settings.geminiFolder.trim().replace(/^~(?=\/|$)/, home) || ownGeminiFolder(home);
 
 export const nodeGeminiFiles: GeminiFiles = {
-  async prepareFolder(folder, settings) {
-    await mkdir(join(folder, '.gemini'), { recursive: true });
-    // 'wx' fails if the file exists: the owner may have edited it, so it is never overwritten.
-    await writeFile(join(folder, '.gemini', 'settings.json'), settings, { flag: 'wx' }).catch((err: NodeJS.ErrnoException) => {
-      if (err.code !== 'EEXIST') throw err;
-    });
+  ensureDir: async (dir) => {
+    await mkdir(dir, { recursive: true });
+  },
+  async findKeyFile(folder) {
+    // Where Gemini itself looks, with its home fallback, since each run gets a new home.
+    for (const candidate of [join(folder, '.gemini', '.env'), join(folder, '.env'), join(homedir(), '.gemini', '.env')]) {
+      if (await stat(candidate).then((s) => s.isFile(), () => false)) return candidate;
+    }
+    return null;
+  },
+  async makeRunHome(settings, keyFile) {
+    const home = await mkdtemp(join(tmpdir(), 'threadglyph-gemini-'));
+    await mkdir(join(home, '.gemini'), { mode: 0o700 });
+    await writeFile(join(home, '.gemini', 'settings.json'), settings, { mode: 0o600 });
+    // A link, so the key is never copied; Windows without developer mode can't link, so copy there.
+    if (keyFile) await symlink(keyFile, join(home, '.gemini', '.env')).catch(() => copyFile(keyFile, join(home, '.gemini', '.env')));
+    return home;
   },
   async stageImage(bytes, extension) {
     const dir = await mkdtemp(join(tmpdir(), 'threadglyph-'));
@@ -87,6 +98,9 @@ export const nodeGeminiFiles: GeminiFiles = {
   },
   removeDir: (dir) => rm(dir, { recursive: true, force: true }),
 };
+
+/** Threadglyph's own Gemini folder, where the key goes by default. */
+export const ownGeminiFolder = (home = homedir()) => join(home, '.threadglyph', 'gemini');
 
 /** The enabled assistants in preference order. Empty while AI is switched off. */
 export function defaultAssistants(settings: AiSettings): AiAdapter[] {
@@ -102,6 +116,7 @@ export function defaultAssistants(settings: AiSettings): AiAdapter[] {
         command,
         folder: geminiFolderPath(settings, home),
         ownsFolder: !settings.geminiFolder.trim(),
+        keyInEnvironment: !!process.env.GEMINI_API_KEY,
         model: settings.geminiModel,
         timeoutMs,
         env: { PATH: toolPath(command, inherited, home) },

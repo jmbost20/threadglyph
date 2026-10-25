@@ -33,6 +33,14 @@ export type BuiltRequest = { ok: true; request: AiRequest } | { ok: false; messa
  * persistence boundary; a failed save leaves a recoverable draft. Late answers
  * from cancelled or superseded requests are dropped.
  */
+/** Why a built request can't go to `adapter`, or null when it can. */
+function refuse(built: BuiltRequest, adapter: AiAdapter | null): string | null {
+  if (!built.ok) return built.message;
+  if (!adapter) return 'That assistant is switched off. Choose another one.';
+  if (built.request.image && !adapter.capabilities.images) return `${adapter.name} cannot read images.`;
+  return null;
+}
+
 export class AiSessions {
   private readonly states = new Map<string, AiState>();
   private readonly inFlight = new Map<string, AbortController>();
@@ -111,18 +119,11 @@ export class AiSessions {
       // e.g. the note or image became unreadable after the checks; never leave the card spinning.
       built = { ok: false, message: `Could not prepare the request: ${(err as Error).message}` };
     }
-    if (!built.ok) {
-      if (built.stale) settle({ ...base, attempts: state.attempts, phase: 'preview', notice: built.message });
-      else settle({ ...base, phase: 'error', kind: 'unsupported', message: built.message });
-      return;
-    }
     const adapter = find(state.assistant);
-    if (!adapter) {
-      settle({ ...base, phase: 'error', kind: 'unsupported', message: 'That assistant is switched off. Choose another one.' });
-      return;
-    }
-    if (built.request.image && !adapter.capabilities.images) {
-      settle({ ...base, phase: 'error', kind: 'unsupported', message: `${adapter.name} cannot read images.` });
+    const refusal = refuse(built, adapter);
+    if (refusal || !built.ok || !adapter) {
+      if (!built.ok && built.stale) settle({ ...base, attempts: state.attempts, phase: 'preview', notice: built.message });
+      else settle({ ...base, phase: 'error', kind: 'unsupported', message: refusal ?? '' });
       return;
     }
     let result;

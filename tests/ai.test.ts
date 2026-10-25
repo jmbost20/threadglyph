@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CLAUDE_LOCKDOWN_ENV,
   ClaudeCliAdapter,
   classifyFailure,
   claudeArgs,
@@ -97,6 +98,18 @@ describe('Claude Code adapter', () => {
     expect(command).toBe('/bin/claude');
     expect(JSON.parse(input).message.content[0].text).toContain('The passage');
     expect(options).toMatchObject({ cwd: '/tmp', timeoutMs: 30_000 });
+    // No CLAUDE.md or auto memory, no telemetry, and no endpoint but Anthropic's (proved live by
+    // scripts/check-cli-isolation.mjs).
+    expect(options.env).toEqual(CLAUDE_LOCKDOWN_ENV);
+    expect(CLAUDE_LOCKDOWN_ENV).toMatchObject({
+      CLAUDE_CODE_DISABLE_CLAUDE_MDS: '1',
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_ENABLE_TELEMETRY: '0',
+      ANTHROPIC_BASE_URL: '',
+      CLAUDE_CODE_USE_BEDROCK: '',
+      CLAUDE_CODE_USE_VERTEX: '',
+    });
     expect(adapter.capabilities).toEqual({ text: true, images: true });
   });
 

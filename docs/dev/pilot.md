@@ -48,7 +48,7 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 7. **Import** (`Inline comments sample.md`): run *Import inline comments from this note*. The preview lists 3 threads (2 messages; 1 message · resolved; 1 message). Import them, then check that the note text is byte-for-byte unchanged. Running the import again says *Nothing new to import*. Then ask Local or Gemini on an imported thread.
 8. **Backup and restore:** back up, delete one file in `threadglyph/threads/`, reload, and restore. The thread comes back and the others are reported as already existing.
 9. **Safety:** after all of the above, no note has changed. Check with the sandbox's file history or a diff.
-10. **Gemini isolation (live):** `node scripts/check-gemini-mcp.mjs <your Gemini folder>`. It sends two one-word requests to Google and passes when a canary MCP server starts only in the control run, never under Threadglyph's flags.
+10. **CLI isolation (live):** `node scripts/check-cli-isolation.mjs gemini <your Gemini folder> claude`. It sends two short synthetic requests to each of Google and Anthropic. It plants hooks, an MCP server, context files with a codeword, telemetry and a bogus endpoint, and passes when the control run uses them and Threadglyph's run uses none while still getting an answer.
 11. **Release candidate install:** `npm run package`, then copy `dist/threadglyph-<version>/` into a *fresh* empty vault's `.obsidian/plugins/threadglyph/`. Enable it, make a thread, quit and reopen Obsidian (the thread and highlight come back), then disable and delete the plugin folder: the note is unchanged and Obsidian shows no errors.
 
 ## Acceptance record

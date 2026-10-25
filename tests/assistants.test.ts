@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'http';
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -15,7 +15,8 @@ import type { ProcessRunner, RunOutcome } from '../src/ai/claudeCli';
 import { findTool, toolPath } from '../src/ai/cliEnv';
 import {
   DEFAULT_GEMINI_MODEL,
-  GEMINI_FOLDER_SETTINGS,
+  GEMINI_LOCKDOWN_SETTINGS,
+  GEMINI_TOOLS,
   GeminiCliAdapter,
   classifyGeminiFailure,
   NO_MCP_SERVERS,
@@ -247,18 +248,24 @@ describe('Gemini CLI adapter', () => {
   const outcome = (over: Partial<RunOutcome>): RunOutcome => ({ code: 0, stdout: '', stderr: '', timedOut: false, aborted: false, ...over });
   const reply = (text: string) => JSON.stringify({ session_id: 's', response: text, stats: {} }, null, 2);
 
-  function gemini(out: RunOutcome, model = '') {
+  function gemini(out: RunOutcome, model = '', keyFile: string | null = '/home/.threadglyph/gemini/.gemini/.env') {
+    const homes: { settings: string; keyFile: string }[] = [];
     const files: GeminiFiles = {
-      prepareFolder: vi.fn(async () => {}),
+      ensureDir: vi.fn(async () => {}),
+      findKeyFile: vi.fn(async () => keyFile),
+      makeRunHome: vi.fn(async (settings: string, key: string) => {
+        homes.push({ settings, keyFile: key });
+        return '/tmp/tg-home';
+      }),
       stageImage: vi.fn(async () => ({ dir: '/tmp/tg-x', file: '/tmp/tg-x/image.png' })),
       removeDir: vi.fn(async () => {}),
     };
     const run = vi.fn<ProcessRunner>(async () => out);
     const adapter = new GeminiCliAdapter({ command: '/bin/gemini', folder: '/home/.threadglyph/gemini', ownsFolder: true, model, timeoutMs: 90_000, env: { PATH: '/x' }, run, files });
-    return { adapter, run, files };
+    return { adapter, run, files, homes };
   }
 
-  it('runs read-only with extensions and MCP servers off, the request on stdin, in its own folder', async () => {
+  it('runs read-only with extensions and MCP servers off, the request on stdin, in a home made for the run', async () => {
     const { adapter, run, files } = gemini(outcome({ stdout: `Warning\n${reply(' Hello. ')}` }));
     expect(await adapter.ask(request(), live())).toEqual({ ok: true, text: 'Hello.' });
     const [command, args, input, options] = run.mock.calls[0];
@@ -271,15 +278,57 @@ describe('Gemini CLI adapter', () => {
     expect(NO_MCP_SERVERS).not.toBe('');
     expect(input).toBe(geminiInput(request()));
     expect(input.startsWith(SYSTEM_PROMPT)).toBe(true);
-    expect(options).toMatchObject({ cwd: '/home/.threadglyph/gemini', timeoutMs: 90_000, env: { PATH: '/x' } });
-    expect(files.prepareFolder).toHaveBeenCalledWith('/home/.threadglyph/gemini', expect.stringContaining('"selectedType": "gemini-api-key"'));
+    expect(options).toMatchObject({ cwd: '/tmp/tg-home', timeoutMs: 90_000, env: { PATH: '/x' } });
+    expect(files.ensureDir).toHaveBeenCalledWith('/home/.threadglyph/gemini/.gemini');
     expect(files.stageImage).not.toHaveBeenCalled();
     expect(adapter).toMatchObject({ id: 'gemini', name: 'Gemini', egress: 'cloud', detail: DEFAULT_GEMINI_MODEL });
   });
 
-  it('switches off every built-in tool and usage statistics in its folder', () => {
-    expect(GEMINI_FOLDER_SETTINGS.tools.exclude).toEqual(expect.arrayContaining(['read_file', 'run_shell_command', 'web_fetch', 'write_file']));
-    expect(GEMINI_FOLDER_SETTINGS.privacy.usageStatisticsEnabled).toBe(false);
+  it('runs in a private home holding only the lockdown and a link to the key, deleted afterwards', async () => {
+    const { adapter, run, files, homes } = gemini(outcome({ stdout: reply('ok') }));
+    await adapter.ask(request(), live());
+    expect(homes).toEqual([{ settings: `${JSON.stringify(GEMINI_LOCKDOWN_SETTINGS, null, 2)}\n`, keyFile: '/home/.threadglyph/gemini/.gemini/.env' }]);
+    expect(run.mock.calls[0][3].env).toEqual({
+      PATH: '/x',
+      GEMINI_CLI_HOME: '/tmp/tg-home',
+      GEMINI_CLI_SYSTEM_SETTINGS_PATH: '',
+      GEMINI_CLI_SYSTEM_DEFAULTS_PATH: '',
+      GEMINI_TELEMETRY_ENABLED: 'false',
+      GEMINI_TELEMETRY_LOG_PROMPTS: 'false',
+      GEMINI_SYSTEM_MD: '',
+      GOOGLE_GEMINI_BASE_URL: '',
+      GOOGLE_VERTEX_BASE_URL: '',
+      GOOGLE_GENAI_USE_VERTEXAI: '',
+      GOOGLE_GENAI_USE_GCA: '',
+    });
+    expect(GEMINI_LOCKDOWN_SETTINGS).toMatchObject({
+      security: { auth: { selectedType: 'gemini-api-key' }, folderTrust: { enabled: false } },
+      hooksConfig: { enabled: false },
+      skills: { enabled: false },
+      telemetry: { enabled: false, logPrompts: false },
+      context: { fileName: 'THREADGLYPH-NO-CONTEXT-FILE.md', loadMemoryFromIncludeDirectories: false },
+      tools: { exclude: GEMINI_TOOLS },
+    });
+    expect(files.removeDir).toHaveBeenCalledWith('/tmp/tg-home');
+  });
+
+  it('runs without a key file when GEMINI_API_KEY is already in the environment', async () => {
+    const { run, files, homes } = gemini(outcome({ stdout: reply('ok') }), '', null);
+    const adapter = new GeminiCliAdapter({ command: '/bin/gemini', folder: '/f', ownsFolder: false, keyInEnvironment: true, model: '', timeoutMs: 1000, env: {}, run, files });
+    expect(await adapter.ask(request(), live())).toEqual({ ok: true, text: 'ok' });
+    expect(homes[0].keyFile).toBeNull();
+  });
+
+  it('sends nothing and says where the key goes when there is no key file', async () => {
+    const { adapter, run, files } = gemini(outcome({ stdout: reply('ok') }), '', null);
+    expect(await adapter.ask(request(), live())).toMatchObject({ ok: false, kind: 'auth', message: expect.stringContaining('/home/.threadglyph/gemini/.gemini/.env') });
+    expect(run).not.toHaveBeenCalled();
+    expect(files.makeRunHome).not.toHaveBeenCalled();
+  });
+
+  it('switches off every built-in tool and usage statistics', () => {
+    expect(GEMINI_TOOLS).toEqual(expect.arrayContaining(['read_file', 'run_shell_command', 'web_fetch', 'write_file']));
+    expect(GEMINI_LOCKDOWN_SETTINGS).toMatchObject({ privacy: { usageStatisticsEnabled: false } });
   });
 
   it('attaches an image from a private temporary folder and always deletes it', async () => {
@@ -327,23 +376,40 @@ describe('Gemini CLI adapter', () => {
 });
 
 describe('Gemini folder files', () => {
-  it('creates settings once, never overwrites them, and stages images privately', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'tg-gemini-test-'));
+  it('runs each request in a private home with the lockdown and a link to the key, then deletes it', async () => {
+    const folder = await mkdtemp(join(tmpdir(), 'tg-gemini-test-'));
     try {
-      const run = vi.fn<ProcessRunner>(async () => ({ code: null, stdout: '', stderr: '', timedOut: false, aborted: false, error: { code: 'ENOENT', message: 'spawn ENOENT' } }));
-      const adapter = new GeminiCliAdapter({ command: '/nonexistent/gemini', folder: home, ownsFolder: true, model: '', timeoutMs: 1000, env: {}, run, files: nodeGeminiFiles });
-      const result = await adapter.ask(request({ image: PNG }), live());
-      expect(result).toMatchObject({ ok: false, kind: 'not-installed' });
-      const settingsPath = join(home, '.gemini', 'settings.json');
-      expect(JSON.parse(await readFile(settingsPath, 'utf8'))).toEqual(GEMINI_FOLDER_SETTINGS);
-      await writeFile(settingsPath, '{"mine":true}');
-      await adapter.ask(request(), live());
-      expect(await readFile(settingsPath, 'utf8')).toBe('{"mine":true}');
+      let seen: { home: string; settings: string; key: string; mode: number } | null = null;
+      const run = vi.fn<ProcessRunner>(async (_command, _args, _input, { cwd }) => {
+        const settingsFile = join(cwd, '.gemini', 'settings.json');
+        seen = { home: cwd, settings: await readFile(settingsFile, 'utf8'), key: await readFile(join(cwd, '.gemini', '.env'), 'utf8'), mode: (await stat(settingsFile)).mode & 0o777 };
+        return { code: 0, stdout: '{"response":"ok"}', stderr: '', timedOut: false, aborted: false };
+      });
+      const adapter = new GeminiCliAdapter({ command: 'gemini', folder, ownsFolder: true, model: '', timeoutMs: 1000, env: {}, run, files: nodeGeminiFiles });
+      // Own folder: its .gemini folder is created, and with no key nothing runs.
+      expect(await adapter.ask(request(), live())).toMatchObject({ ok: false, kind: 'auth' });
+      expect((await stat(join(folder, '.gemini'))).isDirectory()).toBe(true);
+      expect(run).not.toHaveBeenCalled();
+
+      await writeFile(join(folder, '.gemini', '.env'), 'GEMINI_API_KEY=synthetic\n');
+      expect(await adapter.ask(request({ image: PNG }), live())).toEqual({ ok: true, text: 'ok' });
+      expect(seen!.home).not.toBe(folder);
+      expect(JSON.parse(seen!.settings)).toEqual(GEMINI_LOCKDOWN_SETTINGS);
+      expect(seen!.key).toBe('GEMINI_API_KEY=synthetic\n');
+      // Windows has no Unix permission bits.
+      if (process.platform !== 'win32') expect(seen!.mode).toBe(0o600);
+      await expect(stat(seen!.home)).rejects.toThrow();
+      // The key folder itself gets nothing but the .gemini folder the user puts the key in.
+      expect(await readdir(join(folder, '.gemini'))).toEqual(['.env']);
+
+      // A plain .env at the folder's top level works too.
+      await rm(join(folder, '.gemini'), { recursive: true });
+      await writeFile(join(folder, '.env'), 'GEMINI_API_KEY=top\n');
+      expect(await nodeGeminiFiles.findKeyFile(folder)).toBe(join(folder, '.env'));
     } finally {
-      await rm(home, { recursive: true, force: true });
+      await rm(folder, { recursive: true, force: true });
     }
   });
-
 });
 
 describe('sessions across assistants', () => {
