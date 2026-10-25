@@ -286,6 +286,21 @@ describe('AI sessions', () => {
     return { adapter, calls };
   }
 
+  it('returns to the preview without using a retry when the request no longer matches it', async () => {
+    const sessions = new AiSessions(() => {});
+    const { adapter } = fakeAdapter([{ ok: true, text: 'Answer' }]);
+    sessions.open('t1', 'fake');
+    sessions.setScope('t1', 'note');
+    const stale: BuiltRequest = { ok: false, stale: true, message: 'Changed.' };
+    for (let i = 0; i < MAX_ATTEMPTS + 1; i++) await sessions.send('t1', () => adapter, async () => stale);
+    expect(adapter.ask).not.toHaveBeenCalled();
+    expect(sessions.get('t1')).toEqual({ phase: 'preview', scope: 'note', assistant: 'fake', attempts: 0, notice: 'Changed.' });
+    expect(sessions.canSend('t1')).toBe(true);
+    // Choosing again is a new review: the notice goes.
+    sessions.setScope('t1', 'anchor');
+    expect(sessions.get('t1')).toEqual({ phase: 'preview', scope: 'anchor', assistant: 'fake', attempts: 0 });
+  });
+
   it('automatically saves once, blocks duplicate adoption while saving, and recovers a failed save', async () => {
     const sessions = new AiSessions(() => {});
     const { adapter } = fakeAdapter([{ ok: true, text: 'Answer' }]);

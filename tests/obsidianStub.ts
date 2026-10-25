@@ -148,6 +148,7 @@ export class TAbstractFile {
 }
 
 export class TFile extends TAbstractFile {
+  stat = { ctime: 0, mtime: 0, size: 0 };
   get basename(): string {
     return this.path.split('/').pop()!.replace(/\.[^.]+$/, '');
   }
@@ -196,8 +197,13 @@ export class FakeAdapter {
 
 export class FakeVault extends Events {
   adapter = new FakeAdapter();
+  /** File times and sizes by path; unset files report zeros. */
+  stats = new Map<string, { ctime: number; mtime: number; size: number }>();
   getAbstractFileByPath(path: string) {
-    return this.adapter.files.has(path) ? new TFile(path) : null;
+    if (!this.adapter.files.has(path)) return null;
+    const file = new TFile(path);
+    file.stat = this.stats.get(path) ?? file.stat;
+    return file;
   }
   async cachedRead(file: TFile) {
     return this.adapter.read(file.path);
