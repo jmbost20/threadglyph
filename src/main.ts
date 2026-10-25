@@ -331,10 +331,16 @@ export default class ThreadglyphPlugin extends Plugin {
         if (!this.assistants().length) return;
         // An edit of the previous answer must not stand in for the new one.
         c.drafts.delete(aiDraftKey(id));
-        // Once sent, the question belongs to the thread; Escape no longer discards it.
-        this.aiQuestions.delete(id);
         void this.ai.send(
-          id, (assistant) => this.findAssistant(assistant), (scope) => this.buildRequest(id, scope),
+          id,
+          (assistant) => this.findAssistant(assistant),
+          async (scope) => {
+            const built = await this.buildRequest(id, scope);
+            // Once it goes out, the question belongs to the thread and Escape no longer discards it.
+            // A Send that comes back to the preview leaves it discardable.
+            if (built.ok) this.aiQuestions.delete(id);
+            return built;
+          },
           (assistant, body, edited) => attempt(() => c.addAiReply(id, this.findAssistant(assistant)?.name ?? assistant, body, edited)),
         );
       },

@@ -743,11 +743,28 @@ describe('Threadglyph plugin AI', () => {
     expandAll();
     expect(q('.tg-ai-exact pre')?.textContent).toContain('A secret sentence');
 
+    // The question is still the preview's own: Escape there would remove it, as before Send.
+    expect((plugin as unknown as { aiQuestions: Map<string, string> }).aiQuestions.has(threads()[0].id)).toBe(true);
+
     // The refreshed preview is what goes, and checking it again used no retry.
     button('Send')!.click();
     await flush();
     expect(requests).toHaveLength(1);
     expect(requests[0].context?.text).toContain('A secret sentence');
+    expect((plugin as unknown as { aiQuestions: Map<string, string> }).aiQuestions.has(threads()[0].id)).toBe(false);
+  });
+
+  it('Escape on a preview that came back from a stale Send still removes the question', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Thoughts, @claude?');
+    app.vault.adapter.files.set(NOTE, NOTE_TEXT.replace('A sentence', 'A changed sentence'));
+    button('Send')!.click();
+    await flush();
+    expect(requests).toHaveLength(0);
+    const id = threads()[0].id;
+    panelActions().aiClose(id, true);
+    await flush();
+    expect(threads()[0].messages.every((m) => m.deletedAt)).toBe(true);
   });
 
   it('sends nothing when Send is pressed before any preview was shown', async () => {
