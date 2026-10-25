@@ -61,7 +61,7 @@ Install [all-contributors](https://github.com/apps/allcontributors/installation/
 
 ## Sponsors
 
-`.github/FUNDING.yml` points at GitHub Sponsors for `jmbost20`. Set up a Sponsors profile before the repository goes public, or change the file to another link.
+Funding is TBD: every line of `.github/FUNDING.yml` is commented out, so no Sponsor button shows. Once a GitHub Sponsors profile exists for `jmbost20`, uncomment `github: [jmbost20]`.
 
 ## After the repository is public
 
