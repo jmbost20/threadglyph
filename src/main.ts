@@ -85,6 +85,8 @@ export default class ThreadglyphPlugin extends Plugin {
   private ai!: AiSessions;
   /** The comment whose @mention opened each thread's Ask AI preview, until it is sent. */
   private readonly aiQuestions = new Map<string, string>();
+  /** For each open Ask AI preview, what it last showed (see requestFingerprint). */
+  private readonly shownRequests = new Map<string, string>();
   /** Builds the enabled assistants from settings; replaceable so tests never start a real process. */
   adapterFactory: (settings: AiSettings) => AiAdapter[] = defaultAssistants;
   private adapterCache: { key: string; factory: unknown; adapters: AiAdapter[] } | null = null;
@@ -342,6 +344,7 @@ export default class ThreadglyphPlugin extends Plugin {
       },
       aiClose: (id, discardQuestion) => {
         c.drafts.delete(aiDraftKey(id));
+        this.shownRequests.delete(id);
         this.ai.close(id);
         const question = this.aiQuestions.get(id);
         this.aiQuestions.delete(id);
@@ -493,13 +496,33 @@ export default class ThreadglyphPlugin extends Plugin {
       if (!state) continue;
       const inputs = this.requestInputs(note, doc, view);
       const preview = aiPreview(inputs, state.scope);
+      if (state.phase === 'preview') this.shownRequests.set(view.thread.id, this.requestFingerprint(inputs, preview.exactText, state.assistant));
       cards[view.thread.id] = { state, ...preview, canSend: this.ai.canSend(view.thread.id) };
     }
     return cards;
   }
 
-  /** Assembles the request at send time, reading the image's real bytes. */
+  /**
+   * What a preview showed, as one string: the exact text, where it goes, and which version of
+   * the image. Send compares it with the request it is about to make.
+   */
+  private requestFingerprint(inputs: RequestInputs, exactText: string, assistant: string): string {
+    const adapter = this.findAssistant(assistant);
+    const image = inputs.imagePath ? this.app.vault.getAbstractFileByPath(inputs.imagePath) : null;
+    const version = image instanceof TFile ? `${image.stat.mtime}:${image.stat.size}` : null;
+    return JSON.stringify([exactText, adapter ? destination(adapter) : null, inputs.imagePath, version]);
+  }
+
+  /**
+   * Assembles the request at send time, reading the image's real bytes. It goes only if it
+   * still matches the preview the user last saw; otherwise the preview is shown again.
+   */
   private async buildRequest(threadId: string, scope: ContextScope): Promise<BuiltRequest> {
+    const stale: BuiltRequest = { ok: false, stale: true, message: 'The note changed since this preview. Check it and send again.' };
+    const assistant = this.ai.get(threadId)?.assistant;
+    const shown = this.shownRequests.get(threadId);
+    const matches = (inputs: RequestInputs) =>
+      assistant !== undefined && shown === this.requestFingerprint(inputs, aiPreview(inputs, scope).exactText, assistant);
     const thread = this.store.get(threadId);
     const file = thread && this.app.vault.getAbstractFileByPath(thread.notePath);
     if (!thread || !(file instanceof TFile)) return { ok: false, message: 'The note for this thread is missing.' };
@@ -511,11 +534,14 @@ export default class ThreadglyphPlugin extends Plugin {
       this.resolveLink,
     );
     const inputs = this.requestInputs(file, doc, view);
-    if (!inputs.imagePath) return { ok: true, request: buildAiRequest(inputs, scope, null) };
-    const imageFile = this.app.vault.getAbstractFileByPath(inputs.imagePath);
-    if (!(imageFile instanceof TFile)) return { ok: false, message: `Image file not found: ${inputs.imagePath}` };
+    const imageFile = inputs.imagePath ? this.app.vault.getAbstractFileByPath(inputs.imagePath) : null;
+    if (inputs.imagePath && !(imageFile instanceof TFile)) return { ok: false, message: `Image file not found: ${inputs.imagePath}` };
+    if (!matches(inputs)) return stale;
+    if (!(imageFile instanceof TFile)) return { ok: true, request: buildAiRequest(inputs, scope, null) };
     const prepared = prepareImage(imageFile.path, new Uint8Array(await this.app.vault.readBinary(imageFile)));
     if (!prepared.ok) return { ok: false, message: prepared.reason };
+    // The image may have been replaced while its bytes were read.
+    if (!matches(inputs)) return stale;
     return { ok: true, request: buildAiRequest(inputs, scope, prepared.image) };
   }
 

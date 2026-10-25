@@ -15,13 +15,18 @@ interface AiBase {
 }
 
 export type AiState =
-  | (AiBase & { phase: 'preview' })
+  /** `notice` explains why a Send came back to the preview instead of going out. */
+  | (AiBase & { phase: 'preview'; notice?: string })
   | (AiBase & { phase: 'running' })
   | (AiBase & { phase: 'saving'; text: string })
   | (AiBase & { phase: 'draft'; text: string })
   | (AiBase & { phase: 'error'; kind: AiErrorKind; message: string });
 
-export type BuiltRequest = { ok: true; request: AiRequest } | { ok: false; message: string };
+/**
+ * The request to send, or why it can't go. `stale` means it no longer matches what the
+ * preview showed, so nothing is sent and the preview is shown again (no retry is used).
+ */
+export type BuiltRequest = { ok: true; request: AiRequest } | { ok: false; message: string; stale?: boolean };
 
 /**
  * Per-thread Ask AI state. Successful answers are saved through the caller's
@@ -53,7 +58,8 @@ export class AiSessions {
   setScope(threadId: string, scope: ContextScope): void {
     const state = this.states.get(threadId);
     if (state?.phase !== 'preview') return;
-    this.states.set(threadId, { ...state, scope });
+    // A new choice is a new review, so an earlier "changed since" notice no longer applies.
+    this.states.set(threadId, { phase: 'preview', scope, assistant: state.assistant, attempts: state.attempts });
     this.onChange();
   }
 
@@ -106,7 +112,8 @@ export class AiSessions {
       built = { ok: false, message: `Could not prepare the request: ${(err as Error).message}` };
     }
     if (!built.ok) {
-      settle({ ...base, phase: 'error', kind: 'unsupported', message: built.message });
+      if (built.stale) settle({ ...base, attempts: state.attempts, phase: 'preview', notice: built.message });
+      else settle({ ...base, phase: 'error', kind: 'unsupported', message: built.message });
       return;
     }
     const adapter = find(state.assistant);

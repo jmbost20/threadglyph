@@ -75,7 +75,7 @@ Turn on **Settings → Threadglyph → Enable Ask AI**. Each assistant is a prog
 | **Gemini** | [Gemini CLI](https://github.com/google-gemini/gemini-cli) and an API key in `~/.threadglyph/gemini/.gemini/.env` as `GEMINI_API_KEY=…` | Google |
 | **Claude** | [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in | Anthropic |
 
-By default a request holds the selected passage, the thread and the section around it. Open **Exact text** in the preview to see every character that will be sent, or narrow the scope. For daily notes and other personal text, prefer **Local**.
+By default a request holds the selected passage, the thread and the section around it. Open **Exact text** in the preview to see every character that will be sent, or narrow the scope. If the note or image changes after the preview is drawn, **Send** sends nothing and shows the updated preview instead. For daily notes and other personal text, prefer **Local**.
 
 ## Disclosures
 

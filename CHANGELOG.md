@@ -27,6 +27,8 @@ The first public release.
 - The experimental `@agent` from the private pilot, which proposed edits to a note and applied them on Accept. Threadglyph no longer writes to note files at all. Its code remains in the repository's history.
 
 ### Fixed
+- **Send** goes only if the request still matches the preview on screen. If the note, the image or the destination changed after the preview was drawn, nothing is sent and the preview comes back with a note to check it again; this uses no retry.
+- Switching the plugin off removes its highlights, numbers and image titles from Reading view, Canvas cards and hover previews straight away.
 - Escape no longer throws away an AI reply that could not be saved.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.

@@ -729,6 +729,39 @@ describe('Threadglyph plugin AI', () => {
     expect(panelEl().querySelector('.tg-origin')?.textContent).toBe('AI');
   });
 
+  it('sends nothing the preview did not show: a note edited after the preview sends the preview back', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Thoughts, @claude?');
+    expect(q('.tg-ai-title')?.textContent).toBe('Ask AI');
+    // The note changes after the preview was drawn, before Send (no refresh in between).
+    app.vault.adapter.files.set(NOTE, NOTE_TEXT.replace('A sentence', 'A secret sentence'));
+    button('Send')!.click();
+    await flush();
+    expect(requests).toHaveLength(0);
+    expect(q('.tg-ai-title')?.textContent).toBe('Ask AI');
+    expect(q('.tg-ai-error')?.textContent).toBe('The note changed since this preview. Check it and send again.');
+    expandAll();
+    expect(q('.tg-ai-exact pre')?.textContent).toContain('A secret sentence');
+
+    // The refreshed preview is what goes, and checking it again used no retry.
+    button('Send')!.click();
+    await flush();
+    expect(requests).toHaveLength(1);
+    expect(requests[0].context?.text).toContain('A secret sentence');
+  });
+
+  it('sends nothing when Send is pressed before any preview was shown', async () => {
+    await enable();
+    await commentOn('worth a comment', 'Plain comment');
+    const id = threads()[0].id;
+    const actions = panelActions();
+    actions.aiOpen(id);
+    actions.aiSend(id);
+    await flush();
+    expect(requests).toHaveLength(0);
+    expect(q('.tg-ai-error')?.textContent).toBe('The note changed since this preview. Check it and send again.');
+  });
+
   it('retains a failed auto-save, allows editing and saves recovery with AI-edited attribution', async () => {
     await enable();
     await commentOn('worth a comment', 'First');
@@ -779,6 +812,7 @@ describe('Threadglyph plugin AI', () => {
       (path: string, data: string) => new Promise<void>((done) => { finish = () => void original(path, data).then(done); }),
     );
     actions.aiOpen(id);
+    await flush(); // the preview is on screen before Send, as in the panel
     actions.aiSend(id);
     await flush();
     expect(await actions.setMessageDeleted(id, question, true)).toBe(false);
@@ -845,6 +879,18 @@ describe('Threadglyph plugin AI', () => {
         data: Buffer.from(PNG).toString('base64'),
         bytes: PNG.length,
       });
+    });
+
+    it('does not send an image replaced after the preview', async () => {
+      await imageThread();
+      app.vault.stats.set('Pics/sky.png', { ctime: 0, mtime: 1_700_000_000_000, size: PNG.length });
+      button('Send')!.click();
+      await flush();
+      expect(requests).toHaveLength(0);
+      expect(panelEl().querySelector('.tg-ai-error')?.textContent).toBe('The note changed since this preview. Check it and send again.');
+      button('Send')!.click();
+      await flush();
+      expect(requests).toHaveLength(1);
     });
 
     it('refuses a damaged or missing image before calling the model', async () => {
