@@ -4,7 +4,7 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-10-24
+## [0.3.0] - 2026-10-25
 
 The first public release.
 
