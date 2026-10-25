@@ -1,2 +1,3 @@
-# Shows a "Sponsor" button on the repository page. Needs a GitHub Sponsors profile.
-github: [jmbost20]
+# Funding: TBD. No Sponsor button is shown while every line below is commented out.
+# Once a GitHub Sponsors profile exists, uncomment:
+# github: [jmbost20]
