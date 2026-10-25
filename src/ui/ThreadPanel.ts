@@ -755,6 +755,7 @@ export class ThreadPanel extends ItemView {
       case 'preview': {
         box.createDiv({ cls: 'tg-ai-title', text: 'Ask AI' });
         const where = assistant ? ` ${assistant.destination}.` : '';
+        if (ai.state.notice) box.createDiv({ cls: 'tg-ai-error', attr: { role: 'status' }, text: ai.state.notice });
         box.createDiv({ cls: 'tg-ai-note', text: `${name} will receive the items below.${where}` });
         box.createDiv({ cls: 'tg-ai-note tg-ai-keys', text: 'Enter sends · ↑↓ move · → opens · Esc cancels and removes the question' });
         this.renderPreviewTree(box, threadId, ai);
