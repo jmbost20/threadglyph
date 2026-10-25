@@ -476,6 +476,20 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(view.previewMode.rerenders).toBe(rerenders);
   });
 
+  it('takes its Reading view marks out when the plugin unloads', async () => {
+    const processor = (plugin as unknown as { postProcessors: ((el: HTMLElement, ctx: unknown) => void)[] }).postProcessors[0];
+    view.mode = 'preview';
+    await commentOn('worth a comment', 'Before unload');
+    const preview = view.containerEl.createDiv({ cls: 'markdown-preview-view' });
+    const original = '<p>A sentence worth a comment.</p>';
+    preview.innerHTML = original;
+    processor(preview, { sourcePath: NOTE, getSectionInfo: () => ({ text: NOTE_TEXT, lineStart: 1, lineEnd: 1 }) });
+    expect(preview.querySelector('.tg-badge')).not.toBeNull();
+
+    plugin.onunload();
+    expect(preview.innerHTML).toBe(original);
+  });
+
   it('re-renders a Reading pane of a note that is also open in an editor (Gitar review on PR #3)', async () => {
     // The editor pane comes first in the leaf list, as in the reported case.
     const reading = app.workspace.open(NOTE) as typeof view;

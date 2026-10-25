@@ -36,7 +36,7 @@ import { ThreadStore } from './storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions } from './ui/ThreadPanel';
 import { setThreadMarks, threadMarksExtension, type ThreadMark } from './ui/editorMarks';
 import { imageTitlesExtension, titleRenderedImages } from './ui/imageTitles';
-import { lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks';
+import { clearReadingMarks, lineOffset, markRenderedSection, readingMarks } from './ui/readingMarks';
 import { buildThreadViews, type ThreadFilter, type ThreadView } from './ui/viewModel';
 
 interface ThreadglyphSettings extends AiSettings {
@@ -188,6 +188,10 @@ export default class ThreadglyphPlugin extends Plugin {
   onunload(): void {
     this.ai?.closeAll();
     this.scheduleRefresh.cancel();
+    // Reading view keeps post-processed output until it re-renders, so take the marks out now.
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      leaf.view.containerEl.querySelectorAll('.markdown-preview-view').forEach(clearReadingMarks);
+    }
   }
 
   private async start(): Promise<void> {

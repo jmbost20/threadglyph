@@ -287,6 +287,7 @@ export class WorkspaceLeafImpl extends WorkspaceLeaf {
 
 export class MarkdownView {
   editor: FakeEditor;
+  containerEl = document.createElement('div');
   mode: 'source' | 'preview' = 'source';
   previewMode = {
     rerenders: 0,

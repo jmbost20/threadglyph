@@ -163,3 +163,20 @@ function badge(mark: ReadingMark, onOpen: (id: string) => void): HTMLElement {
   });
   return el;
 }
+
+/**
+ * Removes everything the Reading view marks added under `root`: badges, image titles,
+ * highlight spans and image outlines. The rendered text is left as Obsidian drew it.
+ */
+export function clearReadingMarks(root: ParentNode): void {
+  root.querySelectorAll('.tg-badge, .tg-image-title').forEach((el) => el.remove());
+  root.querySelectorAll<HTMLElement>('.tg-image-anchor').forEach((el) => {
+    el.classList.remove('tg-image-anchor');
+    el.removeAttribute('data-tg-thread');
+  });
+  root.querySelectorAll<HTMLElement>('span.tg-anchor').forEach((span) => {
+    const parent = span.parentNode;
+    span.replaceWith(...span.childNodes);
+    parent?.normalize();
+  });
+}
