@@ -102,6 +102,58 @@ export default {
       },
     },
     {
+      name: 'Send after the note changed shows the new preview instead of sending',
+      weight: 'minor',
+      intro: {
+        headline: 'This shows that Send never sends text the preview did not show.',
+        context: 'The preview is drawn from the note as it was. Here the note gains a line in the same section a moment before Send is pressed, too soon for the preview to redraw. Send compares the request with what the preview showed, finds a difference, sends nothing, and shows the updated preview with a note to check it. Esc then removes the question, as it would have before Send.',
+      },
+      tradeoffs: [
+        { option: 'Check at Send and show the updated preview', downside: 'One extra press of Send when the note changed under the preview.', chosen: true },
+        { option: 'Send the snapshot the preview showed', downside: 'The AI may answer about text that is no longer in the note.' },
+        { option: 'Send the note as it is now', downside: 'Text you never saw in the preview can leave your computer; the audit found this.' },
+      ],
+      summary: 'Comment “What am I forgetting, @Local?” on “Clean the garage”, add “take old paint to the dump” to that list and press Send at once: nothing is sent, the preview shows the new line and says the note changed. Esc removes the question.',
+      settings: aiSettings(),
+      fixtures,
+      async run(s) {
+        await s.step('Open the note and comment on “Clean the garage” with “@Local”', async () => {
+          await open(s, ASK);
+          await comment(s, 'Clean the garage', 'What am I forgetting, @Local?');
+          await s.waitFor(() => !!document.querySelector('.tg-panel .tg-ai .tg-ai-title'), null, { what: 'the Ask AI preview' });
+        }, { caption: 'The preview, drawn from the note as it is', look: '.tg-panel .tg-ai', explain: 'The @Local mention opened Ask AI on the new thread (outlined). Nothing has been sent; the preview shows what Send would send.' });
+        await s.step('Add a line to the list and press Send in the same moment', async () => {
+          await s.eval(() => {
+            const editor = app.workspace.getLeavesOfType('markdown')[0].view.editor;
+            const text = editor.getValue();
+            const at = text.indexOf('  - [ ] fix the shelf\n') + '  - [ ] fix the shelf\n'.length;
+            editor.replaceRange('  - [ ] take old paint to the dump\n', editor.offsetToPos(at));
+            document.querySelector('.tg-panel .tg-ai button.mod-cta').click();
+          });
+          await s.waitFor(() => !!document.querySelector('.tg-panel .tg-ai .tg-ai-error'), null, { what: 'the “note changed” notice' });
+        }, { caption: 'Nothing sent: “The note changed since this preview”', look: '.tg-panel .tg-ai', explain: 'Send found that the request no longer matched the preview, so it sent nothing. The preview (outlined) now includes the new line and says to check it and send again.' });
+        s.group('Send');
+        s.check('The preview says the note changed', (await s.eval(() => document.querySelector('.tg-panel .tg-ai .tg-ai-error')?.textContent ?? '')) === 'The note changed since this preview. Check it and send again.');
+        s.check('The card is back at the preview, not asking', await s.eval(() => document.querySelector('.tg-panel .tg-ai .tg-ai-title')?.textContent === 'Ask AI'));
+        s.equal('No AI reply', (await aiReplies(s)).length, 0);
+        const exact = await s.eval(async () => {
+          const head = [...document.querySelectorAll('.tg-panel .tg-ai .tg-ai-group')].find((b) => b.textContent.includes('Exact text'));
+          head?.click();
+          await new Promise((r) => setTimeout(r, 300));
+          return document.querySelector('.tg-panel .tg-ai .tg-ai-exact')?.textContent ?? '';
+        });
+        s.check('The updated preview shows the new line', exact.includes('take old paint to the dump'), exact.slice(0, 300));
+        await s.step('Press Esc', async () => {
+          await s.press('Escape');
+          await s.waitFor(() => !document.querySelector('.tg-panel .tg-ai'), null, { what: 'the preview to close' });
+        }, { caption: 'Cancelled: the question is removed, nothing was sent', look: '.tg-panel', explain: 'Esc closed the preview and removed the question, as it does for any preview that was never sent.' });
+        s.group('After Esc');
+        s.equal('No AI reply', (await aiReplies(s)).length, 0);
+        s.equal('The question was removed with the preview', (await cards(s)).flatMap((c) => c.messages).filter((m) => m.includes('What am I forgetting')).length, 0);
+        await s.shot('End', 'final', { explain: 'Where it ends: no answer and no question, because nothing was sent. The note keeps the line you added.' });
+      },
+    },
+    {
       name: 'The @ menu offers Local, Gemini and Claude, and @agent is gone',
       weight: 'minor',
       intro: {
@@ -164,7 +216,7 @@ export default {
     { name: 'Ask an assistant about a passage', says: 'Mention @Local in a comment, read the preview, press Enter, get the answer in the thread.',
       steps: [
         { case: 'Ask Local about a passage: preview first, answer in the thread', says: '@Local and ⌘↩ open a preview; Enter sends it to Ollama on this Mac.',
-          edges: ['An Ollama server on another machine is labelled as leaving this computer', 'The @ menu offers Local, Gemini and Claude, and @agent is gone'] },
+          edges: ['Send after the note changed shows the new preview instead of sending', 'An Ollama server on another machine is labelled as leaving this computer', 'The @ menu offers Local, Gemini and Claude, and @agent is gone'] },
       ] },
   ] },
 };
