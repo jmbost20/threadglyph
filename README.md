@@ -9,9 +9,9 @@
 
 Comment threads for Obsidian, anchored to the text and images in your notes, with optional AI replies that can run entirely on your own computer.
 
-[![Threadglyph in Obsidian: a highlighted passage numbered 1, and its thread in the side panel with a question and a reply from a local model](docs/media/demo-poster.jpg)](https://www.jonahbostrom.com/demos/threadglyph-demo.mp4)
+https://github.com/user-attachments/assets/c47be86b-fada-4872-82b5-1cfd47f5eab1
 
-*Click the image to watch the demo (50 s): highlight a passage, ask a local model with `@Local`, and the answer lands in the thread.*
+*The demo (50 s): highlight a passage, ask a local model with `@Local`, and the answer lands in the thread. If the player doesn't show, [watch it here](https://www.jonahbostrom.com/demos/threadglyph-demo.mp4).*
 
 > **Status: alpha (0.3.0), desktop only.** It is used daily by its author, but expect rough edges. Bug reports are welcome.
 
