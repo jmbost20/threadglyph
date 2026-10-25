@@ -76,7 +76,8 @@ export const nodeGeminiFiles: GeminiFiles = {
     await mkdir(dir, { recursive: true });
   },
   async findKeyFile(folder) {
-    for (const candidate of [join(folder, '.gemini', '.env'), join(folder, '.env')]) {
+    // Where Gemini itself looks, with its home fallback, since each run gets a new home.
+    for (const candidate of [join(folder, '.gemini', '.env'), join(folder, '.env'), join(homedir(), '.gemini', '.env')]) {
       if (await stat(candidate).then((s) => s.isFile(), () => false)) return candidate;
     }
     return null;
@@ -86,7 +87,7 @@ export const nodeGeminiFiles: GeminiFiles = {
     await mkdir(join(home, '.gemini'), { mode: 0o700 });
     await writeFile(join(home, '.gemini', 'settings.json'), settings, { mode: 0o600 });
     // A link, so the key is never copied; Windows without developer mode can't link, so copy there.
-    await symlink(keyFile, join(home, '.gemini', '.env')).catch(() => copyFile(keyFile, join(home, '.gemini', '.env')));
+    if (keyFile) await symlink(keyFile, join(home, '.gemini', '.env')).catch(() => copyFile(keyFile, join(home, '.gemini', '.env')));
     return home;
   },
   async stageImage(bytes, extension) {
@@ -115,6 +116,7 @@ export function defaultAssistants(settings: AiSettings): AiAdapter[] {
         command,
         folder: geminiFolderPath(settings, home),
         ownsFolder: !settings.geminiFolder.trim(),
+        keyInEnvironment: !!process.env.GEMINI_API_KEY,
         model: settings.geminiModel,
         timeoutMs,
         env: { PATH: toolPath(command, inherited, home) },

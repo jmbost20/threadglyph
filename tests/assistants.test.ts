@@ -312,6 +312,13 @@ describe('Gemini CLI adapter', () => {
     expect(files.removeDir).toHaveBeenCalledWith('/tmp/tg-home');
   });
 
+  it('runs without a key file when GEMINI_API_KEY is already in the environment', async () => {
+    const { run, files, homes } = gemini(outcome({ stdout: reply('ok') }), '', null);
+    const adapter = new GeminiCliAdapter({ command: '/bin/gemini', folder: '/f', ownsFolder: false, keyInEnvironment: true, model: '', timeoutMs: 1000, env: {}, run, files });
+    expect(await adapter.ask(request(), live())).toEqual({ ok: true, text: 'ok' });
+    expect(homes[0].keyFile).toBeNull();
+  });
+
   it('sends nothing and says where the key goes when there is no key file', async () => {
     const { adapter, run, files } = gemini(outcome({ stdout: reply('ok') }), '', null);
     expect(await adapter.ask(request(), live())).toMatchObject({ ok: false, kind: 'auth', message: expect.stringContaining('/home/.threadglyph/gemini/.gemini/.env') });
@@ -389,7 +396,8 @@ describe('Gemini folder files', () => {
       expect(seen!.home).not.toBe(folder);
       expect(JSON.parse(seen!.settings)).toEqual(GEMINI_LOCKDOWN_SETTINGS);
       expect(seen!.key).toBe('GEMINI_API_KEY=synthetic\n');
-      expect(seen!.mode).toBe(0o600);
+      // Windows has no Unix permission bits.
+      if (process.platform !== 'win32') expect(seen!.mode).toBe(0o600);
       await expect(stat(seen!.home)).rejects.toThrow();
       // The key folder itself gets nothing but the .gemini folder the user puts the key in.
       expect(await readdir(join(folder, '.gemini'))).toEqual(['.env']);

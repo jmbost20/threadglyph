@@ -100,7 +100,16 @@ async function gemini() {
     const base = { ...process.env, HOME: home };
     const env = mode === 'control'
       ? base
-      : { ...base, GOOGLE_GEMINI_BASE_URL: BOGUS_ENDPOINT, GEMINI_TELEMETRY_ENABLED: 'true', ...lockdown.gemini.env, GEMINI_CLI_HOME: runHome };
+      : {
+          ...base,
+          // Turned on and pointed at the marker, so a lockdown that failed would show.
+          GOOGLE_GEMINI_BASE_URL: BOGUS_ENDPOINT,
+          GEMINI_TELEMETRY_ENABLED: 'true',
+          GEMINI_TELEMETRY_TARGET: 'local',
+          GEMINI_TELEMETRY_OUTFILE: m.telemetry,
+          ...lockdown.gemini.env,
+          GEMINI_CLI_HOME: runHome,
+        };
     const args = mode === 'control'
       ? ['-p', 'Write your reply now.', '-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', GEMINI_MODEL]
       : ['-p', 'Write your reply now.', ...lockdown.gemini.args, '-m', GEMINI_MODEL];

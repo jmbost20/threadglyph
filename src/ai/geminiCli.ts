@@ -45,13 +45,16 @@ export function geminiEnv(home: string): Record<string, string> {
 export interface GeminiFiles {
   /** Creates the folder and its parents if they do not exist. */
   ensureDir(dir: string): Promise<void>;
-  /** The key file in `folder`: `.gemini/.env`, else `.env`; null when there is neither. */
+  /**
+   * The key file Gemini would find for `folder`: its `.gemini/.env`, else its `.env`, else
+   * `~/.gemini/.env`; null when there is none.
+   */
   findKeyFile(folder: string): Promise<string | null>;
   /**
    * Makes a private temporary Gemini home for one run: `.gemini/settings.json` holding
-   * `settings`, and `.gemini/.env` pointing at `keyFile`. Returns its path.
+   * `settings`, and `.gemini/.env` pointing at `keyFile` when there is one. Returns its path.
    */
-  makeRunHome(settings: string, keyFile: string): Promise<string>;
+  makeRunHome(settings: string, keyFile: string | null): Promise<string>;
   /** Writes the image into a new private temporary folder and returns that folder and the file's path. */
   stageImage(bytes: Uint8Array, extension: string): Promise<{ dir: string; file: string }>;
   removeDir(dir: string): Promise<void>;
@@ -66,6 +69,8 @@ export interface GeminiCliOptions {
    * somewhere to go. A folder the owner points at (e.g. another tool's) is never written to.
    */
   ownsFolder: boolean;
+  /** True when GEMINI_API_KEY is already set in the environment Obsidian passes on. */
+  keyInEnvironment?: boolean;
   model: string;
   timeoutMs: number;
   env: Record<string, string>;
@@ -173,7 +178,7 @@ export class GeminiCliAdapter implements AiAdapter {
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (ownsFolder) await files.ensureDir(`${folder}/.gemini`);
     const keyFile = await files.findKeyFile(folder);
-    if (!keyFile) {
+    if (!keyFile && !this.options.keyInEnvironment) {
       return { ok: false, kind: 'auth', message: `Gemini is not set up. Put your key in ${folder}/.gemini/.env as GEMINI_API_KEY=…, then try again.` };
     }
     const home = await files.makeRunHome(`${JSON.stringify(GEMINI_LOCKDOWN_SETTINGS, null, 2)}\n`, keyFile);
