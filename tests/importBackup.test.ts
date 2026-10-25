@@ -8,7 +8,7 @@ import {
   parseEntry,
   parseLegacyComments,
   planImport,
-} from '../src/import/agentComments';
+} from '../src/import/inlineComments';
 import { resolveTextAnchor } from '../src/anchor/textAnchor';
 import { EXPORTS_DIR, buildExport, exportFileName, parseExport } from '../src/storage/backup';
 import { ANCHORS_DIR, THREADS_DIR } from '../src/storage/paths';
@@ -29,7 +29,7 @@ const NOTE = [
 
 const people = { assistants: ['Claude', 'Codex', 'Gemini', 'Local'], you: 'Jonah' };
 
-describe('Agent Comments import', () => {
+describe('inline comment import', () => {
   it('parses passages, entries and resolved state from the old markup', () => {
     const found = parseLegacyComments(NOTE);
     expect(found.map((t) => t.quote)).toEqual(['plant the tomatoes early', 'compost the leaves', 'ignored', 'short form', 'too wordy']);

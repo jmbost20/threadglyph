@@ -60,7 +60,7 @@ if (existsSync(inlineComments)) {
   data.autoDispatchOnMention = false;
   data.aiAgents = (data.aiAgents ?? []).map((agent) => ({ ...agent, ...(agent.cloudConsent ? { cloudConsent: false } : {}) }));
   writeJson('.obsidian/plugins/inline-comments/data.json', data);
-  report.push('Inline Comments: auto-dispatch on @mention off, Gemini cloud consent off (sandbox only)');
+  report.push('inline-comments plugin: auto-dispatch on @mention off, Gemini cloud consent off (sandbox only)');
 }
 
 const enabled = readJson(join(prodConfig, 'community-plugins.json'), []);

@@ -1193,16 +1193,16 @@ describe('Threadglyph plugin commands for search, import and backup', () => {
     expect(document.activeElement).toBe(q('.tg-search'));
   });
 
-  it('previews an Agent Comments import, imports on confirm, and never edits the note', async () => {
+  it('previews an inline comment import, imports on confirm, and never edits the note', async () => {
     app.vault.adapter.files.set(LEGACY, LEGACY_TEXT);
     const garden = app.workspace.open(LEGACY) as typeof view;
-    const cmd = command('import-agent-comments');
+    const cmd = command('import-inline-comments');
     expect(cmd.editorCheckCallback!(true, view.editor, view)).toBe(false);
     expect(cmd.editorCheckCallback!(true, garden.editor, { file: null })).toBe(false);
     expect(cmd.editorCheckCallback!(true, garden.editor, garden)).toBe(true);
     cmd.editorCheckCallback!(false, garden.editor, garden);
     const modal = openModals.at(-1)!;
-    expect(modal.titleEl.textContent).toBe('Import Agent Comments');
+    expect(modal.titleEl.textContent).toBe('Import inline comments');
     expect([...modal.contentEl.querySelectorAll('.tg-import-meta')].map((e) => e.textContent)).toEqual([
       '2 messages · Will be imported',
       '1 message · resolved · Will be imported',

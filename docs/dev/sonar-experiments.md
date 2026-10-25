@@ -67,7 +67,7 @@ Each entry records: **problem → tool feedback → decision → changed behavio
 
 ### 4. SonarQube Cloud on the end-to-end PR #7 (`42c882f`)
 
-- **Tool feedback:** quality gate **failed** on *Reliability Rating D on new code*. It was caused by 2 real bugs: `Array.sort()` without a compare function, in the restore dialog's file list (`modals.ts`) and in the import's date ordering (`agentComments.ts`). There were 21 further maintainability findings: `node:` import prefixes, 4 regular expressions with super-linear backtracking or too much complexity, `replaceAll` / `.at()` / optional-chain / `String.raw` / `codePointAt` preferences, cognitive complexity 16 > 15 in `renderAi`, and two `await` inside a loop.
+- **Tool feedback:** quality gate **failed** on *Reliability Rating D on new code*. It was caused by 2 real bugs: `Array.sort()` without a compare function, in the restore dialog's file list (`modals.ts`) and in the import's date ordering (`inlineComments.ts`). There were 21 further maintainability findings: `node:` import prefixes, 4 regular expressions with super-linear backtracking or too much complexity, `replaceAll` / `.at()` / optional-chain / `String.raw` / `codePointAt` preferences, cognitive complexity 16 > 15 in `renderAi`, and two `await` inside a loop.
 - **Decisions:**
   - Accepted both bugs. The file list now sorts with `localeCompare`, newest first. The import no longer uses `sort().pop()` to keep message times in order; it compares the two ISO strings directly.
   - Accepted all 4 regex findings:

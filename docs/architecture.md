@@ -39,7 +39,7 @@ flowchart LR
 | `src/controller.ts` | The commands the panel and editor call (comment, reply, edit, resolve, delete), and pending selections and drafts. |
 | `src/ui/` | The thread panel, editor and Reading-view decorations, and modals. |
 | `src/ai/` | One provider-neutral boundary (`types.ts`) with three adapters: Ollama over HTTP, and the Gemini and Claude command-line tools as child processes. Also builds the request and the preview. |
-| `src/import/` | Read-only import of Agent Comments' `{==…==}{>>…<<}` markup. |
+| `src/import/` | Read-only import of inline `{==…==}{>>…<<}` comment markup. |
 | `src/main.ts` | Obsidian wiring: commands, views, settings, file events, and the glue between the parts above. |
 
 ## How an anchor is found again

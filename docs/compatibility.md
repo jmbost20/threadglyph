@@ -24,11 +24,11 @@ Measured on an Apple M1 Pro (Node 26, Vitest), synthetic notes of ordinary lines
 - **Anchor file (`.threadglyph/anchors`) changed outside the app**: Obsidian does not index dot-folders, so it is **not watched**; it is picked up on the next reload. This is a known limitation.
 - **Stale save**: every write compares the on-disk revision. A mismatch writes nothing and keeps the draft. It **detects** a conflict; it does not merge one.
 
-## Coexistence with Agent Comments
+## Coexistence with inline comment markup
 
-- Separate id, view, CSS prefix and folders. Neither plugin reads or writes the other's data, with one exception, and it is read-only: **Import Agent Comments from this note** reads the `{==…==}{>>…<<}` markup and creates Threadglyph threads. The note is never changed.
-- A Threadglyph anchor inside the old markup resolves to the passage inside `{==…==}`, not to a plain copy of the same words elsewhere. If the old plugin later removes its markup, the passage is still found (tested).
-- **Not yet tested:** both plugins enabled together in one live vault. The sandbox does not have Agent Comments installed, and nothing is installed into the live vault without the owner.
+- Separate id, view, CSS prefix and folders. Threadglyph reads no other plugin's data, with one exception, and it is read-only: **Import inline comments from this note** reads the `{==…==}{>>…<<}` markup and creates Threadglyph threads. The note is never changed.
+- A Threadglyph anchor inside the old markup resolves to the passage inside `{==…==}`, not to a plain copy of the same words elsewhere. If the markup is later removed, the passage is still found (tested).
+- **Not yet tested:** Threadglyph enabled together with another plugin that writes this markup, in one live vault.
 
 ## Mobile
 

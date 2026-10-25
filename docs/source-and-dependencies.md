@@ -2,7 +2,7 @@
 
 ## Ownership
 
-All code in `src/`, `tests/`, `scripts/` and `styles.css` was written for this project; to the maintainer's knowledge no code was copied from other Obsidian plugins. [Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) (MIT) was consulted to understand its behavior and avoid conflicts. Threadglyph's importer reads Agent Comments' `{==…==}{>>…<<}` markup, but Threadglyph's own storage format and styles are separate.
+All code in `src/`, `tests/`, `scripts/` and `styles.css` was written for this project; to the maintainer's knowledge no code was copied from other Obsidian plugins. Threadglyph's importer reads inline `{==…==}{>>…<<}` comment markup, but Threadglyph's own storage format and styles are separate.
 
 ## Runtime boundary
 

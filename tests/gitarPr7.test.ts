@@ -5,7 +5,7 @@ import { GeminiCliAdapter, type GeminiFiles } from '../src/ai/geminiCli';
 import { AiSessions } from '../src/ai/session';
 import type { AiAdapter } from '../src/ai/types';
 import { ThreadController } from '../src/controller';
-import { parseLegacyComments } from '../src/import/agentComments';
+import { parseLegacyComments } from '../src/import/inlineComments';
 import { buildExport } from '../src/storage/backup';
 import { anchorPath } from '../src/storage/paths';
 import { ThreadStore } from '../src/storage/threadStore';

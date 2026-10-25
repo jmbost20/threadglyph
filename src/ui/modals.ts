@@ -1,5 +1,5 @@
 import { Modal, type App } from 'obsidian';
-import type { ImportItem } from '../import/agentComments';
+import type { ImportItem } from '../import/inlineComments';
 import { previewQuote } from './viewModel';
 
 const STATUS_TEXT: Record<ImportItem['status'], string> = {
@@ -8,7 +8,7 @@ const STATUS_TEXT: Record<ImportItem['status'], string> = {
   'nothing-to-import': 'Nothing to import (reactions or status only)',
 };
 
-/** Read-only preview of an Agent Comments import; nothing is written until Import is pressed. */
+/** Read-only preview of an inline comment import; nothing is written until Import is pressed. */
 export class ImportModal extends Modal {
   constructor(
     app: App,
@@ -22,11 +22,11 @@ export class ImportModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     const fresh = this.items.filter((i) => i.status === 'new').length;
-    this.titleEl.setText('Import Agent Comments');
+    this.titleEl.setText('Import inline comments');
     contentEl.addClass('tg-modal');
     contentEl.createEl('p', {
       text:
-        `${this.items.length} Agent Comments thread(s) in “${this.noteName}”. Importing copies them into Threadglyph. ` +
+        `${this.items.length} inline comment thread(s) in “${this.noteName}”. Importing copies them into Threadglyph. ` +
         'The note is not changed, and its {==…==} markup stays in place. Opinion tags are not carried over.',
     });
     const list = contentEl.createEl('ul', { cls: 'tg-import-list' });

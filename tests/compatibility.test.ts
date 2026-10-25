@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findImageEmbeds } from '../src/anchor/imageEmbed';
 import { captureTextAnchor, resolveTextAnchor } from '../src/anchor/textAnchor';
-import { parseLegacyComments } from '../src/import/agentComments';
+import { parseLegacyComments } from '../src/import/inlineComments';
 import { createThread } from '../src/model/thread';
 import type { TextAnchor, ThreadRecord } from '../src/model/types';
 import { readingMarks } from '../src/ui/readingMarks';
@@ -83,7 +83,7 @@ describe('long notes', { timeout: 30_000 }, () => {
   });
 });
 
-describe('coexistence with Agent Comments markup', () => {
+describe('coexistence with inline comment markup', () => {
   const note = 'Keep {==this passage==}{>>user|2026-09-16|note: old comment<<} and this passage too.';
 
   it('anchors a Threadglyph thread inside old markup without confusing it with the plain copy', () => {

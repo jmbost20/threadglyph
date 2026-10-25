@@ -2,12 +2,13 @@ import { SCHEMA_VERSION, type Author, type Message, type ThreadRecord } from '..
 import type { Clock } from '../model/thread';
 
 /**
- * Reads comments written by the old Agent Comments plugin, which stores them
- * inside the note as `{==passage==}{>>author|date|type: text<<}{>>…<<}`.
+ * Reads comments stored inside the note as inline markup:
+ * `{==passage==}{>>author|date|type: text<<}{>>…<<}`.
  *
  * This is read-only: the note is never changed, and its markup stays where it
  * is. Importing creates Threadglyph threads anchored to the passage inside the
- * markup, so both plugins can show the same conversation side by side.
+ * markup, so a plugin that shows the markup and Threadglyph can show the same
+ * conversation side by side.
  * Opinion tags (agree, disagree, question…) are not carried over, by design.
  */
 
@@ -29,7 +30,7 @@ export interface LegacyThread {
 }
 
 
-/** The old plugin escaped `<<` and `>>` inside bodies. */
+/** The markup escapes `<<` and `>>` inside bodies. */
 const unescape = (text: string) => text.replaceAll('‹‹', '<<').replaceAll('››', '>>');
 
 /**

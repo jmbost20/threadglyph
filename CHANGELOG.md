@@ -48,7 +48,7 @@ Private pilot.
 - `@Local`, `@Gemini` and `@Claude` mentions in comments; custom filters by author, age and date.
 - Comments on images (PNG, JPEG, WebP), with a title pill and a **Comment** button on every embed.
 - Numbered highlights, panel search, and thread navigation; Reading view badges.
-- Import of Agent Comments' `{==…==}{>>…<<}` comments as threads, read-only.
+- Read-only import of inline `{==…==}{>>…<<}` comments as threads.
 - Back up all threads and restore from a backup (adds only what is missing).
 - Long-note performance measurements and compatibility notes.
 
