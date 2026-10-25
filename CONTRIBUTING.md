@@ -55,3 +55,14 @@ Maintainers add someone with `npx all-contributors-cli add <github-login> <contr
 Before tagging, run the [acceptance script](docs/dev/pilot.md#owner-test-script), including the live CLI isolation check (`node scripts/check-cli-isolation.mjs gemini <Gemini folder> claude`).
 
 `npm version <x.y.z>` updates `package.json`, `manifest.json` and `versions.json` and creates a bare tag such as `0.4.0`. The first release, 0.3.0, is already the version in those files, so it is tagged directly: `git tag 0.3.0`. Pushing the tag drafts a GitHub release with `main.js`, `manifest.json` and `styles.css`; review it and publish.
+
+### The demo video
+
+The README demo is recorded from the synthetic sandbox, never from a real vault, by `uat/scenarios/6-demo.uat.mjs` (`npm run uat -- 6-demo --track demo-video`, with Ollama running). The run's clip (`uat/reports/<run>/video/*.mp4`) becomes `docs/media/demo.mp4` with the sandbox banner cropped off, and the GIF the README shows is made from that:
+
+```sh
+ffmpeg -i "uat/reports/<run>/video/<clip>.mp4" -vf "crop=iw:ih-28:0:28" -c:v libx264 -preset slow -crf 24 -pix_fmt yuv420p -movflags +faststart docs/media/demo.mp4
+ffmpeg -i docs/media/demo.mp4 -vf "fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=5" -loop 0 docs/media/demo.gif
+```
+
+Update the duration in the README's caption.
