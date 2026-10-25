@@ -1,0 +1,4 @@
+{
+  "title": "Open-source audit fixes: Reading view cleanup on unload",
+  "summary": "Switching Threadglyph off now removes its highlights, numbers and image titles from Reading view straight away, not only from the editor. Checked in the release scenarios."
+}
