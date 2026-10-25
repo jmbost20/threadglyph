@@ -6,7 +6,7 @@ Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Set up
 
-You need Node 22.12 or later (`.nvmrc` pins 22; `nvm use` picks it up).
+You need Node 22 (22.12 or later), 24, or 26 or later, the versions Vitest supports (`.nvmrc` pins 22; `nvm use` picks it up).
 
 ```sh
 npm ci

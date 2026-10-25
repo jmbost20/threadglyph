@@ -172,7 +172,7 @@ export function clearReadingMarks(root: ParentNode): void {
   root.querySelectorAll('.tg-badge, .tg-image-title').forEach((el) => el.remove());
   root.querySelectorAll<HTMLElement>('.tg-image-anchor').forEach((el) => {
     el.classList.remove('tg-image-anchor');
-    el.removeAttribute('data-tg-thread');
+    delete el.dataset.tgThread;
   });
   root.querySelectorAll<HTMLElement>('span.tg-anchor').forEach((span) => {
     const parent = span.parentNode;
