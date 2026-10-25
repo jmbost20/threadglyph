@@ -27,7 +27,7 @@ Exact versions are pinned in `package-lock.json`.
 | eslint, @eslint/js, typescript-eslint | MIT | Linting |
 | eslint-plugin-obsidianmd | MIT | Obsidian's own plugin review rules |
 | obsidian (types) | MIT | API type definitions |
-| @codemirror/state 6.5.0, @codemirror/view 6.38.6 | MIT | Pinned to the versions `obsidian` 1.13 declares as peers; runtime copy comes from Obsidian |
+| @codemirror/state 6.7.6, @codemirror/view 6.43.13 | MIT | Pinned to the versions `obsidian` 1.14 declares as peers; runtime copy comes from Obsidian. Update all three together (see `.github/dependabot.yml`) |
 | @types/node | MIT | Types for build scripts |
 
 ## npm audit triage

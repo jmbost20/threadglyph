@@ -9,6 +9,10 @@ updates:
       # Obsidian supplies CodeMirror at runtime and pins exact peer versions;
       # these follow the obsidian package, not the latest release.
       - dependency-name: '@codemirror/*'
+      # A new obsidian release needs its exact CodeMirror peers at the same time,
+      # which Dependabot can't do while they are ignored. Update the three by hand:
+      # npm view obsidian peerDependencies, then install all three together.
+      - dependency-name: obsidian
     groups:
       # Vitest and its coverage plugin pin each other exactly, so they always move
       # together, majors included; a lone major of either could never install.
