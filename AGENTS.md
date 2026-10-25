@@ -6,7 +6,7 @@ Rules for AI coding agents working in this repository. Threadglyph was built thi
 
 The owner has authorized coding agents working **in this repository**, without asking each time, to:
 
-- create `codex/<short-feature>` branches, and choose how to group commits and pushes;
+- create branches named `<type>/<short-topic>` (`feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `ci/`, `chore/`), and choose how to group commits and pushes;
 - commit intended source, tests and docs, and push finished features plus useful intermediate checkpoints;
 - open and update PRs (ready for review, not draft, unless there is a strong reason — owner request 2026-09-29), reusing the existing PR on reruns;
 - pick a PR mode per batch of work: **end-to-end** (one branch and one PR for a large batch; the owner's current choice) or **incremental** (several smaller PRs, one per coherent feature);
