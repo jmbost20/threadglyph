@@ -57,7 +57,7 @@ Then, in **Discussions**, keep the default categories (Announcements, General, I
 
 ## all-contributors app (works while private)
 
-Install [all-contributors](https://github.com/apps/allcontributors/installation/new) on this repository only. It reads `.all-contributorsrc` and updates the README's contributor list by pull request.
+Install [all-contributors](https://github.com/apps/allcontributors/installations/new) on this repository only. It reads `.all-contributorsrc` and updates the README's contributor list by pull request.
 
 ## Sponsors
 
@@ -81,22 +81,24 @@ These are paid features on private repositories.
    ```sh
    gh variable set SONAR_WAIT_FOR_GATE --body true
    ```
-4. **Branch protection on `main`:** pull requests only, one approving review, the CODEOWNERS review, and these checks required: *Typecheck, lint, test, build*, *Tests on windows-latest*, *Tests on macos-latest*, *SonarQube Cloud*, *Commits are signed off*, *CodeQL*.
+4. **Branch protection on `main`:** pull requests only, no force-pushes or deletion, and these checks required: *Typecheck, lint, test, build*, *Tests on windows-latest*, *Tests on macos-latest*, *Commits are signed off*, *CodeQL*. No approving review is required while there is one maintainer, who could not approve their own pull requests.
+
+   SonarQube Cloud is not a required check. Pull requests from forks get no `SONAR_TOKEN`, so the job skips the analysis and still succeeds; requiring it would not show that a fork's change passed the quality gate. The maintainer reads Sonar's result on the merge to `main` instead.
    ```sh
    gh api -X PUT repos/jmbost20/threadglyph/branches/main/protection --input - <<'JSON'
    {
      "required_status_checks": { "strict": true, "contexts": [
        "Typecheck, lint, test, build", "Tests on windows-latest", "Tests on macos-latest",
-       "SonarQube Cloud", "Commits are signed off", "Analyze (javascript-typescript)" ] },
+       "Commits are signed off", "Analyze (javascript-typescript)" ] },
      "enforce_admins": false,
-     "required_pull_request_reviews": { "required_approving_review_count": 1, "require_code_owner_reviews": true },
+     "required_pull_request_reviews": { "required_approving_review_count": 0 },
      "restrictions": null,
      "allow_force_pushes": false,
      "allow_deletions": false
    }
    JSON
    ```
-   With one maintainer, `enforce_admins: false` lets the maintainer merge their own pull requests; turn it on once there is a second reviewer.
+   Once there is a second maintainer, require one approving review and the CODEOWNERS review, and set `enforce_admins` to `true`.
 5. **Docs site:** Settings → Pages → Deploy from a branch → `main`, `/docs`. It publishes at `https://jmbost20.github.io/threadglyph/`.
 6. **Community Standards:** Insights → Community Standards should then show every item checked.
 7. **Check the README badges** (CI, Quality Gate, Coverage, Scorecard, Release) all render.

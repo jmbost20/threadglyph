@@ -70,6 +70,7 @@ export class WorkspaceLeaf {}
 
 export class ItemView {
   contentEl: HTMLElement;
+  containerEl = document.createElement('div');
   app = { scope: null as Scope | null };
   scope: Scope | null = null;
   constructor(public leaf: WorkspaceLeaf) {
@@ -287,6 +288,7 @@ export class WorkspaceLeafImpl extends WorkspaceLeaf {
 
 export class MarkdownView {
   editor: FakeEditor;
+  containerEl = document.createElement('div');
   mode: 'source' | 'preview' = 'source';
   previewMode = {
     rerenders: 0,
@@ -329,6 +331,10 @@ export class FakeWorkspace extends Events {
     return this.leaves.filter((l) =>
       type === 'markdown' ? l.view instanceof MarkdownView : (l.view as { getViewType?: () => string })?.getViewType?.() === type,
     );
+  }
+  iterateAllLeaves(cb: (leaf: WorkspaceLeafImpl) => void) {
+    // Real leaves always hold a view; skip the stub's not-yet-opened ones.
+    this.leaves.filter((l) => l.view).forEach(cb);
   }
   getRightLeaf() {
     const leaf = new WorkspaceLeafImpl(this);

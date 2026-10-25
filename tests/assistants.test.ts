@@ -72,7 +72,7 @@ describe('assistant settings', () => {
   it('keeps Gemini in its own folder, never the vault', () => {
     // Node's own separators, so this reads \\Users\\me\\… on Windows.
     expect(geminiFolderPath({ geminiFolder: '' }, '/Users/me')).toBe(join('/Users/me', '.threadglyph', 'gemini'));
-    expect(geminiFolderPath({ geminiFolder: '~/.ilc/gemini' }, '/Users/me')).toBe('/Users/me/.ilc/gemini');
+    expect(geminiFolderPath({ geminiFolder: '~/my-gemini' }, '/Users/me')).toBe('/Users/me/my-gemini');
     expect(geminiFolderPath({ geminiFolder: '/abs/dir' }, '/Users/me')).toBe('/abs/dir');
   });
 });

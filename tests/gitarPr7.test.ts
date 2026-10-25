@@ -47,7 +47,7 @@ describe('Gitar review on PR #7', () => {
     expect(files.prepareFolder).not.toHaveBeenCalled();
     await new GeminiCliAdapter({ ...base, ownsFolder: true }).ask(request, new AbortController().signal);
     expect(files.prepareFolder).toHaveBeenCalledTimes(1);
-    const [, borrowed] = defaultAssistants({ ...DEFAULT_AI_SETTINGS, aiEnabled: true, geminiFolder: '~/.ilc/gemini' });
+    const [, borrowed] = defaultAssistants({ ...DEFAULT_AI_SETTINGS, aiEnabled: true, geminiFolder: '~/my-gemini' });
     const [, own] = defaultAssistants({ ...DEFAULT_AI_SETTINGS, aiEnabled: true });
     expect((borrowed as unknown as { options: { ownsFolder: boolean } }).options.ownsFolder).toBe(false);
     expect((own as unknown as { options: { ownsFolder: boolean } }).options.ownsFolder).toBe(true);
