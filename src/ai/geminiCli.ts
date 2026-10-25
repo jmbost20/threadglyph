@@ -1,4 +1,5 @@
 import type { ProcessRunner } from './claudeCli';
+import lockdown from './cli-lockdown.json';
 import { SYSTEM_PROMPT, buildPromptText } from './prompt';
 import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
 
@@ -6,9 +7,13 @@ import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
  * Asks Google's Gemini through the locally installed Gemini CLI, using the
  * owner's own Gemini API key. Verified against Gemini CLI 0.60.
  *
- * Isolation: the CLI runs in Threadglyph's own folder (never the vault), in
- * read-only `plan` mode with extensions off, no MCP servers, and every
- * built-in tool excluded by that folder's settings. The request text goes in on stdin, so note text
+ * Isolation: every request runs in a new private home folder that holds only
+ * Threadglyph's settings and a link to the key file, and is deleted afterwards. So the
+ * user's `~/.gemini` (settings, hooks, GEMINI.md, extensions, MCP servers) and the key
+ * folder's own settings are never read, and nothing runs in the vault. The CLI runs in
+ * read-only `plan` mode with extensions, MCP servers, hooks, skills, context files,
+ * telemetry and every built-in tool off, and endpoint overrides cleared, so the request
+ * goes to Google. An administrator's system settings still apply. The request text goes in on stdin, so note text
  * never appears in the process list. An image is copied to a private temporary
  * folder for the one request and deleted afterwards.
  *
@@ -20,23 +25,33 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 export const LIGHT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
 
 /** Every built-in tool in Gemini CLI 0.60. Answering a comment needs none of them. */
-export const GEMINI_TOOLS = [
-  'activate_skill', 'ask_user', 'complete_task', 'enter_plan_mode', 'exit_plan_mode', 'get_internal_docs', 'glob',
-  'google_web_search', 'grep_search', 'invoke_agent', 'list_directory', 'list_mcp_resources', 'read_file',
-  'read_many_files', 'read_mcp_resource', 'replace', 'run_shell_command', 'take_snapshot', 'update_topic', 'web_fetch',
-  'write_file', 'write_todos', 'list_background_processes', 'read_background_output',
-];
+export const GEMINI_TOOLS: string[] = lockdown.gemini.settings.tools.exclude;
 
-/** Written once into the Gemini folder; an existing file is never overwritten. */
-export const GEMINI_FOLDER_SETTINGS = {
-  security: { auth: { selectedType: 'gemini-api-key' } },
-  privacy: { usageStatisticsEnabled: false },
-  tools: { exclude: GEMINI_TOOLS },
-};
+/**
+ * The settings of every Gemini run, in a home folder made for that run: API-key sign-in,
+ * the working folder trusted (so its `.env` is read and plan mode holds), and hooks, skills,
+ * context files, telemetry, usage statistics and every built-in tool switched off.
+ */
+export const GEMINI_LOCKDOWN_SETTINGS: Record<string, unknown> = lockdown.gemini.settings;
+
+/**
+ * The environment for one Gemini run in `home`. Values set here win over the key file,
+ * which only fills in variables that are not set.
+ */
+export function geminiEnv(home: string): Record<string, string> {
+  return { ...lockdown.gemini.env, GEMINI_CLI_HOME: home };
+}
 
 export interface GeminiFiles {
-  /** Creates `<folder>/.gemini/settings.json` if it does not exist. */
-  prepareFolder(folder: string, settings: string): Promise<void>;
+  /** Creates the folder and its parents if they do not exist. */
+  ensureDir(dir: string): Promise<void>;
+  /** The key file in `folder`: `.gemini/.env`, else `.env`; null when there is neither. */
+  findKeyFile(folder: string): Promise<string | null>;
+  /**
+   * Makes a private temporary Gemini home for one run: `.gemini/settings.json` holding
+   * `settings`, and `.gemini/.env` pointing at `keyFile`. Returns its path.
+   */
+  makeRunHome(settings: string, keyFile: string): Promise<string>;
   /** Writes the image into a new private temporary folder and returns that folder and the file's path. */
   stageImage(bytes: Uint8Array, extension: string): Promise<{ dir: string; file: string }>;
   removeDir(dir: string): Promise<void>;
@@ -44,11 +59,11 @@ export interface GeminiFiles {
 
 export interface GeminiCliOptions {
   command: string;
-  /** The working directory, holding `.gemini/settings.json` and `.gemini/.env`. */
+  /** The folder holding the key, in `.gemini/.env` (or `.env`). */
   folder: string;
   /**
-   * True for Threadglyph's own folder, which gets tool-free settings on first use.
-   * A folder the owner points at (e.g. another tool's) is borrowed and never written to.
+   * True for Threadglyph's own folder, whose `.gemini` folder is created so the key has
+   * somewhere to go. A folder the owner points at (e.g. another tool's) is never written to.
    */
   ownsFolder: boolean;
   model: string;
@@ -63,12 +78,12 @@ export interface GeminiCliOptions {
  * allow-list names the ones to keep, and it reads an empty list as "all". So
  * the list names one server that cannot exist, and none is started.
  */
-export const NO_MCP_SERVERS = 'threadglyph-no-mcp-servers';
+export const NO_MCP_SERVERS = lockdown.gemini.args[1];
 
 export function geminiArgs(model: string, image: string | null, imageDir: string | null): string[] {
   const args = ['-p', image ? `Attached image: @${image}` : 'Write your reply now.'];
   if (imageDir) args.push('--include-directories', imageDir);
-  args.push('--allowed-mcp-server-names', NO_MCP_SERVERS, '-e', 'none', '--output-format', 'json', '--approval-mode', 'plan', '-m', model.trim() || DEFAULT_GEMINI_MODEL);
+  args.push(...lockdown.gemini.args, '-m', model.trim() || DEFAULT_GEMINI_MODEL);
   return args;
 }
 
@@ -156,15 +171,19 @@ export class GeminiCliAdapter implements AiAdapter {
     const { command, folder, ownsFolder, model, env, run, files } = this.options;
     const timeoutMs = this.options.timeoutMs;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
-    if (ownsFolder) await files.prepareFolder(folder, `${JSON.stringify(GEMINI_FOLDER_SETTINGS, null, 2)}\n`);
-
+    if (ownsFolder) await files.ensureDir(`${folder}/.gemini`);
+    const keyFile = await files.findKeyFile(folder);
+    if (!keyFile) {
+      return { ok: false, kind: 'auth', message: `Gemini is not set up. Put your key in ${folder}/.gemini/.env as GEMINI_API_KEY=…, then try again.` };
+    }
+    const home = await files.makeRunHome(`${JSON.stringify(GEMINI_LOCKDOWN_SETTINGS, null, 2)}\n`, keyFile);
     let staged: { dir: string; file: string } | null = null;
     try {
       if (request.image) {
         staged = await files.stageImage(Uint8Array.from(atob(request.image.data), (c) => c.codePointAt(0)!), EXTENSIONS[request.image.mediaType]);
       }
       const args = geminiArgs(model, staged?.file ?? null, staged?.dir ?? null);
-      const out = await run(command, args, geminiInput(request), { cwd: folder, timeoutMs, signal, env });
+      const out = await run(command, args, geminiInput(request), { cwd: home, timeoutMs, signal, env: { ...env, ...geminiEnv(home) } });
       if (out.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
       if (out.error?.code === 'ENOENT') {
         return {
@@ -179,6 +198,8 @@ export class GeminiCliAdapter implements AiAdapter {
       return { ok: false, ...classifyGeminiFailure(`${out.error?.message ?? ''}\n${out.stderr}`, folder, out.timedOut, timeoutMs) };
     } finally {
       if (staged) await files.removeDir(staged.dir);
+      // Gemini's own logs of this run (chats, history) go with it.
+      await files.removeDir(home);
     }
   }
 }

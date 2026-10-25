@@ -148,9 +148,9 @@ export default {
       },
     },
     {
-      name: 'Gemini starts none of your MCP servers (live check)',
+      name: 'Gemini and Claude use none of your own setup (live check)',
       weight: 'minor',
-      skip: 'Checked live outside Obsidian instead, on 2026-10-24 with Gemini CLI 0.60.0 and a real Gemini API key: node scripts/check-gemini-mcp.mjs <Gemini folder>. A canary MCP server in a throwaway Gemini home started in the control run (no allow-list) and did NOT start under Threadglyph\'s flags; both runs answered "ok". It sends to Google, so it is not part of every rerun.',
+      skip: 'Checked live outside Obsidian instead, on 2026-10-25 with Gemini CLI 0.60.0 and Claude Code 2.1.310: node scripts/check-cli-isolation.mjs gemini <Gemini folder> claude. Planted hooks, an MCP server, GEMINI.md and CLAUDE.md files with a codeword, telemetry and a bogus endpoint were all used in the control runs and none under Threadglyph\'s setup, which still got answers ("NONE"). It sends to Google and Anthropic, so it is not part of every rerun.',
       run: async () => {},
     },
     {

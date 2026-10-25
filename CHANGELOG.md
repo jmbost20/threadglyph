@@ -27,6 +27,7 @@ The first public release.
 - The experimental `@agent` from the private pilot, which proposed edits to a note and applied them on Accept. Threadglyph no longer writes to note files at all. Its code remains in the repository's history.
 
 ### Fixed
+- Gemini CLI and Claude Code no longer bring in your own setup: no hooks, plugins, MCP servers, `GEMINI.md` / `CLAUDE.md` files, auto memory, telemetry or custom endpoints, so a request holds only what the preview shows and goes where it says. Each Gemini request runs in a private home deleted afterwards, which also fixes Gemini skipping the key and plan mode in a folder it did not trust. `scripts/check-cli-isolation.mjs` proves it live.
 - Escape no longer throws away an AI reply that could not be saved.
 - Custom filter controls keep keyboard focus after a change.
 - Enter and the arrow keys navigate from a clicked comment, as from its card.

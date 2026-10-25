@@ -1,4 +1,5 @@
 import { SYSTEM_PROMPT, buildPromptText } from './prompt';
+import lockdown from './cli-lockdown.json';
 import type { AiAdapter, AiErrorKind, AiRequest, AiResult } from './types';
 
 /**
@@ -40,19 +41,17 @@ export interface ClaudeCliOptions {
   run: ProcessRunner;
 }
 
+/**
+ * Set for every Claude Code run, on top of `--setting-sources ""` (no user, project or
+ * local settings, so no hooks or plugins): no CLAUDE.md or auto memory, no telemetry or
+ * other non-essential traffic, and no Bedrock, Vertex or custom endpoint, so the
+ * request goes to Anthropic as the preview says.
+ */
+export const CLAUDE_LOCKDOWN_ENV: Record<string, string> = lockdown.claude.env;
+
 export function claudeArgs(model: string, systemPrompt = SYSTEM_PROMPT): string[] {
-  const args = [
-    '-p',
-    '--input-format', 'stream-json',
-    '--output-format', 'stream-json',
-    '--verbose',
-    '--tools', '',
-    '--strict-mcp-config',
-    '--setting-sources', '',
-    '--no-session-persistence',
-    '--disable-slash-commands',
-    '--system-prompt', systemPrompt,
-  ];
+  // -p with stream-json in and out; no tools, MCP servers, settings files, sessions or slash commands.
+  const args = [...lockdown.claude.args, '--system-prompt', systemPrompt];
   if (model.trim()) args.push('--model', model.trim());
   return args;
 }
@@ -121,7 +120,7 @@ export class ClaudeCliAdapter implements AiAdapter {
     const { command, cwd, model, env, run } = this.options;
     const timeoutMs = this.options.timeoutMs;
     if (signal.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
-    const out = await run(command, claudeArgs(model), claudeInput(request), { cwd, timeoutMs, signal, env });
+    const out = await run(command, claudeArgs(model), claudeInput(request), { cwd, timeoutMs, signal, env: { ...env, ...CLAUDE_LOCKDOWN_ENV } });
     if (out.aborted) return { ok: false, kind: 'cancelled', message: 'Cancelled.' };
     if (out.timedOut) {
       return { ok: false, kind: 'timeout', message: `Claude did not answer within ${Math.round(timeoutMs / 1000)} seconds.` };

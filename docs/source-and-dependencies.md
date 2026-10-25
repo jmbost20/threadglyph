@@ -47,9 +47,9 @@ All three assistants are external programs the owner installs. None is an npm de
 | Assistant | Runtime | Where requests go | How it is called |
 |---|---|---|---|
 | Local (preferred) | [Ollama](https://ollama.com) app (MIT) with an open-weight model, e.g. `qwen3:8b` | This computer with the default `localhost` address. A server on another machine, and `:cloud` models, are labelled as leaving it | HTTP to `localhost:11434` `/api/chat` with Node's `http`; `/api/show` to check vision support |
-| Gemini | Gemini CLI (Apache-2.0, Google), owner's API key | Google | Child process, no shell, request on stdin; `--approval-mode plan` (read-only), `-e none` (no extensions) and an MCP allow-list naming no real server (no MCP servers); runs in `~/.threadglyph/gemini`, where a settings file excluding Gemini's built-in tools is created if none exists. Other user-level Gemini settings still apply |
-| Claude | Claude Code CLI (proprietary, Anthropic), existing sign-in | Anthropic | Child process, no shell, request on stdin; `--tools ""`, `--strict-mcp-config`, `--setting-sources ""`; OS temp folder as working directory |
+| Gemini | Gemini CLI (Apache-2.0, Google), owner's API key | Google | Child process, no shell, request on stdin; `--approval-mode plan` (read-only), `-e none` (no extensions) and an MCP allow-list naming no real server (no MCP servers); runs in a private home made for each request with hooks, skills, context files, telemetry and built-in tools off and endpoint overrides cleared (`src/ai/cli-lockdown.json`) |
+| Claude | Claude Code CLI (proprietary, Anthropic), existing sign-in | Anthropic | Child process, no shell, request on stdin; `--tools ""`, `--strict-mcp-config`, `--setting-sources ""`; `CLAUDE.md`, auto memory, telemetry and other endpoints off (`src/ai/cli-lockdown.json`); OS temp folder as working directory |
 
-Only the request shown in the preview is sent. Keys are never read or stored by the plugin: Gemini CLI reads its own `.env` file, and Claude Code its own sign-in.
+Only the request shown in the preview is sent; `node scripts/check-cli-isolation.mjs` checks that the CLIs add nothing of the user's own setup. Keys are never read or stored by the plugin: Gemini CLI reads its own `.env` file (linked into each request's private home), and Claude Code its own sign-in.
 
 Sonar analysis covers this repository's source. It is not an audit of Obsidian or of these dependencies.

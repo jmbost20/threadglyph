@@ -1,0 +1,112 @@
+{
+  "$comment": "What Threadglyph switches off in the Gemini and Claude command-line tools, so a request carries only what the preview shows and goes only where it says. Read by src/ai/*Cli.ts and by scripts/check-cli-isolation.mjs, which proves each entry against the installed CLIs.",
+  "gemini": {
+    "args": [
+      "--allowed-mcp-server-names",
+      "threadglyph-no-mcp-servers",
+      "-e",
+      "none",
+      "--output-format",
+      "json",
+      "--approval-mode",
+      "plan"
+    ],
+    "env": {
+      "GEMINI_TELEMETRY_ENABLED": "false",
+      "GEMINI_TELEMETRY_LOG_PROMPTS": "false",
+      "GEMINI_SYSTEM_MD": "",
+      "GOOGLE_GEMINI_BASE_URL": "",
+      "GOOGLE_VERTEX_BASE_URL": "",
+      "GOOGLE_GENAI_USE_VERTEXAI": "",
+      "GOOGLE_GENAI_USE_GCA": "",
+      "GEMINI_CLI_SYSTEM_SETTINGS_PATH": "",
+      "GEMINI_CLI_SYSTEM_DEFAULTS_PATH": ""
+    },
+    "settings": {
+      "security": {
+        "auth": {
+          "selectedType": "gemini-api-key"
+        },
+        "folderTrust": {
+          "enabled": false
+        }
+      },
+      "privacy": {
+        "usageStatisticsEnabled": false
+      },
+      "telemetry": {
+        "enabled": false,
+        "logPrompts": false
+      },
+      "hooksConfig": {
+        "enabled": false
+      },
+      "skills": {
+        "enabled": false
+      },
+      "context": {
+        "fileName": "THREADGLYPH-NO-CONTEXT-FILE.md",
+        "loadMemoryFromIncludeDirectories": false
+      },
+      "tools": {
+        "exclude": [
+          "activate_skill",
+          "ask_user",
+          "complete_task",
+          "enter_plan_mode",
+          "exit_plan_mode",
+          "get_internal_docs",
+          "glob",
+          "google_web_search",
+          "grep_search",
+          "invoke_agent",
+          "list_directory",
+          "list_mcp_resources",
+          "read_file",
+          "read_many_files",
+          "read_mcp_resource",
+          "replace",
+          "run_shell_command",
+          "take_snapshot",
+          "update_topic",
+          "web_fetch",
+          "write_file",
+          "write_todos",
+          "list_background_processes",
+          "read_background_output"
+        ]
+      }
+    }
+  },
+  "claude": {
+    "args": [
+      "-p",
+      "--input-format",
+      "stream-json",
+      "--output-format",
+      "stream-json",
+      "--verbose",
+      "--tools",
+      "",
+      "--strict-mcp-config",
+      "--setting-sources",
+      "",
+      "--no-session-persistence",
+      "--disable-slash-commands"
+    ],
+    "env": {
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+      "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+      "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1",
+      "ANTHROPIC_BASE_URL": "",
+      "CLAUDE_CODE_USE_BEDROCK": "",
+      "CLAUDE_CODE_USE_VERTEX": "",
+      "CLAUDE_CODE_USE_FOUNDRY": "",
+      "CLAUDE_CODE_USE_GATEWAY": "",
+      "CLAUDE_CODE_USE_MANTLE": "",
+      "CLAUDE_CODE_USE_ANTHROPIC_AWS": "",
+      "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD": ""
+    }
+  }
+}

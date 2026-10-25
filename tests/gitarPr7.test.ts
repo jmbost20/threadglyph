@@ -39,14 +39,22 @@ describe('Gitar review on PR #7', () => {
   });
 
   it('never writes into a Gemini folder it borrows', async () => {
-    const files: GeminiFiles = { prepareFolder: vi.fn(async () => {}), stageImage: vi.fn(), removeDir: vi.fn() };
+    const files: GeminiFiles = {
+      ensureDir: vi.fn(async () => {}),
+      findKeyFile: vi.fn(async () => '/f/.gemini/.env'),
+      makeRunHome: vi.fn(async () => '/run-home'),
+      stageImage: vi.fn(),
+      removeDir: vi.fn(),
+    };
     const run = vi.fn<ProcessRunner>(async () => ({ code: 0, stdout: '{"response":"ok"}', stderr: '', timedOut: false, aborted: false }));
     const request = { noteName: 'n', quote: 'q', image: null, context: null, messages: [] };
     const base = { command: 'g', folder: '/f', model: '', timeoutMs: 1000, env: {}, run, files };
     await new GeminiCliAdapter({ ...base, ownsFolder: false }).ask(request, new AbortController().signal);
-    expect(files.prepareFolder).not.toHaveBeenCalled();
+    expect(files.ensureDir).not.toHaveBeenCalled();
+    // Gemini runs in a home made for the request, never in the borrowed folder.
+    expect(run.mock.calls[0][3].cwd).toBe('/run-home');
     await new GeminiCliAdapter({ ...base, ownsFolder: true }).ask(request, new AbortController().signal);
-    expect(files.prepareFolder).toHaveBeenCalledTimes(1);
+    expect(files.ensureDir).toHaveBeenCalledTimes(1);
     const [, borrowed] = defaultAssistants({ ...DEFAULT_AI_SETTINGS, aiEnabled: true, geminiFolder: '~/my-gemini' });
     const [, own] = defaultAssistants({ ...DEFAULT_AI_SETTINGS, aiEnabled: true });
     expect((borrowed as unknown as { options: { ownsFolder: boolean } }).options.ownsFolder).toBe(false);

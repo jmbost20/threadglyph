@@ -52,6 +52,6 @@ Maintainers add someone with `npx all-contributors-cli add <github-login> <contr
 
 ## Releases (maintainers)
 
-Before tagging, run the [acceptance script](docs/dev/pilot.md#owner-test-script), including the live Gemini isolation check (`node scripts/check-gemini-mcp.mjs <Gemini folder>`).
+Before tagging, run the [acceptance script](docs/dev/pilot.md#owner-test-script), including the live CLI isolation check (`node scripts/check-cli-isolation.mjs gemini <Gemini folder> claude`).
 
 `npm version <x.y.z>` updates `package.json`, `manifest.json` and `versions.json` and creates a bare tag such as `0.4.0`. The first release, 0.3.0, is already the version in those files, so it is tagged directly: `git tag 0.3.0`. Pushing the tag drafts a GitHub release with `main.js`, `manifest.json` and `styles.css`; review it and publish.

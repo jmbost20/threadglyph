@@ -13,12 +13,13 @@ AI replies are useful in a comment thread, but notes are personal, and an assist
 - The preview lists what goes (the passage or image, the thread, and the context scope the user chose) and shows the exact request text. Its destination is judged from where the request actually goes: Ollama on another machine is shown as leaving the computer.
 - Local (Ollama) is the preferred assistant by default.
 - The CLIs run as child processes without a shell, with the request on standard input, so note text never appears in the process list:
-  - Claude Code: `--tools ""`, `--strict-mcp-config`, `--setting-sources ""`.
-  - Gemini CLI: `--approval-mode plan` (read-only), `-e none`, `--allowed-mcp-server-names threadglyph-no-mcp-servers` (Gemini treats an empty allow-list as "all", so the list names a server that cannot exist), and a tool-exclusion settings file in Threadglyph's own folder, created once and never overwritten.
+  - Claude Code: `--tools ""`, `--strict-mcp-config`, `--setting-sources ""` (no settings files, so no hooks or plugins), and environment switches that turn off `CLAUDE.md`, auto memory, telemetry and non-Anthropic endpoints.
+  - Gemini CLI: `--approval-mode plan` (read-only), `-e none`, `--allowed-mcp-server-names threadglyph-no-mcp-servers` (Gemini treats an empty allow-list as "all", so the list names a server that cannot exist). Each request runs in a new private home (`GEMINI_CLI_HOME`) holding only Threadglyph's settings (hooks, skills, context files, telemetry and every built-in tool off; the folder trusted, so plan mode holds) and a link to the key file, deleted afterwards. Endpoint overrides and telemetry switches in the environment are cleared.
+  - Both lists live in `src/ai/cli-lockdown.json`, shared with the live check (amended 2026-10-25 after the open-source audit, which found the user's own CLI setup could add unpreviewed context or destinations).
 - Threadglyph never reads or stores API keys.
 
 ## Consequences
 
 - Every new AI path must go through the same preview.
-- Gemini's other user-level settings still apply, because the CLI has no switch to ignore them all.
-- Whether each flag does what it says depends on the CLI version; the adapters name the version they were checked against, and a release's acceptance test checks them live. For Gemini, `scripts/check-gemini-mcp.mjs` does this with a canary MCP server (passed on 0.60.0, 2026-10-24).
+- Settings an administrator enforces machine-wide (Gemini's root-owned system settings, Claude Code's managed settings) and proxies in the environment still apply; the README says so.
+- Whether each switch does what it says depends on the CLI version; the adapters name the version they were checked against, and a release's acceptance test checks them live with `scripts/check-cli-isolation.mjs`. It plants hooks, MCP servers, context files with a codeword, telemetry and a bogus endpoint, and passes only when a control run uses them and Threadglyph's run uses none yet still reaches the provider (passed with Gemini CLI 0.60.0 and Claude Code 2.1.310, 2026-10-25).
