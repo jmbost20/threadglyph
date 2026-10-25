@@ -135,14 +135,14 @@ export default {
           await s.waitFor(() => !!document.querySelector('.prompt-input'), null, { what: 'the command palette' });
           await s.type('agent');
           await s.page.waitForTimeout(300);
-        }, { caption: 'No agent command in the palette', look: '.prompt', explain: 'Searching the command palette for “agent” finds no agent command: the matches are fuzzy hits on “Threadglyph”. The old agent chat and “Ask @agent here” commands are gone. (The Agent Comments import appears only on a note that has that markup.)' });
+        }, { caption: 'No agent command in the palette', look: '.prompt', explain: 'Searching the command palette for “agent” finds no agent command: the matches are fuzzy hits on “Threadglyph”. The old agent chat and “Ask @agent here” commands are gone. (The inline comment import appears only on a note that has that markup.)' });
         s.group('The command palette');
         const found = (await s.suggestions()).filter((t) => t.startsWith('Threadglyph'));
         s.check('No Threadglyph command in the palette has “agent” in its name', !found.some((t) => /agent/i.test(t)), found.join(' | '));
         await s.press('Escape');
         const ids = await s.eval(() => Object.keys(app.commands.commands).filter((id) => id.startsWith('threadglyph:')).sort());
         s.check('The agent commands are not registered at all', !ids.some((id) => /agent-on-line|agent-chat/.test(id)), ids.join(', '));
-        s.check('The Agent Comments import still is', ids.includes('threadglyph:import-agent-comments'), ids.join(', '));
+        s.check('The inline comment import still is', ids.includes('threadglyph:import-inline-comments'), ids.join(', '));
         s.equal('The note is unchanged', await s.read(ASK), askPlayground);
         await s.shot('End', 'final', { explain: 'Where it ends: the palette is closed, and the thread and note are as they were.' });
       },

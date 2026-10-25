@@ -28,6 +28,7 @@ No local setup? Open the repository in **GitHub Codespaces** (or a VS Code dev c
 ## Pull requests
 
 - Keep each PR to one coherent change, and fill in the PR template.
+- Name the branch `<type>/<short-topic>`, with the same types as commit messages: for example `feat/image-threads` or `fix/panel-focus`.
 - `npm run check` must pass. CI runs the same check; SonarQube Cloud and Gitar review every PR, and their findings are expected to be answered (fixed, or explained).
 - Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) for anything a user would notice.
 - Changes to a README promise, the stored data format or what is sent to an AI need an [architecture decision record](docs/adr/README.md) first.

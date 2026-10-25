@@ -86,10 +86,10 @@ Every image below shows a title line with a **Comment** button. The title comes 
 
 ![A green meadow](<Attachments/Sandbox meadow.png>)
 `,
-  // Synthetic comments in the old Agent Comments format, for the import preview.
-  'Agent Comments sample.md': `# Garden plan (Agent Comments sample)
+  // Synthetic comments in inline `{==…==}{>>…<<}` markup, for the import preview.
+  'Inline comments sample.md': `# Garden plan (inline comments sample)
 
-Run **Threadglyph: Import Agent Comments from this note**. The note is not changed.
+Run **Threadglyph: Import inline comments from this note**. The note is not changed.
 
 We should {==plant the tomatoes early==}{>>user|2026-09-16 14:20|question: Is April too soon here?<<}{>>Local|2026-09-16 14:21|reply: Frost can still hit in April; mid-May is safer.<<}{>>user|2026-09-16 14:25|react: 👍 #1<<} this year.
 

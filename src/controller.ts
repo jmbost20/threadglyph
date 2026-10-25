@@ -1,6 +1,6 @@
 import { imageSupport } from './anchor/imageEmbed';
 import { captureTextAnchor } from './anchor/textAnchor';
-import { importedThread, type ImportPeople, type LegacyThread } from './import/agentComments';
+import { importedThread, type ImportPeople, type LegacyThread } from './import/inlineComments';
 import { addReply, createThread, editMessage, setMessageDeleted, setStatus, setThreadDeleted, type Clock, systemClock, ThreadError } from './model/thread';
 import type { Author, TextAnchor, ThreadRecord } from './model/types';
 import type { ThreadStore } from './storage/threadStore';
@@ -183,7 +183,7 @@ export class ThreadController {
   }
 
   /**
-   * Imports one Agent Comments thread from `doc` as a new Threadglyph thread
+   * Imports one inline comment thread from `doc` as a new Threadglyph thread
    * anchored to its passage. The note itself is not changed.
    */
   async importLegacy(notePath: string, doc: string, legacy: LegacyThread, people: ImportPeople): Promise<Outcome> {

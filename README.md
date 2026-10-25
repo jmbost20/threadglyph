@@ -23,7 +23,7 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 - **Your notes are never changed.** Threads are stored in separate JSON files beside your notes; Threadglyph does not write to note files.
 - **Anchors that survive edits.** Edits around a passage don't break its thread. If the passage is deleted, or repeated so the original copy can't be told apart, the thread says so instead of guessing, and offers **Reattach to selection**.
 - **Optional AI replies (off by default).** Mention `@Local`, `@Gemini` or `@Claude` in a comment, or press **Ask AI**. Before anything is sent you see a preview of exactly what goes, and where ("Stays on this computer", "Sent to Google", "Sent to Anthropic", or the host of an Ollama server on another machine). The answer is added to the thread, labelled as AI, and stays editable.
-- **Import from Agent Comments.** Turns the `{==…==}{>>…<<}` comments of the [Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) plugin into threads, without changing the note.
+- **Import inline comments.** Turns `{==…==}{>>…<<}` comments written inside a note into threads, without changing the note.
 
 ## How it was built
 
@@ -142,10 +142,6 @@ Every kind of contribution counts: code, docs, testing, bug reports, ideas and r
 ## Coexistence
 
 Threadglyph uses its own plugin id, view type, `tg-` CSS namespace and storage folders, and registers no default hotkeys, so it runs beside other comment plugins without touching their data.
-
-## Prior art
-
-[Agent Comments](https://github.com/IvyYang1999/obsidian-inline-comments) by IvyYang1999 showed what comment threads in Obsidian could feel like, and Threadglyph imports its comment format. Threadglyph's code is written from scratch; see [docs/source-and-dependencies.md](docs/source-and-dependencies.md).
 
 ## License
 

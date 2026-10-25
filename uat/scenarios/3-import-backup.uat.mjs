@@ -1,26 +1,26 @@
-/** UAT: Agent Comments import, and backup and restore (docs/dev/pilot.md steps 7 and 8). */
+/** UAT: inline comment import, and backup and restore (docs/dev/pilot.md steps 7 and 8). */
 import { rmSync } from 'node:fs';
-import { DIR, WELCOME, agentComments, cards, comment, open, threadFiles, welcome } from '../fixtures.mjs';
+import { DIR, WELCOME, inlineComments, cards, comment, open, threadFiles, welcome } from '../fixtures.mjs';
 
-const SAMPLE = `${DIR}/Agent Comments sample.md`;
+const SAMPLE = `${DIR}/Inline comments sample.md`;
 
 export default {
   feature: 'Import and backup',
-  summary: 'Agent Comments threads come in read-only, and a backup restores only what is missing, never overwriting.',
+  summary: 'Inline comment threads come in read-only, and a backup restores only what is missing, never overwriting.',
   scenarios: [
     {
-      name: 'Import Agent Comments without touching the note',
+      name: 'Import inline comments without touching the note',
       weight: 'major',
-      intro: {"headline": "This shows bringing in comments written in the Agent Comments format, without touching the note.", "context": "The sample note contains Agent Comments markup, with the comments stored inside the note’s text. Import reads them, previews the three threads it found, and creates ThreadGlyph threads beside the note. The note file stays byte-for-byte as it was, and running the import again finds nothing new."},
+      intro: {"headline": "This shows bringing in comments written as inline markup, without touching the note.", "context": "The sample note contains inline comment markup, with the comments stored inside the note’s text. Import reads them, previews the three threads it found, and creates ThreadGlyph threads beside the note. The note file stays byte-for-byte as it was, and running the import again finds nothing new."},
       tradeoffs: [{"option": "Copy into threads, leaving the markup in the note", "downside": "The comments now exist twice: the old markup stays in the note until you remove it.", "chosen": true}, {"option": "Move: import, then strip the markup from the note", "downside": "Tidy, but it edits your note, and a bad import would lose the originals."}, {"option": "Read the markup live, without importing", "downside": "No duplicates, but replies made in ThreadGlyph would have nowhere to go."}],
       summary: 'Pilot step 7: the preview lists 3 threads; importing them leaves the note byte-for-byte unchanged; a second import finds nothing new.',
-      fixtures: { [SAMPLE]: agentComments },
+      fixtures: { [SAMPLE]: inlineComments },
       async run(s) {
-        await s.step('Open the Agent Comments sample (⌘O)', () => open(s, SAMPLE), { shot: false });
-        await s.shot('Start: a note with Agent Comments markup', 'initial', { explain: "The Agent Comments sample note, with its comment markup written inline." });
-        await s.step('Run “Import Agent Comments from this note” from the palette', async () => {
-          await s.runCommand('Threadglyph: Import Agent Comments from this note', 'import agent comments');
-          await s.waitFor(() => document.querySelector('.modal-container .modal-title')?.textContent === 'Import Agent Comments', null, { what: 'the import preview' });
+        await s.step('Open the inline comments sample (⌘O)', () => open(s, SAMPLE), { shot: false });
+        await s.shot('Start: a note with inline comment markup', 'initial', { explain: "The inline comments sample note, with its comment markup written inline." });
+        await s.step('Run “Import inline comments from this note” from the palette', async () => {
+          await s.runCommand('Threadglyph: Import inline comments from this note', 'import inline comments');
+          await s.waitFor(() => document.querySelector('.modal-container .modal-title')?.textContent === 'Import inline comments', null, { what: 'the import preview' });
         }, { caption: 'Import preview: three threads', explain: "The command opens a preview (outlined): three threads with their message counts, one already resolved.", look: '.modal-container .modal' });
         s.group('Preview');
         s.equal('Preview lists the 3 threads with their message counts', await s.eval(() => [...document.querySelectorAll('.tg-import-item')].map((li) => [li.querySelector('.tg-quote').textContent, li.querySelector('.tg-import-meta').textContent])),
@@ -33,9 +33,9 @@ export default {
         s.group('Imported');
         s.check('Notice: 3 imported, note not changed', (await s.notices()).some((n) => n.includes('imported 3 thread(s). The note was not changed.')), (await s.notices()).join('\n'));
         s.equal('Three thread files written', (await threadFiles(s)).length, 3);
-        s.equal('The note is byte-for-byte unchanged', await s.read(SAMPLE), agentComments);
+        s.equal('The note is byte-for-byte unchanged', await s.read(SAMPLE), inlineComments);
         await s.step('Run the import again', async () => {
-          await s.runCommand('Threadglyph: Import Agent Comments from this note', 'import agent comments');
+          await s.runCommand('Threadglyph: Import inline comments from this note', 'import inline comments');
           await s.waitFor(() => !!document.querySelector('.modal-container .tg-import-list'), null, { what: 'the import preview' });
         }, { caption: 'Second import: nothing new', look: '.modal-container .modal', explain: "Running it again: the preview’s button reads “Nothing new to import” and is disabled." });
         s.group('Second import');
@@ -95,9 +95,9 @@ export default {
     },
   ],
   story: { paths: [
-    { name: 'Bring threads in, and keep them safe', says: 'Import Agent Comments without touching the note, then back up and restore.',
+    { name: 'Bring threads in, and keep them safe', says: 'Import inline comments without touching the note, then back up and restore.',
       steps: [
-        { case: 'Import Agent Comments without touching the note', says: 'The import previews three threads and leaves the note byte-for-byte as it was.' },
+        { case: 'Import inline comments without touching the note', says: 'The import previews three threads and leaves the note byte-for-byte as it was.' },
         { case: 'Back up, lose a thread, restore only what is missing', says: 'A restore adds the missing thread and overwrites nothing.' },
       ] },
   ] },

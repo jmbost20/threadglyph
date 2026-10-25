@@ -110,13 +110,13 @@ Owner feedback from the first UAT pass: Local and Gemini should come before Clau
 - [x] **⌘F in the panel** focuses thread search via a panel-scoped hotkey, so it does not steal ⌘F from notes. There is also a *Search threads* command.
 - [x] **Image titles.** A title pill (alias or alt text, else the file name) with a **Comment** button sits after every supported image, in Live Preview and Reading view. It is drawn by the plugin only, never written into the note. The old plugin wrote a caption line into the note instead.
 - [x] **Stage 6: compatibility.** Measured long-note costs, external-change handling, coexistence, and mobile and sync assessments are in `docs/compatibility.md`.
-- [x] **Stage 6: Agent Comments import.** *Import Agent Comments from this note* parses `{==…==}{>>…<<}` and shows a preview. On confirm it creates threads anchored inside the markup and never edits the note.
+- [x] **Stage 6: inline comment import.** *Import inline comments from this note* parses `{==…==}{>>…<<}` and shows a preview. On confirm it creates threads anchored inside the markup and never edits the note.
   - Opinion tags, reactions and resolve markers are not carried over as messages; a trailing `resolve` sets the thread resolved.
   - Suggestions keep their wording.
   - Re-running recognises what was already imported.
 - [x] **Stage 7: pilot.** `npm run package` builds `dist/threadglyph-0.2.0/` with checksums and the source commit. There are *Back up all threads* and *Restore threads from a backup* commands; backups are validated, go to the local-only folder, and a restore only adds what is missing. `docs/dev/pilot.md` covers install and rollback, the owner test script and the walkthrough evidence.
 - [x] **Sandbox.**
-  - New notes: `Image titles.md` and `Agent Comments sample.md` (synthetic).
+  - New notes: `Image titles.md` and `Inline comments sample.md` (synthetic).
   - Ask AI starts on in the sandbox. When `THREADGLYPH_GEMINI_FOLDER` names a Gemini folder with a `.env`, the sandbox borrows it read-only.
   - The owner's request to copy real commented notes from the live vault was **not** carried out: the privacy guard blocked scanning the live vault, and owner guidance says daily-note content must not leave it. Synthetic examples in the same markup stand in until the owner supplies copies.
 - [x] **Live checks, synthetic content only.**
@@ -218,7 +218,7 @@ Owner request: bring the production plugins and shortcuts into the sandbox, orga
 - **Changes in the sandbox copies only:**
   - Obsidian Sync and Publish are off.
   - Inline Comments' `autoDispatchOnMention` is off, and its Gemini agent loses `cloudConsent`, so daily-note text is never sent on its own.
-  - Threadglyph's sandbox keys win conflicts: ⌘/ over `inline-comments:add-inline-comment`, and ⌘⇧/ over `app:toggle-right-sidebar`.
+  - Threadglyph's sandbox keys win conflicts: ⌘/ over another comment plugin's binding, and ⌘⇧/ over `app:toggle-right-sidebar`.
 - **Layout:** samples now live in `Test data/Threadglyph samples/`, and the owner's own test notes in `Test data/My test notes/`. New notes and attachments go to `Test data/Inbox` and `Test data/Attachments`. Moves update the thread and anchor paths (56 threads kept).
 - The sandbox is outside the repository, so the daily-note copy is never committed. Repository fixtures stay synthetic.
 
@@ -289,14 +289,14 @@ The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-gro
 - **Tab went through Delete and Edit.** Those links and the composer buttons are out of the Tab order. Tab goes card → comments → reply box → footer links → next card.
 - **No Reattach after deleting the passage.** Threads that lost their passage were sorted to the bottom, below every anchored thread. They now come first, and the header says how many need reattaching. Numbers still follow reading order.
 - **Counts on Open / Resolved / All,** capped at 99+.
-- **Tooltip storm and "note changed meanwhile" in `Agent Comments.md`:** these come from the Inline Comments plugin (pulled from production into the sandbox) reacting to its own markup. Not Threadglyph. That plugin is to be disabled before production, after its comments are imported (see the migration note).
+- **Tooltip storm and "note changed meanwhile" in the sandbox's inline-comment note:** these come from another comment plugin (pulled from production into the sandbox) reacting to its own markup. Not Threadglyph. That plugin is to be disabled before production, after its comments are imported (see the migration note).
 
 414 tests pass.
 
 ## October 1 — Production cut-over (owner request)
 
-- Owner asked to move Threadglyph into the live vault and retire Agent Comments. Installed the PR #10 build (97ea7f8) into the vault's plugins folder; the owner enables it and disables Agent Comments.
-- One-time migration, run from a local script with the plugin's own importer, anchor capture and store: 44 Agent Comments threads from 5 notes became Threadglyph threads. 12 are resolved: 9 were resolved in Agent Comments, and 3 more because their replies record a created card (`nid:`), as the owner asked. `[@Name](agent:…)` mentions became `@Name`.
-- The Agent Comments markup was removed from those notes so they read normally without that plugin; each anchor was checked to resolve to its exact passage in the cleaned note. Originals were backed up in the vault first.
+- Owner asked to move Threadglyph into the live vault and retire the previous comment plugin. Installed the PR #10 build (97ea7f8) into the vault's plugins folder; the owner enables it and disables the previous plugin.
+- One-time migration, run from a local script with the plugin's own importer, anchor capture and store: 44 inline-comment threads from 5 notes became Threadglyph threads. 12 are resolved: 9 were resolved in the previous plugin, and 3 more because their replies record a created card (`nid:`), as the owner asked. `[@Name](agent:…)` mentions became `@Name`.
+- The inline comment markup was removed from those notes so they read normally without that plugin; each anchor was checked to resolve to its exact passage in the cleaned note. Originals were backed up in the vault first.
 - Skipped on purpose: notes that only document the markup syntax (ADRs, templates, audit write-ups) and existing backup copies. Document Comments had no live comments left (only mentions in docs and backups).
 - Fix from the same feedback: the delete confirmation deletes on Enter even if focus landed on Cancel.

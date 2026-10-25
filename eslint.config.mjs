@@ -26,7 +26,7 @@ export default tseslint.config(
       'obsidianmd/ui/sentence-case': [
         'warn',
         {
-          brands: ['Threadglyph', 'Obsidian', 'Ollama', 'Gemini', 'Gemini CLI', 'Claude', 'Claude Code', 'Agent Comments', 'Ask AI', 'Local', 'Google', 'Anthropic', 'Deleted comments'],
+          brands: ['Threadglyph', 'Obsidian', 'Ollama', 'Gemini', 'Gemini CLI', 'Claude', 'Claude Code', 'Ask AI', 'Local', 'Google', 'Anthropic', 'Deleted comments'],
           acronyms: ['AI', 'CLI', 'API'],
           // Key hints such as "(⌘D)", "(E)" and "(Esc)" keep their key names, and
           // "e.g." / "vs." don't end a sentence.

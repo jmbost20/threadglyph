@@ -27,7 +27,7 @@ import { AiSessions, type BuiltRequest, type ContextScope } from './ai/session';
 import type { AiAdapter } from './ai/types';
 import { embedAtSelection, imageSupport, isRemote, prepareImage, type ImageEmbed } from './anchor/imageEmbed';
 import { ThreadController, type Outcome } from './controller';
-import { planImport } from './import/agentComments';
+import { planImport } from './import/inlineComments';
 import { EXPORTS_DIR, buildExport, exportFileName, parseExport } from './storage/backup';
 import { THREADS_DIR } from './storage/paths';
 import { ImportModal, RestoreModal } from './ui/modals';
@@ -146,8 +146,8 @@ export default class ThreadglyphPlugin extends Plugin {
       callback: async () => (await this.activatePanel())?.focusSearch(),
     });
     this.addCommand({
-      id: 'import-agent-comments',
-      name: 'Import Agent Comments from this note',
+      id: 'import-inline-comments',
+      name: 'Import inline comments from this note',
       editorCheckCallback: (checking, editor, ctx) => {
         if (!ctx.file || !this.loaded || !editor.getValue().includes('{>>')) return false;
         if (!checking) this.previewImport(ctx.file, editor.getValue());
@@ -748,7 +748,7 @@ export default class ThreadglyphPlugin extends Plugin {
 
   // ── Import, backup and restore ──────────────────────────────────────────────
 
-  /** Shows what importing this note's Agent Comments would do; nothing is written before Import. */
+  /** Shows what importing this note's inline comments would do; nothing is written before Import. */
   private previewImport(file: TFile, doc: string): void {
     const existing = this.store.forNote(file.path).map((t) => ({
       quote: this.store.anchorFor(t.id)?.quote ?? null,
