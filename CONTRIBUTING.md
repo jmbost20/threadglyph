@@ -6,6 +6,8 @@ Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Set up
 
+You need Node 22 (22.12 or later), 24, or 26 or later, the versions Vitest supports (`.nvmrc` pins 22; `nvm use` picks it up).
+
 ```sh
 npm ci
 npm run check    # typecheck, lint (including Obsidian's review rules), tests with coverage, production build
@@ -14,6 +16,8 @@ npm run sandbox  # disposable test vault at ~/Developer/threadglyph-sandbox-vaul
 ```
 
 Open the sandbox folder in Obsidian as a vault and enable community plugins. Reload the plugin after a rebuild (⌘R in the sandbox window).
+
+The `npm run uat*` scripts are for the maintainer: they drive the maintainer's `obsidian-uat` harness, which is not published. To check a change by hand inside Obsidian, follow the [manual test script](docs/dev/pilot.md#owner-test-script) in the sandbox.
 
 No local setup? Open the repository in **GitHub Codespaces** (or a VS Code dev container): Node and the dependencies are ready, and `npm run check` runs there. Trying the plugin inside Obsidian still needs a desktop vault.
 
@@ -50,4 +54,4 @@ Maintainers add someone with `npx all-contributors-cli add <github-login> <contr
 
 Before tagging, run the [acceptance script](docs/dev/pilot.md#owner-test-script), including the live Gemini isolation check (`node scripts/check-gemini-mcp.mjs <Gemini folder>`).
 
-`npm version <x.y.z>` updates `package.json`, `manifest.json` and `versions.json` and creates a bare tag (`0.3.0`). Pushing the tag drafts a GitHub release with `main.js`, `manifest.json` and `styles.css`; review it and publish.
+`npm version <x.y.z>` updates `package.json`, `manifest.json` and `versions.json` and creates a bare tag such as `0.4.0`. The first release, 0.3.0, is already the version in those files, so it is tagged directly: `git tag 0.3.0`. Pushing the tag drafts a GitHub release with `main.js`, `manifest.json` and `styles.css`; review it and publish.

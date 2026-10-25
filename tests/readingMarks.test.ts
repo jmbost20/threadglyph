@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { lineOffset, markRenderedSection, readingMarks, type ReadingMark } from '../src/ui/readingMarks';
+import { clearReadingMarks, lineOffset, markRenderedSection, readingMarks, type ReadingMark } from '../src/ui/readingMarks';
+import { titleRenderedImages } from '../src/ui/imageTitles';
 import type { ThreadView } from '../src/ui/viewModel';
 
 const source = '# Title\n\nSay it once: echo. Say it twice: echo.\n\nA **bold claim** and *mixed claim here*.\n';
@@ -174,5 +175,27 @@ describe('Reading view image badges', () => {
       const embeds = [...el.querySelectorAll<HTMLElement>('.internal-embed')];
       expect(embeds.map((e) => e.dataset.tgThread ?? null)).toEqual(['first-wiki', null]);
     });
+  });
+});
+
+describe('Clearing Reading view marks (plugin unload)', () => {
+  it('restores text marks to the HTML Obsidian rendered', () => {
+    const original = '<p>Say it once: echo. Say it twice: echo.</p>';
+    const el = section(original);
+    expect(markRenderedSection(el, source, ...para(2), [mark('echo', 0), mark('echo', 1)], vi.fn())).toBe(2);
+    clearReadingMarks(el);
+    expect(el.innerHTML).toBe(original);
+    expect(el.firstChild!.childNodes).toHaveLength(1);
+  });
+
+  it('removes image badges, titles and outlines', () => {
+    const src = 'Pics: ![[a.png]]\n';
+    const original = '<p>Pics: <span class="internal-embed image-embed" src="a.png"><img></span></p>';
+    const el = section(original);
+    const imageMark: ReadingMark = { threadId: 'img', quote: '![[a.png]]', from: 6, number: 1, resolved: false, imageLink: 'a.png' };
+    expect(markRenderedSection(el, src, 0, src.length, [imageMark], vi.fn())).toBe(1);
+    expect(titleRenderedImages(el, src, 0, src.length, vi.fn())).toBe(1);
+    clearReadingMarks(el);
+    expect(el.innerHTML).toBe(original);
   });
 });

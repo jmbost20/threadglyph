@@ -150,7 +150,7 @@ export default {
     {
       name: 'Gemini starts none of your MCP servers (live check)',
       weight: 'minor',
-      skip: 'Checked live outside Obsidian instead, on 2026-10-24 with Gemini CLI 0.60.0 and your ~/.ilc/gemini key: node scripts/check-gemini-mcp.mjs ~/.ilc/gemini. A canary MCP server in a throwaway Gemini home started in the control run (no allow-list) and did NOT start under Threadglyph\'s flags; both runs answered "ok". It sends to Google, so it is not part of every rerun.',
+      skip: 'Checked live outside Obsidian instead, on 2026-10-24 with Gemini CLI 0.60.0 and a real Gemini API key: node scripts/check-gemini-mcp.mjs <Gemini folder>. A canary MCP server in a throwaway Gemini home started in the control run (no allow-list) and did NOT start under Threadglyph\'s flags; both runs answered "ok". It sends to Google, so it is not part of every rerun.',
       run: async () => {},
     },
     {

@@ -13,7 +13,9 @@ https://github.com/user-attachments/assets/c47be86b-fada-4872-82b5-1cfd47f5eab1
 
 *The demo (50 s): highlight a passage, ask a local model with `@Local`, and the answer lands in the thread. If the player doesn't show, [watch it here](https://www.jonahbostrom.com/demos/threadglyph-demo.mp4).*
 
-> **Status: alpha (0.3.0), desktop only.** It is used daily by its author, but expect rough edges. Bug reports are welcome.
+> **Status: alpha (0.3.0), desktop only.** It is used daily by its author, on macOS, but expect rough edges. Bug reports are welcome.
+>
+> **Windows and Linux:** the core plugin and the Ollama assistant are covered by automated tests on all three systems. The Gemini and Claude assistants have only been used on macOS; on Windows, command-line tools installed through npm (`.cmd` launchers) are not supported yet ([#23](https://github.com/jmbost20/threadglyph/issues/23)).
 
 ## What it does
 
@@ -121,7 +123,7 @@ Questions and ideas go to [Discussions](https://github.com/jmbost20/threadglyph/
 
 ### Contributors
 
-Every kind of contribution counts: code, docs, testing, bug reports, ideas and reviews ([emoji key](https://allcontributors.org/docs/en/emoji-key)).
+Every kind of contribution counts: code, docs, testing, bug reports, ideas and reviews ([emoji key](https://allcontributors.org/emoji-key/)).
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->

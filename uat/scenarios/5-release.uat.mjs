@@ -45,9 +45,44 @@ export default {
         await s.shot('End', 'final', { explain: 'Where it ends: the plugin is off, the note reads exactly as before, and the thread is kept on disk for when it is switched back on.' });
       },
     },
+    {
+      name: 'Turning Threadglyph off also clears Reading view',
+      weight: 'minor',
+      intro: {
+        headline: 'This shows that switching Threadglyph off removes its highlight and number from Reading view too, not only from the editor.',
+        context: 'Reading view keeps what it drew until the note is rendered again, so the plugin removes its own marks when it is switched off. With a thread in place, the note is switched to Reading view, then the plugin is turned off.',
+      },
+      tradeoffs: [
+        { option: 'Remove the marks when the plugin unloads', downside: 'A little cleanup code that has to match what Reading view adds.', chosen: true },
+        { option: 'Leave them until the note re-renders', downside: 'Stale numbers stay on screen and still try to open a panel that is gone.' },
+      ],
+      summary: 'With a thread on “list item”, switch to Reading view (the highlight and number show), then disable the plugin. Both are gone and the note is unchanged.',
+      fixtures: { [WELCOME]: welcome },
+      async run(s) {
+        await s.step('Open “Welcome” and comment on “list item”', async () => {
+          await open(s, WELCOME);
+          await comment(s, 'list item', 'Gone from Reading view too?');
+        }, { shot: false });
+        await s.step('Switch the note to Reading view (book icon, top right of the note)', async () => {
+          await s.eval(async () => {
+            const leaf = app.workspace.getLeavesOfType('markdown')[0];
+            await leaf.setViewState({ ...leaf.getViewState(), state: { ...leaf.getViewState().state, mode: 'preview' } });
+          });
+          await s.waitFor(() => document.querySelector('.markdown-preview-view .tg-badge'), null, { what: 'the number in Reading view' });
+        }, { caption: 'Reading view: the passage is highlighted and numbered', look: '.markdown-preview-view .tg-anchor', explain: 'In Reading view the highlight and its number (outlined) are added to the rendered note by the plugin.' });
+        await s.step('Turn Threadglyph off', async () => {
+          await s.eval(() => app.plugins.disablePluginAndSave('threadglyph'));
+          await s.waitFor(() => !document.querySelector('.markdown-preview-view .tg-badge'), null, { what: 'the number to go' });
+        }, { caption: 'Plugin off: Reading view shows the plain note', look: '.markdown-preview-view', explain: 'The highlight and number are gone from Reading view right away; the note text is unchanged.' });
+        s.group('Reading view with the plugin off');
+        s.check('No Threadglyph highlight, number or image title left', await s.eval(() => !document.querySelector('.markdown-preview-view .tg-anchor, .markdown-preview-view .tg-badge, .markdown-preview-view .tg-image-title')));
+        s.equal('The note is byte-for-byte unchanged', await s.read(WELCOME), welcome);
+        await s.shot('End', 'final', { explain: 'Where it ends: Reading view shows the note exactly as Obsidian renders it without Threadglyph.' });
+      },
+    },
   ],
   story: { paths: [
     { name: 'Install, and remove cleanly', says: 'The release files install into a fresh vault; switching the plugin off leaves the note as it was.',
-      steps: [{ case: 'Turning Threadglyph off leaves the note as it was', says: 'Switch the plugin off: the highlight goes, the note and the thread file stay.' }] },
+      steps: [{ case: 'Turning Threadglyph off leaves the note as it was', says: 'Switch the plugin off: the highlight goes, the note and the thread file stay.', edges: ['Turning Threadglyph off also clears Reading view'] }] },
   ] },
 };
