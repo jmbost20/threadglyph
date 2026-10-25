@@ -1,4 +1,4 @@
 {
-  "title": "Open-source audit fixes: Reading view cleanup on unload",
-  "summary": "Switching Threadglyph off now removes its highlights, numbers and image titles from Reading view straight away, not only from the editor. Checked in the release scenarios."
+  "title": "Open-source audit fixes: preview re-check at Send, Reading view cleanup",
+  "summary": "Send now sends nothing the preview did not show: if the note changed after the preview was drawn, the updated preview comes back with a notice. Switching Threadglyph off also clears Reading view. Checked in the Ask AI and release scenarios."
 }
