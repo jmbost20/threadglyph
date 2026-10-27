@@ -68,6 +68,31 @@ describe('text anchors', () => {
       expect(resolveTextAnchor(after, todo()).status).toBe('unconfirmed');
     });
 
+    it('does not count a shared list marker or punctuation as context (Gitar on #40)', () => {
+      const list = '# Plan\n- TODO fix the parser\n- write docs\n- TODO later\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', list, list.indexOf('TODO'), list.indexOf('TODO') + 4);
+      expect(resolveTextAnchor(list.replace('- TODO fix the parser\n', ''), a).status).toBe('unconfirmed');
+      const lines = 'Intro line.\nTODO fix the parser.\nSecond item.\nTODO later\n';
+      const b = captureTextAnchor('thread-0001', 'a.md', lines, lines.indexOf('TODO'), lines.indexOf('TODO') + 4);
+      expect(resolveTextAnchor(lines.replace('TODO fix the parser.\n', ''), b).status).toBe('unconfirmed');
+    });
+
+    it('does not count inline comment markup around another copy as context (Gitar on #40)', () => {
+      const d = 'A {==TODO==}{>>alice|2026-09-16|note: first<<} here.\nB {==TODO==}{>>alice|2026-09-16|note: second<<} there.\n';
+      const from = d.indexOf('TODO');
+      const a = captureTextAnchor('thread-0001', 'a.md', d, from, from + 4);
+      const after = d.slice(d.indexOf('\n') + 1);
+      expect(resolveTextAnchor(after, a).status).toBe('unconfirmed');
+    });
+
+    it('needs only the word characters the saved context has, and checks markup only where it fits', () => {
+      const d = '- TODO\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', d, 2, 6);
+      expect(resolveTextAnchor('Intro\n- TODO\n', a)).toMatchObject({ status: 'found' });
+      const start = captureTextAnchor('thread-0001', 'a.md', '{=TODO list', 2, 6);
+      expect(resolveTextAnchor('{=TODO list', start)).toMatchObject({ status: 'found', from: 2 });
+    });
+
     it('is found when some visible context survives on either side', () => {
       const edited = note.replace('Later: TODO', 'Later: done').replace('fix the parser', 'fix the lexer');
       expect(resolveTextAnchor(edited, todo())).toEqual({ status: 'found', from: note.indexOf('TODO'), to: note.indexOf('TODO') + 4 });

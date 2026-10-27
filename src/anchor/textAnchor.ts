@@ -70,34 +70,45 @@ function sharedAfter(doc: string, docStart: number, suffix: string): number {
   return n;
 }
 
-/** Inline comment markup next to a quote, which the old plugin may later remove, is not context. */
-function withoutInlineMarkup(prefix: string, suffix: string): { prefix: string; suffix: string } {
-  const before = prefix.endsWith('{==') ? prefix.slice(0, -3) : prefix;
-  if (!suffix.startsWith('==}')) return { prefix: before, suffix };
-  let after = suffix.slice(3);
-  while (after.startsWith('{>>')) {
-    const end = after.indexOf('<<}');
-    after = end === -1 ? '' : after.slice(end + 3);
+/** Letters and digits that must surround a short quote's single match for it to count as the same place. */
+const MIN_SHARED_WORD_CHARS = 3;
+
+const wordChars = (text: string) => text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+
+/** Where `{==` markup in front of `at` begins, or `at` when there is none. */
+function markupStart(text: string, at: number): number {
+  return at >= 3 && text.startsWith('{==', at - 3) ? at - 3 : at;
+}
+
+/** Where `==}{>>…<<}…` markup after `at` ends, or `at` when there is none. A cut-off comment runs to the end. */
+function markupEnd(text: string, at: number): number {
+  if (!text.startsWith('==}', at)) return at;
+  let end = at + 3;
+  while (text.startsWith('{>>', end)) {
+    const close = text.indexOf('<<}', end);
+    if (close === -1) return text.length;
+    end = close + 3;
   }
-  return { prefix: before, suffix: after };
+  return end;
 }
 
 /**
- * Whether the text around the single match at `at` still shares visible
- * (non-whitespace) context with what was saved. A shared newline or space
- * alone proves nothing. When no visible context was saved, there is nothing to
- * contradict the match, so it is accepted.
+ * Whether the text around the single match at `at` still shares enough of the
+ * saved context to be the same place: a few letters or digits, not just a
+ * space, a newline, punctuation or a list marker. Inline comment markup
+ * (`{==…==}{>>…<<}`) is skipped on both sides, so neither its removal nor
+ * another marked-up copy changes the answer. When the saved context has fewer
+ * word characters than required, all of them must match; with none, there is
+ * nothing to contradict the match.
  */
 function contextConfirms(doc: string, at: number, anchor: TextAnchor): boolean {
-  const end = at + anchor.quote.length;
-  const shares = (prefix: string, suffix: string) => {
-    const before = sharedBefore(doc, at, prefix);
-    const after = sharedAfter(doc, end, suffix);
-    return /\S/.test(doc.slice(at - before, at) + doc.slice(end, end + after));
-  };
-  if (shares(anchor.prefix, anchor.suffix)) return true;
-  const plain = withoutInlineMarkup(anchor.prefix, anchor.suffix);
-  return shares(plain.prefix, plain.suffix) || !/\S/.test(plain.prefix + plain.suffix);
+  const prefix = anchor.prefix.slice(0, markupStart(anchor.prefix, anchor.prefix.length));
+  const suffix = anchor.suffix.slice(markupEnd(anchor.suffix, 0));
+  const before = markupStart(doc, at);
+  const after = markupEnd(doc, at + anchor.quote.length);
+  const shared =
+    doc.slice(before - sharedBefore(doc, before, prefix), before) + doc.slice(after, after + sharedAfter(doc, after, suffix));
+  return wordChars(shared) >= Math.min(MIN_SHARED_WORD_CHARS, wordChars(prefix + suffix));
 }
 
 /**
