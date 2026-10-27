@@ -50,11 +50,24 @@ const HIDDEN_SOURCE: RegExp[] = [
   /%%[\s\S]*?%%/g,
   /!\[\[[^\]\n]*\]\]/g,
   /!\[[^\]\n]*\]\((?:<[^>\n]*>|[^)\n]*)\)/g,
-  // `[[target|alias]]` shows only the alias.
-  /(?<=\[\[)[^\]|\n]*\|/g,
   // `[text](target)` shows only the text.
   /\]\((?:<[^>\n]*>|[^)\n]*)\)/g,
 ];
+
+/** `[[target|` of each `[[target|alias]]`, which shows only the alias. Scanned by hand: linear time. */
+function wikiTargets(source: string): [number, number][] {
+  const found: [number, number][] = [];
+  let open = source.indexOf('[[');
+  while (open !== -1) {
+    const close = source.indexOf(']]', open + 2);
+    if (close === -1) break;
+    const inner = source.slice(open + 2, close);
+    const bar = inner.indexOf('|');
+    if (bar !== -1 && !inner.includes('\n')) found.push([open, open + 2 + bar + 1]);
+    open = source.indexOf('[[', close + 2);
+  }
+  return found;
+}
 
 /** Code shows exactly as written, so nothing inside it is hidden. */
 const CODE = /(```|~~~)[\s\S]*?(?:\1|$(?![\s\S]))|`[^`\n]*`/g;
@@ -69,11 +82,13 @@ export function visibleSource(source: string): string {
   const inCode = (at: number) => code.some(([from, to]) => from <= at && at < to);
   // UTF-16 units, so indexes match the regex offsets.
   const chars = source.split('');
-  for (const pattern of HIDDEN_SOURCE) {
-    for (const m of source.matchAll(pattern)) {
-      if (inCode(m.index)) continue;
-      for (let i = m.index; i < m.index + m[0].length; i++) chars[i] = '\0';
-    }
+  const hidden = [
+    ...HIDDEN_SOURCE.flatMap((pattern) => [...source.matchAll(pattern)].map((m) => [m.index, m.index + m[0].length] as const)),
+    ...wikiTargets(source),
+  ];
+  for (const [from, to] of hidden) {
+    if (inCode(from)) continue;
+    for (let i = from; i < to; i++) chars[i] = '\0';
   }
   return chars.join('');
 }

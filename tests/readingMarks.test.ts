@@ -129,6 +129,10 @@ describe('Reading view: copies of a quote hidden in the source', () => {
     expect(visible).toContain('[h](i)');
     expect(visible).not.toContain('(b)');
     expect(visible).not.toContain('%%e%%');
+    expect(visible).toContain('d]]');
+    expect(visible).not.toContain('c|');
+    // Not wiki links: a line break inside, or no closing brackets.
+    expect(visibleSource('[[a\nb|c]] and [[x|y')).toBe('[[a\nb|c]] and [[x|y');
   });
 });
 
