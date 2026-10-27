@@ -90,6 +90,11 @@ describe('inline comment import', () => {
     // Undated first: takes the next dated time.
     expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|2026-09-17 10:00|note: two<<}'))
       .toEqual([at('2026-09-17T10:00:00'), at('2026-09-17T10:00:00')]);
+    // Dates on reactions and resolves count as neighbours too (Gitar on #43).
+    expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>user|2026-09-17|resolve: <<}'))
+      .toEqual([at('2026-09-17T00:00:00')]);
+    expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|2026-09-16|react: 👍<<}{>>Ann|2026-09-20|note: two<<}'))
+      .toEqual([at('2026-09-16T00:00:00'), at('2026-09-20T00:00:00')]);
     // No readable dates at all: the import time.
     expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|later|note: two<<}'))
       .toEqual(['2026-10-27T17:00:00.000Z', '2026-10-27T17:00:00.000Z']);
