@@ -54,13 +54,43 @@ export function parseEntry(raw: string): LegacyEntry {
 }
 
 /**
+ * Offsets of code in `doc`: fenced blocks (a line starting with ``` or ~~~,
+ * up to the matching fence or the end of the note) and inline `code` spans.
+ */
+export function codeRanges(doc: string): [number, number][] {
+  const ranges: [number, number][] = [];
+  let fence: { marker: string; from: number } | null = null;
+  let at = 0;
+  for (const line of doc.split('\n')) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence && marker?.[0] === fence.marker[0] && marker.length >= fence.marker.length) {
+      ranges.push([fence.from, at + line.length]);
+      fence = null;
+    } else if (!fence && marker) {
+      fence = { marker, from: at };
+    } else if (!fence) {
+      for (const m of line.matchAll(/`[^`]*`/g)) ranges.push([at + m.index, at + m.index + m[0].length]);
+    }
+    at += line.length + 1;
+  }
+  if (fence) ranges.push([fence.from, doc.length]);
+  return ranges;
+}
+
+/**
  * Scanned by hand: a passage ends at its own `==}`, so a plain highlight with
  * no comment is never merged into the next commented one.
  */
 export function parseLegacyComments(doc: string): LegacyThread[] {
   const found: LegacyThread[] = [];
+  const code = codeRanges(doc);
   let open = doc.indexOf('{==');
   while (open !== -1) {
+    // Markup shown as an example inside code is not a comment.
+    if (code.some(([from, to]) => from <= open && open < to)) {
+      open = doc.indexOf('{==', open + 3);
+      continue;
+    }
     const close = doc.indexOf('==}', open + 3);
     if (close === -1) break;
     const entries: LegacyEntry[] = [];
