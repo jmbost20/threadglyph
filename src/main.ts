@@ -802,10 +802,13 @@ export default class ThreadglyphPlugin extends Plugin {
       .threads.filter((t) => !(this.app.vault.getAbstractFileByPath(t.notePath) instanceof TFile))
       .map((t) => {
         const live = t.messages.filter((m) => !m.deletedAt);
+        // A deleted thread previews what Restore brings back: the comments of its latest deletion, as the panel does.
+        const last = t.messages.reduce((max, m) => (m.deletedAt && m.deletedAt > max ? m.deletedAt : max), '');
+        const shown = live[0] ?? t.messages.find((m) => m.deletedAt === last) ?? t.messages[0];
         return {
           threadId: t.id,
           notePath: t.notePath,
-          preview: (live[0] ?? t.messages[0]).body,
+          preview: shown.body,
           comments: live.length,
           updatedAt: t.updatedAt,
           deleted: live.length === 0,

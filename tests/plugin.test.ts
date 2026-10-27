@@ -1442,6 +1442,24 @@ describe('Threadglyph plugin threads on missing notes', () => {
     modal.close();
   });
 
+  it('previews the comments Restore brings back, not one deleted earlier on its own (Gitar on #46)', async () => {
+    await commentOn('worth a comment', 'First, deleted alone');
+    const reply = q<HTMLTextAreaElement>('.tg-card-focused textarea')!;
+    reply.value = 'Second';
+    reply.dispatchEvent(new Event('input'));
+    button('Reply')!.click();
+    await flush();
+    const [t] = threads();
+    const actions = panelActions();
+    await actions.setMessageDeleted(t.id, t.messages[0].id, true);
+    await actions.setThreadDeleted(t.id, true);
+    app.vault.adapter.files.delete(NOTE);
+    command('threads-on-missing-notes').callback!();
+    const modal = openModals.at(-1)!;
+    expect(modal.contentEl.querySelector('.tg-quote')!.textContent).toBe('Second');
+    modal.close();
+  });
+
   it('cannot move without an open note, and says when nothing is missing', async () => {
     command('threads-on-missing-notes').callback!();
     expect(openModals.at(-1)!.contentEl.textContent).toBe('Every thread’s note is in the vault.');
