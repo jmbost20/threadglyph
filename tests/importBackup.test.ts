@@ -121,6 +121,17 @@ describe('inline comment import', () => {
     expect(spans).toEqual(['`b`', '````\n```\nx\n````', '`d`', '~~~\ntail']);
   });
 
+  it('closes a fence only on a bare marker, and a code span only at a backtick run of its own length (Gitar on #45)', () => {
+    const fence = ['```', 'code', '```js', 'more', '```', 'A {==real==}{>>Ann|2026-09-16|note: keep<<}'].join('\n');
+    expect(parseLegacyComments(fence).map((t) => t.quote)).toEqual(['real']);
+    const doubled = 'Write `` {==x==}{>>u|2026-09-16|note: use `code`<<} `` to comment. {==y==}{>>Ann|2026-09-16|note: real<<}';
+    expect(parseLegacyComments(doubled).map((t) => t.quote)).toEqual(['y']);
+    const wrapped = 'Use `{==a==}{>>u|2026-09-16|note:\nb<<}` here.\n\nNot `closed\n\nhere {==z==}{>>Ann|2026-09-16|note: real<<}';
+    expect(parseLegacyComments(wrapped).map((t) => t.quote)).toEqual(['z']);
+    // A span cannot run into a fence that starts before it closes.
+    expect(codeRanges('a `b\n```\nc`\n```').map(([f, t]) => [f, t])).toEqual([[5, 15]]);
+  });
+
   it('plans an import and recognises threads that were already imported', () => {
     const plan = planImport(NOTE, [{ quote: 'compost the leaves', firstBody: 'Shred them <<first>>.' }]);
     expect(plan.map((p) => [p.legacy.quote, p.status, p.messages])).toEqual([
