@@ -5,18 +5,18 @@
  *
  *   npm run build && npm run sandbox [-- <vault-path>]
  */
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, rmdirSync, lstatSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync, rmSync, rmdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
-import { SAMPLES, SANDBOX_MARKER, expandHome, inside, moveNote, sandboxPath } from './sandbox-lib.mjs';
+import { SAMPLES, SANDBOX_MARKER, expandHome, inside, moveNote, retireNote, sandboxPath } from './sandbox-lib.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const vault = sandboxPath(process.argv[2]);
 mkdirSync(vault, { recursive: true });
 const marker = join(vault, SANDBOX_MARKER);
-if (!existsSync(marker)) writeFileSync(marker, 'Disposable Threadglyph test vault, made by `npm run sandbox`.\n');
+writeNew(marker, 'Disposable Threadglyph test vault, made by `npm run sandbox`.\n');
 
 const notes = {
   'Welcome.md': `# Welcome to the Threadglyph sandbox
@@ -104,6 +104,11 @@ Also {==compost the fallen leaves==}{>>user|2026-09-17 09:00|important: Shred th
 for (const name of [...Object.keys(notes), 'Sandbox sky.png', 'Attachments/Sandbox meadow.png', 'Not supported.heic']) {
   moveNote(vault, name, `${SAMPLES}/${name}`);
 }
+// The import sample was renamed after the markup it holds. An old copy is renamed in place, or, in a
+// sandbox that already has both, its threads move to the new sample and the old file goes (Gitar on #29, #53).
+for (const old of [`${SAMPLES}/Agent Comments sample.md`, 'Agent Comments sample.md']) {
+  retireNote(vault, old, `${SAMPLES}/Inline comments sample.md`);
+}
 for (const empty of ['Folder', 'Attachments']) {
   try {
     rmdirSync(join(vault, empty));
@@ -115,7 +120,7 @@ for (const empty of ['Folder', 'Attachments']) {
 for (const [name, body] of Object.entries(notes)) {
   const path = join(vault, SAMPLES, name);
   mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) writeFileSync(path, body);
+  writeNew(path, body);
 }
 
 // Synthetic images: flat gradients drawn here, so no real photo ever enters the sandbox.
@@ -126,38 +131,34 @@ const images = {
 for (const [name, rgb] of Object.entries(images)) {
   const path = join(vault, SAMPLES, name);
   mkdirSync(dirname(path), { recursive: true });
-  if (!existsSync(path)) writeFileSync(path, gradientPng(240, 140, rgb));
+  writeNew(path, gradientPng(240, 140, rgb));
 }
-const heic = join(vault, SAMPLES, 'Not supported.heic');
-if (!existsSync(heic)) writeFileSync(heic, 'placeholder, not a real HEIC file');
+writeNew(join(vault, SAMPLES, 'Not supported.heic'), 'placeholder, not a real HEIC file');
 
 const pluginDir = join(vault, '.obsidian', 'plugins', 'threadglyph');
 mkdirSync(pluginDir, { recursive: true });
 for (const file of ['main.js', 'manifest.json', 'styles.css']) {
   const target = join(pluginDir, file);
-  if (existsSync(target) || isLink(target)) rmSync(target);
+  // force: a missing file is fine, and a link is removed itself, never what it points to.
+  rmSync(target, { force: true });
   symlinkSync(join(repo, file), target);
 }
 
 // Sandbox only: Ask AI starts switched on (Local first). If THREADGLYPH_GEMINI_FOLDER names a
 // Gemini folder that already holds a key (.env), the sandbox borrows it read-only so Gemini
 // works without setup. An existing settings file is kept.
-const pluginData = join(pluginDir, 'data.json');
-if (!existsSync(pluginData)) {
-  const sharedGemini = process.env.THREADGLYPH_GEMINI_FOLDER;
-  const borrow = sharedGemini && existsSync(join(expandHome(sharedGemini), '.env'));
-  const settings = { aiEnabled: true, ...(borrow ? { geminiFolder: sharedGemini } : {}) };
-  writeFileSync(pluginData, JSON.stringify(settings, null, 2));
-}
+const sharedGemini = process.env.THREADGLYPH_GEMINI_FOLDER;
+const borrow = sharedGemini && existsSync(join(expandHome(sharedGemini), '.env'));
+const settings = { aiEnabled: true, ...(borrow ? { geminiFolder: sharedGemini } : {}) };
+writeNew(join(pluginDir, 'data.json'), JSON.stringify(settings, null, 2));
 
-const communityPlugins = join(vault, '.obsidian', 'community-plugins.json');
-if (!existsSync(communityPlugins)) writeFileSync(communityPlugins, JSON.stringify(['threadglyph'], null, 2));
+writeNew(join(vault, '.obsidian', 'community-plugins.json'), JSON.stringify(['threadglyph'], null, 2));
 
 // Sandbox-only shortcuts (Cmd/Ctrl+/ to comment). The plugin itself ships without
 // default hotkeys so it never collides with other comment plugins.
 // Existing bindings in the sandbox are kept.
 const hotkeysPath = join(vault, '.obsidian', 'hotkeys.json');
-const hotkeys = existsSync(hotkeysPath) ? JSON.parse(readFileSync(hotkeysPath, 'utf8')) : {};
+const hotkeys = JSON.parse(readIfThere(hotkeysPath) ?? '{}');
 const defaults = {
   'threadglyph:comment-on-selection': [{ modifiers: ['Mod'], key: '/' }],
   'threadglyph:reply-at-cursor': [{ modifiers: ['Mod', 'Alt'], key: '/' }],
@@ -214,10 +215,23 @@ function crc32(bytes) {
   return ~c >>> 0;
 }
 
-function isLink(path) {
+// Writes a file only if it does not exist yet, in one step: checking first and writing after
+// leaves a gap in which the file can change (CodeQL js/file-system-race).
+function writeNew(path, body) {
   try {
-    return lstatSync(path).isSymbolicLink();
-  } catch {
-    return false;
+    writeFileSync(path, body, { flag: 'wx' });
+    return true;
+  } catch (error) {
+    if (error.code === 'EEXIST') return false;
+    throw error;
+  }
+}
+
+function readIfThere(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
   }
 }

@@ -32,11 +32,11 @@ Exact versions are pinned in `package-lock.json`.
 
 ## npm audit triage
 
-Development dependencies only; none of them is bundled into `main.js`. Last checked 2026-10-24.
+Development dependencies only; none of them is bundled into `main.js`. Last checked 2026-10-27: `npm audit` finds no advisories.
 
 | Advisory | Severity | Where it comes from | Disposition |
 |---|---|---|---|
-| [GHSA-4p3w-j4w9-5jqw](https://github.com/advisories/GHSA-4p3w-j4w9-5jqw): path traversal via a crafted non-string locale name | Moderate (3 entries) | `moment`, a dependency of the `obsidian` type package (and of the copy inside `eslint-plugin-obsidianmd`) | Not exploitable here: only types are used at build time, nothing calls `moment`, and at runtime Obsidian supplies its own copy. npm's suggested fix is a downgrade of the lint plugin, so it is not applied. Revisit when `obsidian` updates `moment`. |
+| [GHSA-4p3w-j4w9-5jqw](https://github.com/advisories/GHSA-4p3w-j4w9-5jqw): path traversal via a crafted non-string locale name | Moderate | `moment`, a dependency of the `obsidian` type package. `obsidian` 1.14 brought the fixed 2.31.0, but the copy of `obsidian` 1.12.3 inside `eslint-plugin-obsidianmd` still asked for 2.29.4 | Fixed 2026-10-27: an `overrides` entry in `package.json` gives both copies `moment` 2.31.0. It was never exploitable here (only types are used at build time, nothing calls `moment`, and at runtime Obsidian supplies its own copy). Remove the override once the lint plugin moves past `obsidian` 1.12.3. |
 
 Earlier advisories in Vitest 2, its `tinypool`/`vite` chain, happy-dom 15 and esbuild 0.24 (4 critical, 2 high, 3 moderate) were cleared by upgrading to Vitest 5, happy-dom 21 and esbuild 0.28.
 
