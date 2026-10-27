@@ -1390,6 +1390,119 @@ describe('Threadglyph plugin commands for search, import and backup', () => {
   });
 });
 
+describe('Threadglyph plugin threads on missing notes', () => {
+  const anchorOf = (id: string) => JSON.parse(app.vault.adapter.files.get(`${ANCHORS_DIR}/${id}.json`)!);
+  const buttonIn = (modal: { contentEl: HTMLElement }, text: string) =>
+    [...modal.contentEl.querySelectorAll('button')].find((b) => b.textContent === text)!;
+
+  it('lists threads whose note is gone and moves one into the open note, anchor and all', async () => {
+    await commentOn('worth a comment', 'Keep me');
+    const id = threads()[0].id;
+    const reply = q<HTMLTextAreaElement>('.tg-card-focused textarea')!;
+    reply.value = 'And me';
+    reply.dispatchEvent(new Event('input'));
+    button('Reply')!.click();
+    await flush();
+    app.vault.adapter.files.delete(NOTE);
+    app.vault.adapter.files.set('Renamed.md', NOTE_TEXT);
+    app.workspace.open('Renamed.md');
+    await plugin.refresh();
+
+    command('threads-on-missing-notes').callback!();
+    const modal = openModals.at(-1)!;
+    expect(modal.titleEl.textContent).toBe('Threads on missing notes');
+    expect(modal.contentEl.querySelector('.tg-missing-path')!.textContent).toBe(NOTE);
+    expect(modal.contentEl.querySelector('.tg-quote')!.textContent).toBe('Keep me');
+    expect(modal.contentEl.querySelector('.tg-import-meta')!.textContent).toMatch(/^2 comments · last activity /);
+
+    buttonIn(modal, 'Move to “Renamed”').click();
+    await flush();
+    expect(threads()[0].notePath).toBe('Renamed.md');
+    expect(anchorOf(id).notePath).toBe('Renamed.md');
+    // The note has the same text, so the passage is found there and the card is focused.
+    expect(q('.tg-card-focused .tg-message-body')?.textContent).toBe('Keep me');
+    expect(threads()[0].messages).toHaveLength(2);
+    expect(q('.tg-card-focused .tg-anchor-problem')).toBeNull();
+    expect(modal.contentEl.textContent).toBe('Every thread’s note is in the vault.');
+    modal.close();
+  });
+
+  it('deletes a thread on a missing note and restores it from the same list', async () => {
+    await commentOn('worth a comment', 'Delete me');
+    app.vault.adapter.files.delete(NOTE);
+    command('threads-on-missing-notes').callback!();
+    const modal = openModals.at(-1)!;
+    buttonIn(modal, 'Delete').click();
+    await flush();
+    expect(threads()[0].messages.every((m) => m.deletedAt)).toBe(true);
+    expect(modal.contentEl.querySelector('.tg-missing-deleted .tg-import-meta')!.textContent).toBe('Deleted');
+    buttonIn(modal, 'Restore').click();
+    await flush();
+    expect(threads()[0].messages.some((m) => m.deletedAt)).toBe(false);
+    modal.close();
+  });
+
+  it('previews the comments Restore brings back, not one deleted earlier on its own (Gitar on #46)', async () => {
+    await commentOn('worth a comment', 'First, deleted alone');
+    const reply = q<HTMLTextAreaElement>('.tg-card-focused textarea')!;
+    reply.value = 'Second';
+    reply.dispatchEvent(new Event('input'));
+    button('Reply')!.click();
+    await flush();
+    const [t] = threads();
+    const actions = panelActions();
+    await actions.setMessageDeleted(t.id, t.messages[0].id, true);
+    await actions.setThreadDeleted(t.id, true);
+    app.vault.adapter.files.delete(NOTE);
+    command('threads-on-missing-notes').callback!();
+    const modal = openModals.at(-1)!;
+    expect(modal.contentEl.querySelector('.tg-quote')!.textContent).toBe('Second');
+    modal.close();
+  });
+
+  it('cannot move without an open note, and says when nothing is missing', async () => {
+    command('threads-on-missing-notes').callback!();
+    expect(openModals.at(-1)!.contentEl.textContent).toBe('Every thread’s note is in the vault.');
+    openModals.at(-1)!.close();
+
+    await commentOn('worth a comment', 'Orphan');
+    app.vault.adapter.files.delete(NOTE);
+    command('threads-on-missing-notes').callback!();
+    const modal = openModals.at(-1)!;
+    expect(modal.contentEl.textContent).toMatch(/Open a note first/);
+    const move = buttonIn(modal, 'Move to the open note');
+    expect(move.disabled).toBe(true);
+    // A failed move (for example the thread changed elsewhere) leaves it listed.
+    const actions = (modal as unknown as { actions: { move(id: string): Promise<boolean> } }).actions;
+    expect(await actions.move(threads()[0].id)).toBe(false);
+    modal.close();
+  });
+
+  it('reports a refused move and keeps the thread listed', async () => {
+    await commentOn('worth a comment', 'Stays');
+    app.vault.adapter.files.delete(NOTE);
+    app.vault.adapter.files.set('Other.md', 'Unrelated note.\n');
+    app.workspace.open('Other.md');
+    await plugin.refresh();
+    // Another device bumped the thread on disk, so the move conflicts.
+    const [t] = threads();
+    app.vault.adapter.files.set(`${THREADS_DIR}/${t.id}.json`, JSON.stringify({ ...t, revision: t.revision + 5 }));
+    command('threads-on-missing-notes').callback!();
+    const modal = openModals.at(-1)!;
+    buttonIn(modal, 'Move to “Other”').click();
+    await flush();
+    expect(notices.at(-1)).toMatch(/changed elsewhere/);
+    expect(modal.contentEl.querySelector('.tg-missing-path')!.textContent).toBe(NOTE);
+    modal.close();
+  });
+
+  it('waits until threads have loaded', async () => {
+    (plugin as unknown as { loaded: boolean }).loaded = false;
+    command('threads-on-missing-notes').callback!();
+    expect(notices.at(-1)).toMatch(/still loading/);
+  });
+});
+
 describe('Threadglyph plugin image titles', () => {
   const TRIP = 'Trip.md';
   const TRIP_TEXT = 'Look:\n![[sky.png|Evening sky]]\n';

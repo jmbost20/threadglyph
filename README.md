@@ -97,7 +97,7 @@ As Obsidian's [developer policies](https://docs.obsidian.md/Developer+policies) 
 | `.threadglyph/anchors/<id>.json` | The quoted passage and its surrounding context, used to find the passage again. | **No.** Add `.threadglyph/` to `.gitignore` |
 | `.threadglyph/exports/*.json` | Backups from *Back up all threads* (threads and anchors). | **No** (same folder) |
 
-If an anchor file is missing (for example, on a fresh clone), the thread still shows with all its messages and offers **Reattach to selection**. **Back up all threads** and **Restore threads from a backup** are in the command palette; a restore only adds threads that are missing and never overwrites.
+If an anchor file is missing (for example, on a fresh clone), the thread still shows with all its messages and offers **Reattach to selection**. **Back up all threads** and **Restore threads from a backup** are in the command palette; a restore only adds threads that are missing and never overwrites. If a note is deleted or renamed outside Obsidian, its threads are kept: **Show threads on missing notes** lists them, to move one to the open note (and reattach it there) or delete it.
 
 Anchors sit in a dot-folder. Git (with the suggested `.gitignore`) and some sync tools skip it, so another device may show threads that need a reattach; check how your sync tool treats hidden folders. The plugin does not run on mobile. See [docs/compatibility.md](docs/compatibility.md) for measured performance on large notes and other limits.
 

@@ -4,6 +4,9 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Added
+- **Show threads on missing notes** (command palette) lists threads whose note was deleted or renamed outside Obsidian, which no panel could show. Move one to the open note and reattach it there, or delete it (and restore it from the same list).
+
 ### Fixed
 - A thread on a short quote, such as one word, no longer moves silently to another copy of those words when its own passage is deleted. It asks for a reattach instead.
 - Reading view highlights the right copy of a repeated quote when another copy sits somewhere hidden, such as a link's address or a comment.
