@@ -53,14 +53,78 @@ export function parseEntry(raw: string): LegacyEntry {
   return { author: 'unknown', date: '', type: 'note', text: unescape(raw.trim()) };
 }
 
+const runLength = (text: string, at: number) => {
+  let end = at;
+  while (text[end] === '`') end++;
+  return end - at;
+};
+
+/** Fenced code blocks: from a ``` or ~~~ line to a bare closing fence of the same kind, at least as long, or the end. */
+function fencedBlocks(doc: string): [number, number][] {
+  const blocks: [number, number][] = [];
+  let open: { marker: string; from: number } | null = null;
+  let at = 0;
+  for (const line of doc.split('\n')) {
+    const m = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    const marker = m?.[1];
+    // A closing fence carries nothing after its marker: a ```js line inside a block is content.
+    const bare = m !== null && line.slice(m[0].length).trim() === '';
+    if (!open && marker) open = { marker, from: at };
+    else if (open && marker && bare && marker.startsWith(open.marker[0]) && marker.length >= open.marker.length) {
+      blocks.push([open.from, at + line.length]);
+      open = null;
+    }
+    at += line.length + 1;
+  }
+  if (open) blocks.push([open.from, doc.length]);
+  return blocks;
+}
+
+/**
+ * Offsets of code in `doc`: fenced blocks, and inline code spans, which close
+ * at the next backtick run of the same length (so ``a `b` c`` is one span)
+ * within the paragraph. Scanned by hand: no regex backtracking.
+ */
+export function codeRanges(doc: string): [number, number][] {
+  const blocks = fencedBlocks(doc);
+  const ranges = [...blocks];
+  let i = doc.indexOf('`');
+  while (i !== -1) {
+    const block = blocks.find(([from, to]) => from <= i && i < to);
+    if (block) {
+      i = doc.indexOf('`', block[1]);
+      continue;
+    }
+    const n = runLength(doc, i);
+    const paragraphEnd = doc.indexOf('\n\n', i);
+    const nextBlock = blocks.find(([from]) => from > i)?.[0] ?? doc.length;
+    const limit = Math.min(paragraphEnd === -1 ? doc.length : paragraphEnd, nextBlock);
+    let close = doc.indexOf('`', i + n);
+    while (close !== -1 && close < limit && runLength(doc, close) !== n) close = doc.indexOf('`', close + runLength(doc, close));
+    if (close !== -1 && close < limit) {
+      ranges.push([i, close + n]);
+      i = doc.indexOf('`', close + n);
+    } else {
+      i = doc.indexOf('`', i + n);
+    }
+  }
+  return ranges.sort((a, b) => a[0] - b[0]);
+}
+
 /**
  * Scanned by hand: a passage ends at its own `==}`, so a plain highlight with
  * no comment is never merged into the next commented one.
  */
 export function parseLegacyComments(doc: string): LegacyThread[] {
   const found: LegacyThread[] = [];
+  const code = codeRanges(doc);
   let open = doc.indexOf('{==');
   while (open !== -1) {
+    // Markup shown as an example inside code is not a comment.
+    if (code.some(([from, to]) => from <= open && open < to)) {
+      open = doc.indexOf('{==', open + 3);
+      continue;
+    }
     const close = doc.indexOf('==}', open + 3);
     if (close === -1) break;
     const entries: LegacyEntry[] = [];

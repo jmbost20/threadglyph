@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ThreadController } from '../src/controller';
 import {
+  codeRanges,
   entryMessage,
   importedThread,
   legacyAuthor,
@@ -98,6 +99,37 @@ describe('inline comment import', () => {
     // No readable dates at all: the import time.
     expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|later|note: two<<}'))
       .toEqual(['2026-10-27T17:00:00.000Z', '2026-10-27T17:00:00.000Z']);
+  });
+
+  it('skips markup shown as an example inside code', () => {
+    const doc = [
+      'Write `{==text==}{>>you|2026-09-16|note: hi<<}` to comment.',
+      '```md',
+      '{==in a fence==}{>>you|2026-09-16|note: example<<}',
+      '```',
+      'A {==real one==}{>>Ann|2026-09-16|note: keep me<<}.',
+      '~~~~',
+      '{==unclosed fence==}{>>you|2026-09-16|note: example<<}',
+    ].join('\n');
+    expect(parseLegacyComments(doc).map((t) => t.quote)).toEqual(['real one']);
+    expect(planImport(doc, []).map((p) => p.legacy.quote)).toEqual(['real one']);
+  });
+
+  it('finds code: inline spans, fences closed by a long enough marker of the same kind, and an unclosed fence', () => {
+    const doc = 'a `b` c\n````\n```\nx\n````\nafter `d`\n~~~\ntail';
+    const spans = codeRanges(doc).map(([from, to]) => doc.slice(from, to));
+    expect(spans).toEqual(['`b`', '````\n```\nx\n````', '`d`', '~~~\ntail']);
+  });
+
+  it('closes a fence only on a bare marker, and a code span only at a backtick run of its own length (Gitar on #45)', () => {
+    const fence = ['```', 'code', '```js', 'more', '```', 'A {==real==}{>>Ann|2026-09-16|note: keep<<}'].join('\n');
+    expect(parseLegacyComments(fence).map((t) => t.quote)).toEqual(['real']);
+    const doubled = 'Write `` {==x==}{>>u|2026-09-16|note: use `code`<<} `` to comment. {==y==}{>>Ann|2026-09-16|note: real<<}';
+    expect(parseLegacyComments(doubled).map((t) => t.quote)).toEqual(['y']);
+    const wrapped = 'Use `{==a==}{>>u|2026-09-16|note:\nb<<}` here.\n\nNot `closed\n\nhere {==z==}{>>Ann|2026-09-16|note: real<<}';
+    expect(parseLegacyComments(wrapped).map((t) => t.quote)).toEqual(['z']);
+    // A span cannot run into a fence that starts before it closes.
+    expect(codeRanges('a `b\n```\nc`\n```').map(([f, t]) => [f, t])).toEqual([[5, 15]]);
   });
 
   it('plans an import and recognises threads that were already imported', () => {
