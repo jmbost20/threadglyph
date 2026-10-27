@@ -46,7 +46,7 @@ flowchart LR
 
 1. Find every place the quote occurs in the note.
 2. **No match:** the thread is shown as *missing*, with **Reattach to selection**.
-3. **One match:** found. A short quote (under 40 characters, such as a single word) must still have a few letters or digits of its saved context around it (a shared space, punctuation, list marker or inline comment markup does not count); if not, it is probably a different copy, so the thread asks for a reattach (*unconfirmed*) instead of moving there. Longer quotes are distinctive enough to follow on their own, for example when a paragraph is moved.
+3. **One match:** found. A short quote (under 40 characters, such as a single word) must still have a few letters or digits of its saved context around it (a shared space, punctuation, list marker or inline comment markup does not count, and formatting marks such as `**` or `[[ ]]` around the quote are looked past); if not, it is probably a different copy, so the thread asks for a reattach (*unconfirmed*) instead of moving there. Longer quotes are distinctive enough to follow on their own, for example when a paragraph is moved.
 4. **Several matches:** rank them by how much of the saved context still surrounds each one. A tie is reported as *ambiguous*, never guessed. Line numbers are not used to break ties, because they shift with ordinary edits.
 
 Rebuilding a note's anchors runs after edits (debounced 300 ms), not on each keystroke. Measured costs are in [compatibility.md](compatibility.md).

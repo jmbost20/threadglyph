@@ -15,7 +15,7 @@ Fixes from a review of 0.3.0, a way back to threads whose note is gone, and the 
 - Styles avoid three CSS features the Obsidian directory review flags for older devices (`text-decoration-color`, `column-gap` and `:has()`). A detached quote is struck through in faint text; the chosen assistant in Ask AI is highlighted as before.
 
 ### Fixed
-- A thread on a short quote, such as one word, no longer moves silently to another copy of those words when its own passage is deleted. It asks for a reattach instead.
+- A thread on a short quote, such as one word, no longer moves silently to another copy of those words when its own passage is deleted. It asks for a reattach instead. Formatting the word in place (bold, italic, a link, a highlight) does not count as a change.
 - Reading view highlights the right copy of a repeated quote when another copy sits somewhere hidden, such as a link's address or a comment.
 - **Go to next thread** and **Go to previous thread** visit every thread, including threads that start at the same place.
 - Importing inline comments: a comment with a missing or unreadable date no longer moves every later comment to the import date. It takes the time of the comment before it.
