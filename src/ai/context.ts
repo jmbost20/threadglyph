@@ -8,6 +8,17 @@ export interface NoteContext {
   text: string;
 }
 
+/**
+ * The line after a note's properties block (YAML front matter between `---`
+ * lines at the very top), or 0 when there is none. A `#` line inside it is a
+ * YAML comment, not a heading.
+ */
+function propertiesEnd(lines: string[]): number {
+  if (lines[0]?.trimEnd() !== '---') return 0;
+  const close = lines.findIndex((line, i) => i > 0 && (line.trimEnd() === '---' || line.trimEnd() === '...'));
+  return close === -1 ? 0 : close + 1;
+}
+
 /** Where the Markdown section containing `offset` starts and ends in `doc`, and its label. */
 export function sectionRange(doc: string, offset: number): { from: number; to: number; label: string } {
   const lines = doc.split('\n');
@@ -18,8 +29,10 @@ export function sectionRange(doc: string, offset: number): { from: number; to: n
     pos += line.length + 1;
   }
   const headings: { line: number; level: number; title: string }[] = [];
+  const properties = propertiesEnd(lines);
   let fenced = false;
   lines.forEach((line, i) => {
+    if (i < properties) return;
     if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
     const m = fenced ? null : HEADING.exec(line);
     if (m) headings.push({ line: i, level: m[1].length, title: m[2].trim() });
