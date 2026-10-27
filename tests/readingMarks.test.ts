@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
-import { clearReadingMarks, lineOffset, markRenderedSection, readingMarks, type ReadingMark } from '../src/ui/readingMarks';
+import { clearReadingMarks, lineOffset, markRenderedSection, readingMarks, visibleSource, type ReadingMark } from '../src/ui/readingMarks';
 import { titleRenderedImages } from '../src/ui/imageTitles';
 import type { ThreadView } from '../src/ui/viewModel';
 
@@ -85,6 +85,67 @@ describe('Reading view highlights', () => {
     ];
     const text = 'abcd echo efg';
     expect(readingMarks(views, text)).toEqual([{ threadId: 't1', quote: 'echo', from: 5, number: 1, resolved: false }]);
+  });
+});
+
+describe('Reading view: copies of a quote hidden in the source', () => {
+  /** Marks the nth source occurrence of `quote` in a one-line section rendered as `html`; returns the text before the highlight. */
+  function highlight(src: string, html: string, quote: string, nth: number): string | null {
+    let from = -1;
+    for (let i = 0; i <= nth; i++) from = src.indexOf(quote, from + 1);
+    const el = section(html);
+    markRenderedSection(el, src, 0, src.length, [{ threadId: 'thread-0001', quote, from, number: 1, resolved: false }], () => {});
+    const span = el.querySelector('.tg-anchor');
+    return span ? (span.previousSibling?.textContent ?? '') : null;
+  }
+
+  it('does not count a copy inside a link target', () => {
+    const src = 'See [docs](foo) then foo and foo again.';
+    expect(highlight(src, '<p>See <a href="foo">docs</a> then foo and foo again.</p>', 'foo', 1)).toBe(' then ');
+  });
+
+  it('does not count copies in a wiki link target, a comment or an embed', () => {
+    const src = 'A [[foo|Alias]] %%foo%% ![[foo.png]] <!-- foo --> real foo, more foo.';
+    const html = '<p>A <a>Alias</a>   <span class="internal-embed" src="foo.png"></span>  real foo, more foo.</p>';
+    expect(highlight(src, html, 'foo', 4)).toMatch(/real $/);
+    expect(highlight(src, html, 'foo', 5)).toMatch(/real foo, more $/);
+  });
+
+  it('still counts copies inside code, which shows as written', () => {
+    const src = 'Run `[x](foo)` then foo.';
+    expect(highlight(src, '<p>Run <code>[x](foo)</code> then foo.</p>', 'foo', 1)).toBe(' then ');
+  });
+
+  it('does not let markup shown in code pair with real markup after it (Gitar on #41)', () => {
+    const src = 'Use `%%` to comment. %%secret foo%% then foo.';
+    expect(highlight(src, '<p>Use <code>%%</code> to comment.  then foo.</p>', 'foo', 1)).toMatch(/then $/);
+    const link = 'Type `](` then [docs](foo) and foo.';
+    expect(highlight(link, '<p>Type <code>](</code> then <a>docs</a> and foo.</p>', 'foo', 1)).toBe(' and ');
+  });
+
+  it('pairs each ]] with the nearest [[ before it (Gitar on #41)', () => {
+    const src = '[[ foo [[bar|Bar]] foo';
+    expect(visibleSource(src)).toBe('[[ foo ' + '\0'.repeat(6) + 'Bar]] foo');
+    expect(highlight(src, '<p>[[ foo <a>Bar</a> foo</p>', 'foo', 1)).toBe(' ');
+  });
+
+  it('leaves a quote that sits inside hidden markup unhighlighted', () => {
+    const src = 'See [docs](foo) and foo.';
+    expect(highlight(src, '<p>See <a href="foo">docs</a> and foo.</p>', 'foo', 0)).toBeNull();
+  });
+
+  it('keeps offsets: the visible text has the same length as the source', () => {
+    const src = 'x [a](b) [[c|d]] %%e%% `[f](g)`\n```\n[h](i)\n```';
+    const visible = visibleSource(src);
+    expect(visible).toHaveLength(src.length);
+    expect(visible).toContain('`[f](g)`');
+    expect(visible).toContain('[h](i)');
+    expect(visible).not.toContain('(b)');
+    expect(visible).not.toContain('%%e%%');
+    expect(visible).toContain('d]]');
+    expect(visible).not.toContain('c|');
+    // Not wiki links: a line break inside, or no closing brackets.
+    expect(visibleSource('[[a\nb|c]] and [[x|y')).toBe('[[a\nb|c]] and [[x|y');
   });
 });
 
