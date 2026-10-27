@@ -3,9 +3,19 @@ import { SCHEMA_VERSION, type TextAnchor } from '../model/types';
 /** Characters of surrounding context captured on each side of a quote. */
 export const CONTEXT_CHARS = 64;
 
+/**
+ * A text quote shorter than this (in characters) is only trusted at a single
+ * match when some of its saved context still surrounds it. A single word
+ * easily appears again elsewhere; a longer passage is distinctive on its own,
+ * so it keeps following the text when a paragraph is moved.
+ */
+export const SHORT_QUOTE_CHARS = 40;
+
 export type AnchorResolution =
   | { status: 'found'; from: number; to: number }
   | { status: 'ambiguous'; candidates: number[] }
+  /** A short quote occurs once, but none of its saved context is around it: likely a different copy. */
+  | { status: 'unconfirmed'; at: number }
   | { status: 'missing' };
 
 export function lineOf(doc: string, offset: number): number {
@@ -60,10 +70,53 @@ function sharedAfter(doc: string, docStart: number, suffix: string): number {
   return n;
 }
 
+/** Letters and digits that must surround a short quote's single match for it to count as the same place. */
+const MIN_SHARED_WORD_CHARS = 3;
+
+const wordChars = (text: string) => text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+
+/** Where `{==` markup in front of `at` begins, or `at` when there is none. */
+function markupStart(text: string, at: number): number {
+  return at >= 3 && text.startsWith('{==', at - 3) ? at - 3 : at;
+}
+
+/** Where `==}{>>…<<}…` markup after `at` ends, or `at` when there is none. A cut-off comment runs to the end. */
+function markupEnd(text: string, at: number): number {
+  if (!text.startsWith('==}', at)) return at;
+  let end = at + 3;
+  while (text.startsWith('{>>', end)) {
+    const close = text.indexOf('<<}', end);
+    if (close === -1) return text.length;
+    end = close + 3;
+  }
+  return end;
+}
+
+/**
+ * Whether the text around the single match at `at` still shares enough of the
+ * saved context to be the same place: a few letters or digits, not just a
+ * space, a newline, punctuation or a list marker. Inline comment markup
+ * (`{==…==}{>>…<<}`) is skipped on both sides, so neither its removal nor
+ * another marked-up copy changes the answer. When the saved context has fewer
+ * word characters than required, all of them must match; with none, there is
+ * nothing to contradict the match.
+ */
+function contextConfirms(doc: string, at: number, anchor: TextAnchor): boolean {
+  const prefix = anchor.prefix.slice(0, markupStart(anchor.prefix, anchor.prefix.length));
+  const suffix = anchor.suffix.slice(markupEnd(anchor.suffix, 0));
+  const before = markupStart(doc, at);
+  const after = markupEnd(doc, at + anchor.quote.length);
+  const shared =
+    doc.slice(before - sharedBefore(doc, before, prefix), before) + doc.slice(after, after + sharedAfter(doc, after, suffix));
+  return wordChars(shared) >= Math.min(MIN_SHARED_WORD_CHARS, wordChars(prefix + suffix));
+}
+
 /**
  * Finds the anchored quote in the current note text.
  *
- * A single occurrence resolves directly. Repeated quotes are ranked by how much
+ * A single occurrence resolves directly, except that a short text quote must
+ * still have some of its saved context around it; otherwise it is reported as
+ * unconfirmed rather than silently moved to an unrelated copy. Repeated quotes are ranked by how much
  * of the captured prefix/suffix still surrounds them; a tie is reported as
  * ambiguous rather than guessed. The line hint is never used to break a tie,
  * because line numbers shift with ordinary edits above the anchor.
@@ -72,7 +125,12 @@ export function resolveTextAnchor(doc: string, anchor: TextAnchor): AnchorResolu
   if (!anchor.quote) return { status: 'missing' };
   const hits = occurrences(doc, anchor.quote);
   if (hits.length === 0) return { status: 'missing' };
-  if (hits.length === 1) return { status: 'found', from: hits[0], to: hits[0] + anchor.quote.length };
+  if (hits.length === 1) {
+    const at = hits[0];
+    const short = anchor.kind === 'text' && [...anchor.quote].length < SHORT_QUOTE_CHARS;
+    if (short && !contextConfirms(doc, at, anchor)) return { status: 'unconfirmed', at };
+    return { status: 'found', from: at, to: at + anchor.quote.length };
+  }
 
   const scored = hits.map((at) => ({
     at,

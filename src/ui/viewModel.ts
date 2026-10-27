@@ -5,6 +5,8 @@ import type { Message, TextAnchor, ThreadRecord } from '../model/types';
 export type AnchorState =
   | { kind: 'found'; from: number; to: number }
   | { kind: 'ambiguous'; count: number }
+  /** A short quote now appears only away from its saved context: probably a different copy. */
+  | { kind: 'unconfirmed' }
   | { kind: 'missing' }
   /** The local anchor file is absent, e.g. on a fresh clone of the vault. */
   | { kind: 'no-anchor' };
@@ -40,6 +42,7 @@ export function anchorState(doc: string, anchor: TextAnchor | undefined, resolve
     if (hits.length > 1) return { kind: 'ambiguous', count: hits.length };
   }
   if (r.status === 'ambiguous') return { kind: 'ambiguous', count: r.candidates.length };
+  if (r.status === 'unconfirmed') return { kind: 'unconfirmed' };
   return { kind: 'missing' };
 }
 
@@ -130,6 +133,8 @@ export function anchorProblem(state: AnchorState, image = false): string | null 
       return null;
     case 'ambiguous':
       return `The quoted text now appears ${state.count} times. Select the right passage and reattach.`;
+    case 'unconfirmed':
+      return 'The quoted text is gone from its place; the same words appear elsewhere in the note. Select the right passage and reattach.';
     case 'missing':
       return 'The quoted text is no longer in this note. Select new text and reattach, or keep the thread as is.';
     case 'no-anchor':
