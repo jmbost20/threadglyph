@@ -60,7 +60,7 @@ One row per release candidate, filled in by the maintainer after running the scr
 | Date | Version / commit | Obsidian / OS | Steps run | Result | Notes |
 |---|---|---|---|---|---|
 | | 0.3.0 / | | 1–11 | | |
-| 2026-10-27 | 0.3.1 / a713141 | sandbox, macOS | 1–11 + the 0.3.1 fixes (`uat/scenarios/7-fixes-0.3.1.uat.mjs`) | awaiting the owner's review of the deck | track `release-0.3.1`: 15 passed, 5 for review, 2 skipped by design (cloud), 0 failed; step 10 run live, 19/19 |
+| 2026-10-27 | 0.3.1 / cf7a4f6 | sandbox, macOS | 1–11 + the 0.3.1 fixes (`uat/scenarios/7-fixes-0.3.1.uat.mjs`) | **pass** | Owner approved the deck of the final run on cf7a4f6 (2026-10-27T21-58-46: 15 passed, 5 reviewed, 2 skipped by design, 0 failed), after reviewing the earlier run's video and the one clip #51 changed (approval given in the agent session, 2026-10-27 18:05 EDT). Step 10 live, 19/19. |
 
 ## Evidence for the walkthrough
 
