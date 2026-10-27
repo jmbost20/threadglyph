@@ -139,7 +139,8 @@ export default {
           await open(s, LIST);
           await comment(s, 'TODO', 'Short one');
           await comment(s, 'TODO fix the parser', 'Long one');
-          await s.clickLine('# Plan');
+          // Live Preview shows the heading as “Plan”, without its “# ”.
+          await s.clickLine('Plan');
         }, { shot: false });
         const seen = [];
         for (let i = 0; i < 3; i++) {
@@ -151,6 +152,7 @@ export default {
         }
         s.group('Stepping');
         s.equal('Both threads are visited, then it wraps', seen, ['TODO', 'TODO fix the parser', 'TODO']);
+        await s.shot('End', 'final', { explain: 'Where it ends: back on the first thread, after visiting both.' });
       },
     },
     {
@@ -180,6 +182,7 @@ export default {
         s.group('Reading view');
         s.check('The highlight follows “then ”', await s.eval(() => document.querySelector('.markdown-preview-view .tg-anchor')?.previousSibling?.textContent?.endsWith('then ')));
         s.equal('The note is unchanged', await s.read(LINKS), links);
+        await s.shot('End', 'final', { explain: 'Where it ends: Reading view, with only the copy you commented on highlighted.' });
       },
     },
   ],
