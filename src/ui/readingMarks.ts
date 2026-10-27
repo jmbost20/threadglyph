@@ -61,9 +61,11 @@ function wikiTargets(source: string): [number, number][] {
   while (open !== -1) {
     const close = source.indexOf(']]', open + 2);
     if (close === -1) break;
-    const inner = source.slice(open + 2, close);
+    // Pair the `]]` with the nearest `[[` before it, so a stray `[[` earlier never swallows plain text.
+    const start = source.lastIndexOf('[[', close - 2);
+    const inner = source.slice(start + 2, close);
     const bar = inner.indexOf('|');
-    if (bar !== -1 && !inner.includes('\n')) found.push([open, open + 2 + bar + 1]);
+    if (bar !== -1 && !inner.includes('\n')) found.push([start, start + 2 + bar + 1]);
     open = source.indexOf('[[', close + 2);
   }
   return found;
@@ -78,18 +80,16 @@ const CODE = /(```|~~~)[\s\S]*?(?:\1|$(?![\s\S]))|`[^`\n]*`/g;
  * counting them in the rendered section.
  */
 export function visibleSource(source: string): string {
-  const code = [...source.matchAll(CODE)].map((m) => [m.index, m.index + m[0].length] as const);
-  const inCode = (at: number) => code.some(([from, to]) => from <= at && at < to);
+  // Look for hidden markup in a copy with code blanked, so a `%%` or `](` shown inside code can
+  // neither be hidden nor pair with real markup after it.
+  const scan = source.replace(CODE, (code) => ' '.repeat(code.length));
   // UTF-16 units, so indexes match the regex offsets.
   const chars = source.split('');
   const hidden = [
-    ...HIDDEN_SOURCE.flatMap((pattern) => [...source.matchAll(pattern)].map((m) => [m.index, m.index + m[0].length] as const)),
-    ...wikiTargets(source),
+    ...HIDDEN_SOURCE.flatMap((pattern) => [...scan.matchAll(pattern)].map((m) => [m.index, m.index + m[0].length] as const)),
+    ...wikiTargets(scan),
   ];
-  for (const [from, to] of hidden) {
-    if (inCode(from)) continue;
-    for (let i = from; i < to; i++) chars[i] = '\0';
-  }
+  for (const [from, to] of hidden) for (let i = from; i < to; i++) chars[i] = '\0';
   return chars.join('');
 }
 

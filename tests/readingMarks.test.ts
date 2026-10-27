@@ -116,6 +116,19 @@ describe('Reading view: copies of a quote hidden in the source', () => {
     expect(highlight(src, '<p>Run <code>[x](foo)</code> then foo.</p>', 'foo', 1)).toBe(' then ');
   });
 
+  it('does not let markup shown in code pair with real markup after it (Gitar on #41)', () => {
+    const src = 'Use `%%` to comment. %%secret foo%% then foo.';
+    expect(highlight(src, '<p>Use <code>%%</code> to comment.  then foo.</p>', 'foo', 1)).toMatch(/then $/);
+    const link = 'Type `](` then [docs](foo) and foo.';
+    expect(highlight(link, '<p>Type <code>](</code> then <a>docs</a> and foo.</p>', 'foo', 1)).toBe(' and ');
+  });
+
+  it('pairs each ]] with the nearest [[ before it (Gitar on #41)', () => {
+    const src = '[[ foo [[bar|Bar]] foo';
+    expect(visibleSource(src)).toBe('[[ foo ' + '\0'.repeat(6) + 'Bar]] foo');
+    expect(highlight(src, '<p>[[ foo <a>Bar</a> foo</p>', 'foo', 1)).toBe(' ');
+  });
+
   it('leaves a quote that sits inside hidden markup unhighlighted', () => {
     const src = 'See [docs](foo) and foo.';
     expect(highlight(src, '<p>See <a href="foo">docs</a> and foo.</p>', 'foo', 0)).toBeNull();
