@@ -93,6 +93,42 @@ describe('text anchors', () => {
       expect(resolveTextAnchor('{=TODO list', start)).toMatchObject({ status: 'found', from: 2 });
     });
 
+    it('stays found when the word is formatted or unformatted in place (adversarial review before 0.3.1)', () => {
+      const note = 'Intro line.\n- TODO fix the parser\n- write docs\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', note, note.indexOf('TODO'), note.indexOf('TODO') + 4);
+      for (const wrapped of ['**TODO**', '*TODO*', '_TODO_', '[[TODO]]', '==TODO==', '~~TODO~~', '**[[TODO]]**']) {
+        const edited = note.replace('TODO fix', `${wrapped} fix`);
+        expect(resolveTextAnchor(edited, a), wrapped).toMatchObject({ status: 'found', from: edited.indexOf('TODO') });
+      }
+      // Captured while bold, then unbolded.
+      const bold = note.replace('TODO fix', '**TODO** fix');
+      const b = captureTextAnchor('thread-0001', 'a.md', bold, bold.indexOf('TODO'), bold.indexOf('TODO') + 4);
+      expect(resolveTextAnchor(note, b)).toMatchObject({ status: 'found', from: note.indexOf('TODO') });
+    });
+
+    it('stays on its own copy when formatted while another copy exists (adversarial review before 0.3.1)', () => {
+      const note = 'Intro line.\n- TODO fix the parser\n- write docs\n- TODO later\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', note, note.indexOf('TODO'), note.indexOf('TODO') + 4);
+      for (const wrapped of ['**TODO**', '[[TODO]]', '==TODO==']) {
+        const edited = note.replace('TODO fix', `${wrapped} fix`);
+        expect(resolveTextAnchor(edited, a), wrapped).toMatchObject({ status: 'found', from: edited.indexOf('TODO') });
+      }
+    });
+
+    it('keeps two struck-through copies ambiguous when only spaces and list marks match (real-vault check)', () => {
+      const note = 'Notes from the call.\nTODO fix\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', note, note.indexOf('TODO'), note.indexOf('TODO') + 4);
+      // Months later: the line is gone, and two unrelated struck-through task lines hold the word.
+      const later = 'Other text.\n- [ ] ~~TODO call~~ → [[x]]\nMore.\n- [ ] ~~TODO pay~~ → [[y]]\n';
+      expect(resolveTextAnchor(later, a).status).toBe('ambiguous');
+    });
+
+    it('still does not confirm another copy because it is formatted too', () => {
+      const note = 'Intro line.\n- TODO fix the parser\n- write docs\n- **TODO** later\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', note, note.indexOf('TODO'), note.indexOf('TODO') + 4);
+      expect(resolveTextAnchor(note.replace('- TODO fix the parser\n', ''), a).status).toBe('unconfirmed');
+    });
+
     it('is found when some visible context survives on either side', () => {
       const edited = note.replace('Later: TODO', 'Later: done').replace('fix the parser', 'fix the lexer');
       expect(resolveTextAnchor(edited, todo())).toEqual({ status: 'found', from: note.indexOf('TODO'), to: note.indexOf('TODO') + 4 });

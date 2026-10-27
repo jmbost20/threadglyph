@@ -75,20 +75,32 @@ const MIN_SHARED_WORD_CHARS = 3;
 
 const wordChars = (text: string) => text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
 
-/** Where `{==` markup in front of `at` begins, or `at` when there is none. */
+/** Formatting marks that wrap a passage without changing where it is: bold, italic, highlight, strikethrough, links. */
+const MARKS_BEFORE = '*_=~[';
+const MARKS_AFTER = '*_=~]';
+
+/** Where markup in front of `at` begins (`{==` and formatting marks such as `**` or `[[`), or `at` when there is none. */
 function markupStart(text: string, at: number): number {
-  return at >= 3 && text.startsWith('{==', at - 3) ? at - 3 : at;
+  let start = at >= 3 && text.startsWith('{==', at - 3) ? at - 3 : at;
+  while (start > 0 && MARKS_BEFORE.includes(text[start - 1])) start--;
+  return start;
 }
 
-/** Where `==}{>>…<<}…` markup after `at` ends, or `at` when there is none. A cut-off comment runs to the end. */
+/**
+ * Where markup after `at` ends (`==}{>>…<<}…` and formatting marks such as `**` or `]]`), or `at` when
+ * there is none. A cut-off comment runs to the end.
+ */
 function markupEnd(text: string, at: number): number {
-  if (!text.startsWith('==}', at)) return at;
-  let end = at + 3;
-  while (text.startsWith('{>>', end)) {
-    const close = text.indexOf('<<}', end);
-    if (close === -1) return text.length;
-    end = close + 3;
+  let end = at;
+  if (text.startsWith('==}', end)) {
+    end += 3;
+    while (text.startsWith('{>>', end)) {
+      const close = text.indexOf('<<}', end);
+      if (close === -1) return text.length;
+      end = close + 3;
+    }
   }
+  while (end < text.length && MARKS_AFTER.includes(text[end])) end++;
   return end;
 }
 
@@ -96,19 +108,43 @@ function markupEnd(text: string, at: number): number {
  * Whether the text around the single match at `at` still shares enough of the
  * saved context to be the same place: a few letters or digits, not just a
  * space, a newline, punctuation or a list marker. Inline comment markup
- * (`{==…==}{>>…<<}`) is skipped on both sides, so neither its removal nor
- * another marked-up copy changes the answer. When the saved context has fewer
+ * (`{==…==}{>>…<<}`) and formatting marks around the quote (`**`, `_`, `==`,
+ * `~~`, `[[ ]]`) are skipped on both sides, so formatting the word, removing
+ * markup, or another marked-up copy does not change the answer. When the saved context has fewer
  * word characters than required, all of them must match; with none, there is
  * nothing to contradict the match.
  */
 function contextConfirms(doc: string, at: number, anchor: TextAnchor): boolean {
+  const { shared, saved } = sharedAround(doc, at, anchor);
+  return wordChars(shared) >= Math.min(MIN_SHARED_WORD_CHARS, wordChars(saved));
+}
+
+/**
+ * How well the context around the copy at `at` matches: the shared run as written, or, when
+ * markup was added or removed around the quote (bold, `[[ ]]`, inline comments), the run with
+ * that markup skipped. The skipped comparison counts only when it shares real words, so
+ * spaces and list markers never decide between copies.
+ */
+function contextScore(doc: string, at: number, anchor: TextAnchor): number {
+  const raw = sharedBefore(doc, at, anchor.prefix) + sharedAfter(doc, at + anchor.quote.length, anchor.suffix);
+  const { shared, saved } = sharedAround(doc, at, anchor);
+  const words = wordChars(saved);
+  return words > 0 && wordChars(shared) >= Math.min(MIN_SHARED_WORD_CHARS, words) ? Math.max(raw, shared.length) : raw;
+}
+
+/**
+ * The text around the copy at `at` that matches the saved context, with markup
+ * (inline comments, formatting marks) skipped on both sides, and the saved
+ * context it was compared with.
+ */
+function sharedAround(doc: string, at: number, anchor: TextAnchor): { shared: string; saved: string } {
   const prefix = anchor.prefix.slice(0, markupStart(anchor.prefix, anchor.prefix.length));
   const suffix = anchor.suffix.slice(markupEnd(anchor.suffix, 0));
   const before = markupStart(doc, at);
   const after = markupEnd(doc, at + anchor.quote.length);
   const shared =
     doc.slice(before - sharedBefore(doc, before, prefix), before) + doc.slice(after, after + sharedAfter(doc, after, suffix));
-  return wordChars(shared) >= Math.min(MIN_SHARED_WORD_CHARS, wordChars(prefix + suffix));
+  return { shared, saved: prefix + suffix };
 }
 
 /**
@@ -132,10 +168,8 @@ export function resolveTextAnchor(doc: string, anchor: TextAnchor): AnchorResolu
     return { status: 'found', from: at, to: at + anchor.quote.length };
   }
 
-  const scored = hits.map((at) => ({
-    at,
-    score: sharedBefore(doc, at, anchor.prefix) + sharedAfter(doc, at + anchor.quote.length, anchor.suffix),
-  }));
+  // Making the word bold must not hand the thread to another copy (see contextScore).
+  const scored = hits.map((at) => ({ at, score: contextScore(doc, at, anchor) }));
   const best = Math.max(...scored.map((s) => s.score));
   const winners = scored.filter((s) => s.score === best);
   if (best > 0 && winners.length === 1) {

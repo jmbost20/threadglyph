@@ -46,17 +46,30 @@ export default {
         { option: 'Ask for a reattach when a short quote’s surroundings are gone', downside: 'A short quote whose neighbours were all rewritten asks for a reattach even if it is still the right place.', chosen: true },
         { option: 'Keep following the only copy left', downside: 'The thread can silently point at the wrong passage, and Ask AI would quote it.' },
       ],
-      summary: 'Comment on the first “TODO”, delete its list item: the card says the words appear elsewhere and offers Reattach; nothing is highlighted. Reattach to the other “TODO” fixes it.',
+      summary: 'Comment on the first “TODO”, bold it (the thread stays), then delete its list item: the card says the words appear elsewhere and offers Reattach; nothing is highlighted. Reattach to the other “TODO” fixes it.',
       fixtures: { [LIST]: list },
       async run(s) {
         await s.step('Open “Todo list” and comment on the first “TODO”', async () => {
           await open(s, LIST);
           await comment(s, 'TODO', 'Which parser bug?');
         }, { caption: 'Thread on the first “TODO”', look: '.cm-content .tg-anchor', explain: 'One thread on the first “TODO” (outlined). The same word appears again two lines down.' });
+        await s.step('Make the first “TODO” bold', async () => {
+          await s.eval(() => {
+            const ed = app.workspace.getMostRecentLeaf().view.editor;
+            const at = ed.getValue().indexOf('TODO fix');
+            ed.replaceRange('**TODO**', ed.offsetToPos(at), ed.offsetToPos(at + 4));
+          });
+          await s.page.waitForTimeout(2500);
+        }, { caption: 'Bold: the thread stays attached', look: '.cm-content .tg-anchor, .tg-panel .tg-card', explain: 'Formatting the word in place is not a move: the thread stays on it, with no reattach message.' });
+        s.group('After bolding the word');
+        s.equal('No reattach message', await problem(s), null);
+        // The other “TODO” is the same word, so check which line the highlight is on.
+        s.equal('The highlight stays on the bold word, not the other “TODO”', await s.eval(() =>
+          [...document.querySelectorAll('.cm-content .tg-anchor')].map((a) => a.closest('.cm-line')?.textContent?.includes('fix the parser'))), [true]);
         await s.step('Delete the list item “TODO fix the parser”', async () => {
           await s.eval(() => {
             const ed = app.workspace.getMostRecentLeaf().view.editor;
-            const line = ed.getValue().split('\n').findIndex((l) => l.includes('TODO fix the parser'));
+            const line = ed.getValue().split('\n').findIndex((l) => l.includes('TODO** fix the parser'));
             ed.replaceRange('', { line, ch: 0 }, { line: line + 1, ch: 0 });
           });
           await s.waitFor(() => !!document.querySelector('.tg-panel .tg-anchor-problem'), null, { what: 'the detached message', timeout: 12000 });
@@ -70,8 +83,9 @@ export default {
           await s.waitFor(() => !document.querySelector('.tg-panel .tg-anchor-problem'), null, { what: 'the thread to reattach' });
         }, { caption: 'Reattached by hand', look: '.cm-content .tg-anchor, .tg-panel .tg-card', explain: 'You chose the passage: the thread is attached to “TODO later” and highlighted there.' });
         s.group('After reattaching');
-        s.equal('The other “TODO” is now highlighted', await s.eval(() => [...document.querySelectorAll('.cm-content .tg-anchor')].map((a) => a.textContent)), ['TODO']);
-        s.equal('The note holds only your own edit', await s.read(LIST), list.replace('- TODO fix the parser\n', ''));
+        s.equal('The other “TODO” is now highlighted', await s.eval(() =>
+          [...document.querySelectorAll('.cm-content .tg-anchor')].map((a) => a.closest('.cm-line')?.textContent?.includes('later'))), [true]);
+        s.equal('The note holds only your own edits', await s.read(LIST), list.replace('- TODO fix the parser\n', ''));
         await s.shot('End', 'final', { explain: 'Where it ends: one thread, attached where you put it.' });
       },
     },
