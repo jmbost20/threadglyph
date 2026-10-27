@@ -648,14 +648,19 @@ export default class ThreadglyphPlugin extends Plugin {
     if (!file) return false;
     const found = this.anchoredViews(file.path, editor.getValue())
       .flatMap((v) => (v.anchor.kind === 'found' ? [{ id: v.thread.id, from: v.anchor.from, to: v.anchor.to }] : []))
-      .sort((a, b) => a.from - b.from);
+      .sort((a, b) => a.from - b.from || a.to - b.to || a.id.localeCompare(b.id));
     if (!found.length) return false;
     if (checking) return true;
     const cursor = editor.posToOffset(editor.getCursor('from'));
-    const target =
-      direction === 1
-        ? (found.find((a) => a.from > cursor) ?? found[0])
-        : ([...found].reverse().find((a) => a.from < cursor) ?? found[found.length - 1]);
+    const selectionEnd = editor.posToOffset(editor.getCursor('to'));
+    // When the selection is a thread's passage (as after a step), move from that thread, so
+    // threads starting at the same place are each visited instead of skipped.
+    const onPassage = found.filter((a) => a.from === cursor && a.to === selectionEnd);
+    const current = onPassage.find((a) => a.id === this.focusedThreadId) ?? onPassage[0];
+    let target: (typeof found)[number];
+    if (current) target = found[(found.indexOf(current) + direction + found.length) % found.length];
+    else if (direction === 1) target = found.find((a) => a.from > cursor) ?? found[0];
+    else target = [...found].reverse().find((a) => a.from < cursor) ?? found.at(-1)!;
     const from = editor.offsetToPos(target.from);
     const to = editor.offsetToPos(target.to);
     editor.setSelection(from, to);

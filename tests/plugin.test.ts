@@ -433,6 +433,44 @@ describe('Threadglyph plugin (Obsidian wiring)', () => {
     expect(q('.tg-card-focused .tg-quote-link')?.textContent).toBe('Morning');
   });
 
+  it('visits every thread when two start at the same place, in both directions', async () => {
+    await commentOn('Morning', 'short');
+    await commentOn('Morning pages', 'long');
+    await commentOn('Evening', 'last');
+    const next = command('next-thread').editorCheckCallback!;
+    const previous = command('previous-thread').editorCheckCallback!;
+    const at = (s: string) => [NOTE_TEXT.indexOf(s), NOTE_TEXT.indexOf(s) + s.length];
+    const visits = (step: typeof next) => Array.from({ length: 3 }, () => {
+      step(false, view.editor, view);
+      return NOTE_TEXT.slice(view.editor.selection[0], view.editor.selection[1]);
+    });
+
+    view.editor.selection = at('Evening') as [number, number];
+    expect(visits(next)).toEqual(['Morning', 'Morning pages', 'Evening']);
+    expect(visits(previous)).toEqual(['Morning pages', 'Morning', 'Evening']);
+    // From a plain cursor (not on a passage), previous goes to the nearest passage before it, wrapping at the top.
+    view.editor.selection = [NOTE_TEXT.indexOf('Evening') - 1, NOTE_TEXT.indexOf('Evening') - 1];
+    expect(visits(previous)[0]).toBe('Morning pages');
+    view.editor.selection = [0, 0];
+    expect(visits(previous)[0]).toBe('Evening');
+  });
+
+  it('tells apart two threads on exactly the same passage by the one in focus', async () => {
+    await commentOn('Evening', 'first');
+    await commentOn('Evening', 'second');
+    await commentOn('Morning', 'other');
+    const next = command('next-thread').editorCheckCallback!;
+    const focused = () => q('.tg-card-focused .tg-message-body')?.textContent;
+    const seen: string[] = [];
+    view.editor.selection = [0, 0];
+    for (let i = 0; i < 3; i++) {
+      next(false, view.editor, view);
+      await flush();
+      seen.push(focused()!);
+    }
+    expect(new Set(seen)).toEqual(new Set(['first', 'second', 'other']));
+  });
+
   it('replies to the thread under the cursor', async () => {
     const reply = command('reply-at-cursor').editorCheckCallback!;
     await commentOn('worth a comment', 'Under the cursor');
