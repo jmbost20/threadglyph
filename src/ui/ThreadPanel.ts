@@ -639,7 +639,8 @@ export class ThreadPanel extends ItemView {
       group('model', 'Model', current ? `${current.name} · ${current.detail} · ${current.destination}` : '', (body) => {
         const picker = body.createDiv({ cls: 'tg-ai-assistants', attr: { role: 'radiogroup', 'aria-label': 'Assistant' } });
         for (const a of this.state.assistants) {
-          const label = picker.createEl('label', { cls: 'tg-ai-assistant' });
+          // A class instead of `:has(input:checked)` in CSS; the panel re-renders when the choice changes.
+          const label = picker.createEl('label', { cls: a.id === ai.state.assistant ? 'tg-ai-assistant is-selected' : 'tg-ai-assistant' });
           const radio = label.createEl('input', { cls: 'tg-ai-row', attr: { type: 'radio', name: `tg-assistant-${threadId}`, value: a.id } });
           radio.dataset.draftKey = `ai-row:${threadId}:model:${a.id}`;
           radio.checked = a.id === ai.state.assistant;
