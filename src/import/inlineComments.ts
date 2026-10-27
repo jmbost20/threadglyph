@@ -119,14 +119,21 @@ export function importedThread(
   clock: Clock,
 ): ThreadRecord | null {
   const importedAt = clock.now();
+  const kept = legacy.entries.flatMap((entry) => {
+    const message = entryMessage(entry);
+    return message ? [{ entry, message, date: legacyDate(entry.date) }] : [];
+  });
+  // An entry with a missing or unreadable date takes its neighbour's time (the one before it,
+  // or else the next dated one), never the import time, which would push every later message
+  // to today. Only a conversation with no readable dates at all is dated at the import.
+  const fallback = (i: number) =>
+    kept.slice(0, i).reverse().find((k) => k.date)?.date ?? kept.slice(i + 1).find((k) => k.date)?.date ?? importedAt;
   const messages: Message[] = [];
   let last = '';
-  for (const entry of legacy.entries) {
-    const message = entryMessage(entry);
-    if (!message) continue;
+  for (const [i, { entry, message, date }] of kept.entries()) {
     const author = legacyAuthor(entry.author, people);
-    // Keep order even when dates are missing or out of order (ISO strings compare chronologically).
-    const dated = legacyDate(entry.date) ?? importedAt;
+    // Keep order even when dates are out of order (ISO strings compare chronologically).
+    const dated = date ?? fallback(i);
     const createdAt = dated > last ? dated : last;
     last = createdAt;
     messages.push({
