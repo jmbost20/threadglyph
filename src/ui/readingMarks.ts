@@ -44,6 +44,40 @@ export function lineOffset(text: string, line: number): number {
   return offset;
 }
 
+/** Markdown that never shows as text in Reading view: comments, embeds, link targets. */
+const HIDDEN_SOURCE: RegExp[] = [
+  /<!--[\s\S]*?-->/g,
+  /%%[\s\S]*?%%/g,
+  /!\[\[[^\]\n]*\]\]/g,
+  /!\[[^\]\n]*\]\((?:<[^>\n]*>|[^)\n]*)\)/g,
+  // `[[target|alias]]` shows only the alias.
+  /(?<=\[\[)[^\]|\n]*\|/g,
+  // `[text](target)` shows only the text.
+  /\]\((?:<[^>\n]*>|[^)\n]*)\)/g,
+];
+
+/** Code shows exactly as written, so nothing inside it is hidden. */
+const CODE = /(```|~~~)[\s\S]*?(?:\1|$(?![\s\S]))|`[^`\n]*`/g;
+
+/**
+ * `source` with the parts Reading view does not show as text blanked out (same
+ * length, so offsets still line up). Counting occurrences in this text matches
+ * counting them in the rendered section.
+ */
+export function visibleSource(source: string): string {
+  const code = [...source.matchAll(CODE)].map((m) => [m.index, m.index + m[0].length] as const);
+  const inCode = (at: number) => code.some(([from, to]) => from <= at && at < to);
+  // UTF-16 units, so indexes match the regex offsets.
+  const chars = source.split('');
+  for (const pattern of HIDDEN_SOURCE) {
+    for (const m of source.matchAll(pattern)) {
+      if (inCode(m.index)) continue;
+      for (let i = m.index; i < m.index + m[0].length; i++) chars[i] = '\0';
+    }
+  }
+  return chars.join('');
+}
+
 function countBefore(haystack: string, needle: string, end: number): number {
   let n = 0;
   let at = haystack.indexOf(needle);
@@ -73,6 +107,8 @@ export function markRenderedSection(
 ): number {
   let marked = 0;
   const section = source.slice(sectionStart, sectionEnd);
+  // Copies hidden in the source (a link target, a comment) are not in the rendered text, so they are not counted.
+  const visible = visibleSource(section);
   // Last passage first: wrapping one never shifts the occurrence count of a passage still to come.
   for (const mark of [...marks].sort((a, b) => b.from - a.from)) {
     if (mark.from < sectionStart || mark.from >= sectionEnd) continue;
@@ -80,8 +116,10 @@ export function markRenderedSection(
       if (markImage(el, section, mark, sectionStart, onOpen)) marked++;
       continue;
     }
-    const occurrence = countBefore(section, mark.quote, mark.from - sectionStart);
-    if (wrapOccurrence(el, mark, occurrence, onOpen)) marked++;
+    const at = mark.from - sectionStart;
+    // A quote inside hidden markup has no rendered text to highlight.
+    if (!visible.startsWith(mark.quote, at)) continue;
+    if (wrapOccurrence(el, mark, countBefore(visible, mark.quote, at), onOpen)) marked++;
   }
   return marked;
 }
