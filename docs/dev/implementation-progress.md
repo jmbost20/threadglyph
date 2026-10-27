@@ -300,3 +300,18 @@ The owner tried Claude and Gemini as the agent's assistant: Claude did the 3-gro
 - The inline comment markup was removed from those notes so they read normally without that plugin; each anchor was checked to resolve to its exact passage in the cleaned note. Originals were backed up in the vault first.
 - Skipped on purpose: notes that only document the markup syntax (ADRs, templates, audit write-ups) and existing backup copies. Document Comments had no live comments left (only mentions in docs and backups).
 - Fix from the same feedback: the delete confirmation deletes on Enter even if focus landed on Cancel.
+
+## October 27 — 0.3.1: an exploratory review and its fixes
+
+An agent explored `main` after 0.3.0, reproduced five defects with failing tests, found two more by reading the code, and fixed each in its own PR (owner request: one PR per fix, agent merges when CI, SonarQube and Gitar are clean, then release 0.3.1).
+
+- **#40** A short quote (under 40 characters) found once, with none of its saved context around it, is *unconfirmed* and asks for a reattach instead of silently moving to another copy. Gitar showed a shared list marker or `{==` markup still confirmed a wrong copy; the rule became three shared letters or digits, with markup skipped on both sides. Owner chose the 40-character scope after the agent pointed out that moved paragraphs would otherwise need a reattach.
+- **#41** Reading view no longer counts copies of a quote hidden in link targets, wiki targets, embeds or comments. Gitar: markup shown in code could swallow real markup after it, and a stray `[[` paired with a later `]]`; both fixed. Sonar: a backtracking regex replaced by a hand scan.
+- **#42** Next/previous thread visit threads that start at the same place.
+- **#43** An undated imported comment takes a neighbour's date (Gitar: reactions and resolves count as neighbours).
+- **#44** A `#` comment in the properties block is not a section heading for Ask AI.
+- **#45** Import skips inline-comment markup inside code (Gitar: bare closing fences only; same-length backtick runs).
+- **#46** New command **Show threads on missing notes**: move to the open note or delete/restore (Gitar: preview what Restore brings back).
+- **#47** The three CSS warnings from the directory review (`text-decoration-color`, `column-gap`, `:has()`), confirmed with doiuse. **#48** follow-up test (Gitar on #47).
+
+Acceptance: full UAT on track `release-0.3.1` (15 passed, 5 for owner review, 2 skipped by design, 0 failed; new scenarios in `uat/scenarios/7-fixes-0.3.1.uat.mjs`), and `scripts/check-cli-isolation.mjs` live on 2026-10-27 (19/19 pass, Gemini CLI 0.60.0, Claude Code 2.1.311).
