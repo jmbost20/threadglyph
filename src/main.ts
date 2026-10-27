@@ -660,7 +660,7 @@ export default class ThreadglyphPlugin extends Plugin {
     let target: (typeof found)[number];
     if (current) target = found[(found.indexOf(current) + direction + found.length) % found.length];
     else if (direction === 1) target = found.find((a) => a.from > cursor) ?? found[0];
-    else target = [...found].reverse().find((a) => a.from < cursor) ?? found[found.length - 1];
+    else target = [...found].reverse().find((a) => a.from < cursor) ?? found.at(-1)!;
     const from = editor.offsetToPos(target.from);
     const to = editor.offsetToPos(target.to);
     editor.setSelection(from, to);
