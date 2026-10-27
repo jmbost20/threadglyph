@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { deflateSync } from 'node:zlib';
-import { SAMPLES, SANDBOX_MARKER, expandHome, inside, moveNote, sandboxPath } from './sandbox-lib.mjs';
+import { SAMPLES, SANDBOX_MARKER, expandHome, inside, moveNote, retireNote, sandboxPath } from './sandbox-lib.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const vault = sandboxPath(process.argv[2]);
@@ -104,10 +104,10 @@ Also {==compost the fallen leaves==}{>>user|2026-09-17 09:00|important: Shred th
 for (const name of [...Object.keys(notes), 'Sandbox sky.png', 'Attachments/Sandbox meadow.png', 'Not supported.heic']) {
   moveNote(vault, name, `${SAMPLES}/${name}`);
 }
-// The import sample was renamed after the markup it holds; rename an old copy in place, with its
-// threads, instead of writing a second one (Gitar on #29).
+// The import sample was renamed after the markup it holds. An old copy is renamed in place, or, in a
+// sandbox that already has both, its threads move to the new sample and the old file goes (Gitar on #29, #53).
 for (const old of [`${SAMPLES}/Agent Comments sample.md`, 'Agent Comments sample.md']) {
-  moveNote(vault, old, `${SAMPLES}/Inline comments sample.md`);
+  retireNote(vault, old, `${SAMPLES}/Inline comments sample.md`);
 }
 for (const empty of ['Folder', 'Attachments']) {
   try {

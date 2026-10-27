@@ -3,7 +3,7 @@
  * which refuses any path outside the sandbox vault, so a real vault can only
  * ever be read.
  */
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
@@ -156,6 +156,25 @@ export function moveNote(vault, from, to) {
   if (!existsSync(source) || existsSync(target)) return false;
   mkdirSync(dirname(target), { recursive: true });
   renameSync(source, target);
+  repoint(vault, from, to);
+  return true;
+}
+
+/**
+ * Retires a note that was replaced by another: like `moveNote`, but when the
+ * replacement already exists, the old note's threads and anchors move onto it
+ * and the old file is deleted, so the sandbox never keeps both.
+ */
+export function retireNote(vault, from, to) {
+  if (moveNote(vault, from, to)) return true;
+  const source = inside(vault, from);
+  if (!existsSync(source) || !existsSync(inside(vault, to))) return false;
+  repoint(vault, from, to);
+  rmSync(source);
+  return true;
+}
+
+function repoint(vault, from, to) {
   const now = new Date().toISOString();
   const rewrite = (dir, update) => {
     const folder = inside(vault, dir);
@@ -172,7 +191,6 @@ export function moveNote(vault, from, to) {
     if (a.notePath !== from && a.imagePath !== from) return null;
     return { ...a, ...(a.notePath === from ? { notePath: to } : {}), ...(a.imagePath === from ? { imagePath: to } : {}) };
   });
-  return true;
 }
 
 export const rel = (vault, path) => relative(vault, path);
