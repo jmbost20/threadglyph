@@ -1185,8 +1185,13 @@ describe('Threadglyph plugin with several assistants', () => {
     await commentOn('worth a comment', 'Over to you @Gemini');
     expandAll();
     expect(q<HTMLInputElement>('.tg-ai-assistant input:checked')?.value).toBe('gemini');
+    expect(q<HTMLInputElement>('.tg-ai-assistant.is-selected input')?.value).toBe('gemini');
     q<HTMLInputElement>('.tg-ai-assistant input[value="claude"]')!.dispatchEvent(new Event('change'));
     await flush();
+    // The highlight follows the choice: the panel re-renders with the class on the new assistant only.
+    expandAll();
+    expect(q<HTMLInputElement>('.tg-ai-assistant.is-selected input')?.value).toBe('claude');
+    expect(panelEl().querySelectorAll('.tg-ai-assistant.is-selected')).toHaveLength(1);
     button('Send')!.click();
     await flush();
     expect(asked).toEqual(['claude']);
