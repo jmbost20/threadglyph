@@ -220,6 +220,17 @@ describe('note context', () => {
     expect(sectionAround(doc, doc.length).label).toBe('The section “Next”');
   });
 
+  it('ignores # comment lines in the properties block at the top of the note', () => {
+    const note = '---\ntitle: x\n# a YAML comment\n---\nBody text.\n# Real\nUnder real.\n';
+    expect(sectionAround(note, note.indexOf('Body')).label).toBe('The text before the first heading');
+    expect(sectionAround(note, note.indexOf('Under')).label).toBe('The section “Real”');
+    // `...` also closes the block; a block that never closes is not one.
+    expect(sectionAround('---\n# c\n...\nBody', 14).label).toBe('The text before the first heading');
+    expect(sectionAround('---\n# Heading\nBody', 14).label).toBe('The section “Heading”');
+    // Only a block on the very first line counts.
+    expect(sectionAround('Intro\n---\n# Heading\n---\nBody', 22).label).toBe('The section “Heading”');
+  });
+
   it('caps very long context', () => {
     const long = 'x'.repeat(MAX_CONTEXT_CHARS + 10);
     const ctx = wholeNote(long);

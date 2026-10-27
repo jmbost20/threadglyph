@@ -9,6 +9,7 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 - Reading view highlights the right copy of a repeated quote when another copy sits somewhere hidden, such as a link's address or a comment.
 - **Go to next thread** and **Go to previous thread** visit every thread, including threads that start at the same place.
 - Importing inline comments: a comment with a missing or unreadable date no longer moves every later comment to the import date. It takes the time of the comment before it.
+- Ask AI's "section" context no longer mistakes a `#` comment line in a note's properties block for a heading.
 
 ## [0.3.0] - 2026-10-25
 
