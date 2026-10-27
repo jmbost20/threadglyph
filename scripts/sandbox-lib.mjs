@@ -163,25 +163,40 @@ export function moveNote(vault, from, to) {
 /**
  * Retires a note that was replaced by another: like `moveNote`, but when the
  * replacement already exists, the old note's threads and anchors move onto it
- * and the old file is deleted, so the sandbox never keeps both.
+ * and the old file is deleted, so the sandbox never keeps both. A thread that
+ * is already on the replacement (same passage and first message, the importer's
+ * own test for a duplicate) is deleted instead of moved, so nothing doubles.
  */
 export function retireNote(vault, from, to) {
   if (moveNote(vault, from, to)) return true;
   const source = inside(vault, from);
   if (!existsSync(source) || !existsSync(inside(vault, to))) return false;
+  const threads = records(vault, 'threadglyph/threads');
+  const anchors = new Map(records(vault, '.threadglyph/anchors').map((a) => [a.record.threadId, a]));
+  const key = ({ record }) => JSON.stringify([anchors.get(record.id)?.record.quote ?? null, record.messages?.[0]?.body ?? null]);
+  const onTarget = new Set(threads.filter((t) => t.record.notePath === to).map(key));
+  for (const thread of threads.filter((t) => t.record.notePath === from && onTarget.has(key(t)))) {
+    rmSync(thread.path);
+    const anchor = anchors.get(thread.record.id);
+    if (anchor) rmSync(anchor.path);
+  }
   repoint(vault, from, to);
   rmSync(source);
   return true;
 }
 
+function records(vault, dir) {
+  const folder = inside(vault, dir);
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder)
+    .filter((n) => n.endsWith('.json'))
+    .map((name) => ({ path: join(folder, name), record: readJson(join(folder, name)) }));
+}
+
 function repoint(vault, from, to) {
   const now = new Date().toISOString();
   const rewrite = (dir, update) => {
-    const folder = inside(vault, dir);
-    if (!existsSync(folder)) return;
-    for (const name of readdirSync(folder).filter((n) => n.endsWith('.json'))) {
-      const path = join(folder, name);
-      const record = readJson(path);
+    for (const { path, record } of records(vault, dir)) {
       const next = update(record);
       if (next) writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`);
     }
