@@ -657,13 +657,10 @@ export default class ThreadglyphPlugin extends Plugin {
     // threads starting at the same place are each visited instead of skipped.
     const onPassage = found.filter((a) => a.from === cursor && a.to === selectionEnd);
     const current = onPassage.find((a) => a.id === this.focusedThreadId) ?? onPassage[0];
-    const index = current ? found.indexOf(current) : -1;
-    const target =
-      index !== -1
-        ? found[(index + direction + found.length) % found.length]
-        : direction === 1
-          ? (found.find((a) => a.from > cursor) ?? found[0])
-          : ([...found].reverse().find((a) => a.from < cursor) ?? found[found.length - 1]);
+    let target: (typeof found)[number];
+    if (current) target = found[(found.indexOf(current) + direction + found.length) % found.length];
+    else if (direction === 1) target = found.find((a) => a.from > cursor) ?? found[0];
+    else target = [...found].reverse().find((a) => a.from < cursor) ?? found[found.length - 1];
     const from = editor.offsetToPos(target.from);
     const to = editor.offsetToPos(target.to);
     editor.setSelection(from, to);
