@@ -4,6 +4,9 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Fixed
+- A thread on a short quote, such as one word, no longer moves silently to another copy of those words when its own passage is deleted. It asks for a reattach instead.
+
 ## [0.3.0] - 2026-10-25
 
 The first public release.

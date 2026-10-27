@@ -75,9 +75,11 @@ describe('view model', () => {
     const a = captureTextAnchor('thread-0001', 'n.md', 'x passage x', 2, 9);
     expect(anchorState('a passage b passage', { ...a, prefix: '', suffix: '' })).toEqual({ kind: 'ambiguous', count: 2 });
     expect(anchorState('gone', a)).toEqual({ kind: 'missing' });
+    expect(anchorState('[passage]', a)).toEqual({ kind: 'unconfirmed' });
     expect(anchorProblem({ kind: 'found', from: 0, to: 1 })).toBeNull();
     expect(anchorProblem({ kind: 'ambiguous', count: 3 })).toMatch(/3 times/);
     expect(anchorProblem({ kind: 'missing' })).toMatch(/no longer/);
+    expect(anchorProblem({ kind: 'unconfirmed' })).toMatch(/elsewhere in the note.*reattach/);
     expect(anchorProblem({ kind: 'no-anchor' })).toMatch(/reattach/);
   });
 

@@ -3,9 +3,19 @@ import { SCHEMA_VERSION, type TextAnchor } from '../model/types';
 /** Characters of surrounding context captured on each side of a quote. */
 export const CONTEXT_CHARS = 64;
 
+/**
+ * A text quote shorter than this (in characters) is only trusted at a single
+ * match when some of its saved context still surrounds it. A word like "TODO"
+ * easily appears again elsewhere; a longer passage is distinctive on its own,
+ * so it keeps following the text when a paragraph is moved.
+ */
+export const SHORT_QUOTE_CHARS = 40;
+
 export type AnchorResolution =
   | { status: 'found'; from: number; to: number }
   | { status: 'ambiguous'; candidates: number[] }
+  /** A short quote occurs once, but none of its saved context is around it: likely a different copy. */
+  | { status: 'unconfirmed'; at: number }
   | { status: 'missing' };
 
 export function lineOf(doc: string, offset: number): number {
@@ -60,10 +70,42 @@ function sharedAfter(doc: string, docStart: number, suffix: string): number {
   return n;
 }
 
+/** Inline comment markup next to a quote, which the old plugin may later remove, is not context. */
+function withoutInlineMarkup(prefix: string, suffix: string): { prefix: string; suffix: string } {
+  const before = prefix.endsWith('{==') ? prefix.slice(0, -3) : prefix;
+  if (!suffix.startsWith('==}')) return { prefix: before, suffix };
+  let after = suffix.slice(3);
+  while (after.startsWith('{>>')) {
+    const end = after.indexOf('<<}');
+    after = end === -1 ? '' : after.slice(end + 3);
+  }
+  return { prefix: before, suffix: after };
+}
+
+/**
+ * Whether the text around the single match at `at` still shares visible
+ * (non-whitespace) context with what was saved. A shared newline or space
+ * alone proves nothing. When no visible context was saved, there is nothing to
+ * contradict the match, so it is accepted.
+ */
+function contextConfirms(doc: string, at: number, anchor: TextAnchor): boolean {
+  const end = at + anchor.quote.length;
+  const shares = (prefix: string, suffix: string) => {
+    const before = sharedBefore(doc, at, prefix);
+    const after = sharedAfter(doc, end, suffix);
+    return /\S/.test(doc.slice(at - before, at) + doc.slice(end, end + after));
+  };
+  if (shares(anchor.prefix, anchor.suffix)) return true;
+  const plain = withoutInlineMarkup(anchor.prefix, anchor.suffix);
+  return shares(plain.prefix, plain.suffix) || !/\S/.test(plain.prefix + plain.suffix);
+}
+
 /**
  * Finds the anchored quote in the current note text.
  *
- * A single occurrence resolves directly. Repeated quotes are ranked by how much
+ * A single occurrence resolves directly, except that a short text quote must
+ * still have some of its saved context around it; otherwise it is reported as
+ * unconfirmed rather than silently moved to an unrelated copy. Repeated quotes are ranked by how much
  * of the captured prefix/suffix still surrounds them; a tie is reported as
  * ambiguous rather than guessed. The line hint is never used to break a tie,
  * because line numbers shift with ordinary edits above the anchor.
@@ -72,7 +114,12 @@ export function resolveTextAnchor(doc: string, anchor: TextAnchor): AnchorResolu
   if (!anchor.quote) return { status: 'missing' };
   const hits = occurrences(doc, anchor.quote);
   if (hits.length === 0) return { status: 'missing' };
-  if (hits.length === 1) return { status: 'found', from: hits[0], to: hits[0] + anchor.quote.length };
+  if (hits.length === 1) {
+    const at = hits[0];
+    const short = anchor.kind === 'text' && [...anchor.quote].length < SHORT_QUOTE_CHARS;
+    if (short && !contextConfirms(doc, at, anchor)) return { status: 'unconfirmed', at };
+    return { status: 'found', from: at, to: at + anchor.quote.length };
+  }
 
   const scored = hits.map((at) => ({
     at,
