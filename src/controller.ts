@@ -1,7 +1,7 @@
 import { imageSupport } from './anchor/imageEmbed';
 import { captureTextAnchor } from './anchor/textAnchor';
 import { importedThread, type ImportPeople, type LegacyThread } from './import/inlineComments';
-import { addReply, createThread, editMessage, setMessageDeleted, setStatus, setThreadDeleted, type Clock, systemClock, ThreadError } from './model/thread';
+import { addReply, createThread, editMessage, moveThread, setMessageDeleted, setStatus, setThreadDeleted, type Clock, systemClock, ThreadError } from './model/thread';
 import type { Author, TextAnchor, ThreadRecord } from './model/types';
 import type { ThreadStore } from './storage/threadStore';
 import { draftKey } from './ui/viewModel';
@@ -180,6 +180,18 @@ export class ThreadController {
       await this.store.writeAnchor(image ? { ...anchor, kind: 'image', imagePath } : anchor);
       return { ok: true };
     });
+  }
+
+  /**
+   * Moves a thread to another note, for example when its own note is gone. Its saved
+   * anchor moves with it, so the passage is found if the new note has it; otherwise
+   * the thread offers a reattach there.
+   */
+  async moveToNote(threadId: string, notePath: string): Promise<Outcome> {
+    const outcome = await this.update(threadId, (t) => moveThread(t, notePath, this.clock));
+    const anchor = this.store.anchorFor(threadId);
+    if (outcome.ok && anchor && anchor.notePath !== notePath) await this.store.writeAnchor({ ...anchor, notePath });
+    return outcome;
   }
 
   /**

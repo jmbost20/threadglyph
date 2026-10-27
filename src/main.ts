@@ -30,7 +30,7 @@ import { ThreadController, type Outcome } from './controller';
 import { planImport } from './import/inlineComments';
 import { EXPORTS_DIR, buildExport, exportFileName, parseExport } from './storage/backup';
 import { THREADS_DIR } from './storage/paths';
-import { ImportModal, RestoreModal } from './ui/modals';
+import { ImportModal, MissingNotesModal, RestoreModal, type MissingNoteThread } from './ui/modals';
 import { AdapterFileStore } from './storage/adapterFileStore';
 import { ThreadStore } from './storage/threadStore';
 import { ThreadPanel, VIEW_TYPE_THREADGLYPH, type AiCardView, type PanelActions } from './ui/ThreadPanel';
@@ -157,6 +157,11 @@ export default class ThreadglyphPlugin extends Plugin {
       },
     });
     this.addCommand({
+      id: 'threads-on-missing-notes',
+      name: 'Show threads on missing notes',
+      callback: () => this.showMissingNotes(),
+    });
+    this.addCommand({
       id: 'back-up-threads',
       name: 'Back up all threads',
       callback: () => void this.backUp(),
@@ -242,20 +247,7 @@ export default class ThreadglyphPlugin extends Plugin {
 
   private panelActions(): PanelActions {
     const c = this.controller;
-    const report = (o: Outcome): boolean => {
-      if (!o.ok) new Notice(o.message);
-      return o.ok;
-    };
-    // Storage failures (disk errors) surface as a notice; the panel keeps the user's text.
-    const attempt = async (work: () => Promise<Outcome>): Promise<boolean> => {
-      try {
-        return report(await work());
-      } catch (err) {
-        console.error('[threadglyph]', err);
-        new Notice(`Threadglyph could not save: ${(err as Error).message}. Your text is kept.`);
-        return false;
-      }
-    };
+    const attempt = (work: () => Promise<Outcome>) => this.attempt(work);
     return {
       drafts: c.drafts,
       editing: c.editing,
@@ -372,6 +364,19 @@ export default class ThreadglyphPlugin extends Plugin {
       },
       rerender: () => void this.refresh(),
     };
+  }
+
+  /** Runs a write; a refusal or a storage failure (disk error) becomes a notice. The panel keeps the user's text. */
+  private async attempt(work: () => Promise<Outcome>): Promise<boolean> {
+    try {
+      const outcome = await work();
+      if (!outcome.ok) new Notice(outcome.message);
+      return outcome.ok;
+    } catch (err) {
+      console.error('[threadglyph]', err);
+      new Notice(`Threadglyph could not save: ${(err as Error).message}. Your text is kept.`);
+      return false;
+    }
   }
 
   private panels(): ThreadPanel[] {
@@ -786,6 +791,54 @@ export default class ThreadglyphPlugin extends Plugin {
     }
     if (!outcome.ok) new Notice(outcome.message);
     await this.refresh();
+  }
+
+  // ── Threads on missing notes ────────────────────────────────────────────────
+
+  /** Threads whose note is not in the vault, most recently active first. */
+  private missingNoteThreads(): MissingNoteThread[] {
+    return this.store
+      .snapshot()
+      .threads.filter((t) => !(this.app.vault.getAbstractFileByPath(t.notePath) instanceof TFile))
+      .map((t) => {
+        const live = t.messages.filter((m) => !m.deletedAt);
+        return {
+          threadId: t.id,
+          notePath: t.notePath,
+          preview: (live[0] ?? t.messages[0]).body,
+          comments: live.length,
+          updatedAt: t.updatedAt,
+          deleted: live.length === 0,
+        };
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  private showMissingNotes(): void {
+    if (!this.loaded) {
+      new Notice('Threadglyph is still loading threads. Try again in a moment.');
+      return;
+    }
+    const open = this.currentFile && this.app.vault.getAbstractFileByPath(this.currentFile.path);
+    const target = open instanceof TFile ? open : null;
+    new MissingNotesModal(this.app, {
+      list: () => this.missingNoteThreads(),
+      target: target?.basename ?? null,
+      move: async (id) => {
+        if (!target) return false;
+        const ok = await this.attempt(() => this.controller.moveToNote(id, target.path));
+        if (ok) {
+          this.currentFile = target;
+          await this.focusThread(id, false);
+        }
+        return ok;
+      },
+      setDeleted: async (id, deleted) => {
+        const ok = await this.attempt(() => this.controller.setThreadDeleted(id, deleted));
+        await this.refresh();
+        return ok;
+      },
+    }).open();
   }
 
   // ── Import, backup and restore ──────────────────────────────────────────────

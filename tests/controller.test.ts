@@ -29,6 +29,28 @@ describe('ThreadController', () => {
     expect(store.forNote(note)).toHaveLength(1);
   });
 
+  it('moves a thread to another note, with its anchor when this device has one', async () => {
+    const { fs, store, ctl, thread } = await setup();
+    expect(await ctl.moveToNote(thread.id, 'Other.md')).toEqual({ ok: true });
+    expect(store.get(thread.id)!.notePath).toBe('Other.md');
+    expect(store.anchorFor(thread.id)!.notePath).toBe('Other.md');
+    // Moving to the note it is already on changes nothing.
+    const revision = store.get(thread.id)!.revision;
+    expect(await ctl.moveToNote(thread.id, 'Other.md')).toEqual({ ok: true });
+    expect(store.get(thread.id)!.revision).toBe(revision);
+
+    // A thread restored without an anchor (another device) still moves.
+    const bare = new ThreadStore(fs);
+    await bare.loadAll();
+    fs.files.delete([...fs.files.keys()].find((p) => p.startsWith('.threadglyph/anchors/'))!);
+    await bare.loadAll();
+    const ctl2 = new ThreadController(bare, () => human, fakeClock());
+    expect(await ctl2.moveToNote(thread.id, 'Third.md')).toEqual({ ok: true });
+    expect(bare.get(thread.id)!.notePath).toBe('Third.md');
+    expect(bare.anchorFor(thread.id)).toBeUndefined();
+    expect(await ctl2.moveToNote('missing-thread', 'Third.md')).toMatchObject({ ok: false });
+  });
+
   it('rejects invalid selections and commits without a selection', async () => {
     const ctl = new ThreadController(new ThreadStore(new MemoryFs()), () => human, fakeClock());
     expect(ctl.beginThread(note, doc, 5, 5).ok).toBe(false);
