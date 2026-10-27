@@ -5,7 +5,7 @@ export const CONTEXT_CHARS = 64;
 
 /**
  * A text quote shorter than this (in characters) is only trusted at a single
- * match when some of its saved context still surrounds it. A word like "TODO"
+ * match when some of its saved context still surrounds it. A single word
  * easily appears again elsewhere; a longer passage is distinctive on its own,
  * so it keeps following the text when a paragraph is moved.
  */
