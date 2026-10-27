@@ -173,14 +173,18 @@ export default {
           await comment(s, 'foo', 'This one', { nth: 1 });
         }, { shot: false });
         await s.step('Switch to Reading view', async () => {
-          await s.eval(async () => {
-            const leaf = app.workspace.getLeavesOfType('markdown')[0];
+          // This note's own pane: earlier cases can leave other notes' Reading views in the page.
+          await s.eval(async (path) => {
+            const leaf = app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === path);
             await leaf.setViewState({ ...leaf.getViewState(), state: { ...leaf.getViewState().state, mode: 'preview' } });
-          });
-          await s.waitFor(() => document.querySelector('.markdown-preview-view .tg-anchor'), null, { what: 'the highlight in Reading view' });
+          }, LINKS);
+          await s.waitFor((path) => app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === path)
+            ?.view.containerEl.querySelector('.markdown-preview-view .tg-anchor'), LINKS, { what: 'the highlight in Reading view' });
         }, { caption: 'Reading view: the first plain “foo” is highlighted', look: '.markdown-preview-view .tg-anchor', explain: 'The highlight (outlined) is on “then foo”, the copy you commented on.' });
         s.group('Reading view');
-        s.check('The highlight follows “then ”', await s.eval(() => document.querySelector('.markdown-preview-view .tg-anchor')?.previousSibling?.textContent?.endsWith('then ')));
+        const before = await s.eval((path) => app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === path)
+          ?.view.containerEl.querySelector('.markdown-preview-view .tg-anchor')?.previousSibling?.textContent ?? null, LINKS);
+        s.check('The highlight follows “then ”', before?.endsWith('then ') === true, JSON.stringify(before));
         s.equal('The note is unchanged', await s.read(LINKS), links);
         await s.shot('End', 'final', { explain: 'Where it ends: Reading view, with only the copy you commented on highlighted.' });
       },
