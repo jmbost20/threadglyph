@@ -4,7 +4,6 @@ Where Threadglyph is heading, roughly in order. Nothing here has a date; it is a
 
 ## Next
 
-- **Obsidian community plugin directory.** Submit once the item below is done.
 - **Obsidian-style confirmation dialogs** in place of the browser's `confirm()` for discarding unsaved text.
 
 ## Later

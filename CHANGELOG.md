@@ -4,8 +4,13 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-27
+
+Fixes from a review of 0.3.0, a way back to threads whose note is gone, and the CSS warnings from the Obsidian directory review.
+
 ### Added
 - **Show threads on missing notes** (command palette) lists threads whose note was deleted or renamed outside Obsidian, which no panel could show. Move one to the open note and reattach it there, or delete it (and restore it from the same list).
+
 ### Changed
 - Styles avoid three CSS features the Obsidian directory review flags for older devices (`text-decoration-color`, `column-gap` and `:has()`). A detached quote is struck through in faint text; the chosen assistant in Ask AI is highlighted as before.
 
@@ -75,7 +80,8 @@ Private pilot.
 - A side panel to reply, edit (history kept), resolve and reopen; highlights and a margin glyph in the editor.
 - Anchors that follow edits and renames, and say so instead of guessing when the passage is gone or ambiguous.
 
-[Unreleased]: https://github.com/jmbost20/threadglyph/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/jmbost20/threadglyph/compare/0.3.1...HEAD
+[0.3.1]: https://github.com/jmbost20/threadglyph/releases/tag/0.3.1
 [0.3.0]: https://github.com/jmbost20/threadglyph/releases/tag/0.3.0
 [0.2.0]: https://github.com/jmbost20/threadglyph/commits/main
 [0.1.0]: https://github.com/jmbost20/threadglyph/pull/1
