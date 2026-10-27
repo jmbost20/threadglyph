@@ -11,7 +11,7 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 
 ![Demo: comment on a passage, then ask a local model about another; the request is previewed first, and the answer lands in the thread](docs/media/demo.gif)
 
-*The demo (37 s, recorded in the plugin's synthetic sandbox): comment on a passage, then ask a local model with `@Local`; the request is previewed before it goes anywhere, and the answer lands in the thread. [MP4 version](docs/media/demo.mp4).*
+*The demo (32 s, recorded in the plugin's synthetic sandbox): comment on a passage, then ask a local model with `@Local`; the request is previewed before it goes anywhere, and the answer lands in the thread. [MP4 version](docs/media/demo.mp4).*
 
 > **Status: alpha (0.3.1), desktop only.** It is used daily by its author, on macOS, but expect rough edges. Bug reports are welcome.
 >
@@ -25,13 +25,14 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 - **Your notes are never changed.** Threads are stored in separate JSON files beside your notes; Threadglyph does not write to note files.
 - **Anchors that survive edits.** Edits around a passage don't break its thread. If the passage is deleted, or repeated so the original copy can't be told apart, the thread says so instead of guessing, and offers **Reattach to selection**.
 - **Optional AI replies (off by default).** Mention `@Local`, `@Gemini` or `@Claude` in a comment, or press **Ask AI**. Before anything is sent you see a preview of exactly what goes, and where ("Stays on this computer", "Sent to Google", "Sent to Anthropic", or the host of an Ollama server on another machine). The answer is added to the thread, labelled as AI, and stays editable.
+- **Threads outlive a missing note.** If a note is deleted or renamed outside Obsidian, its threads are kept. **Show threads on missing notes** lists them, to move one to the open note or delete it.
 - **Import inline comments.** Turns `{==…==}{>>…<<}` comments written inside a note into threads, without changing the note.
 
 ## How it was built
 
 Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude Code), one pull request at a time, with the maintainer setting direction, reviewing and merging. Every feature pull request was reviewed by [Gitar](https://gitar.ai) and analysed by [SonarQube Cloud](https://sonarcloud.io) before it merged. The agents' rule: reproduce a finding with a test that fails before fixing it, and answer in writing any finding they disagree with. The record includes the misses too: an early dependency update (#2) merged with failing CI and broke main until #9, and a later whole-project review found problems the per-PR reviews had not (now fixed).
 
-- **35 distinct Gitar findings on merged code, all resolved:** 15 bugs, 1 security issue, 11 edge cases, 7 test or code-quality problems, 1 performance issue. (Two comments repeated on stacked PRs are counted once.)
+- **63 distinct Gitar findings on merged code, all resolved:** 19 bugs, 2 security issues, 23 edge cases, 18 test, documentation or code-quality problems, 1 performance issue. (Two comments repeated on stacked PRs are counted once.)
 - **Examples:** two quick clicks [could silently lose a reply](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4122849310); an AI rewrite containing a code block [could leak quoted note text into a thread file](https://github.com/jmbost20/threadglyph/pull/14#discussion_r4366902160); and several tests [could not actually fail](https://github.com/jmbost20/threadglyph/pull/1#discussion_r4128873979).
 - **Sonar's coverage gate was met with tests, never by excluding code:** line coverage went from 72.8% to 99.8% on the first PR, and is about 99.8% today.
 
@@ -39,9 +40,9 @@ The full story, with links to the reviews, is in [How Gitar and SonarQube review
 
 ## Install
 
-Threadglyph is not yet in Obsidian's community plugin directory.
+**From Obsidian (recommended):** open Settings → Community plugins → Browse, search for **Threadglyph**, then choose **Install** and **Enable**. It is listed in the [community plugin directory](https://community.obsidian.md/plugins/threadglyph); a new release can take a while to show there.
 
-**With BRAT (recommended):** install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin, choose **Add beta plugin**, and enter `jmbost20/threadglyph`.
+**With BRAT:** install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin, choose **Add beta plugin**, and enter `jmbost20/threadglyph`. BRAT installs a release as soon as it is published.
 
 **Manually:** download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/jmbost20/threadglyph/releases/latest) into `<your vault>/.obsidian/plugins/threadglyph/`. Then reload Obsidian and enable **Threadglyph** under Settings → Community plugins.
 
@@ -85,7 +86,7 @@ As Obsidian's [developer policies](https://docs.obsidian.md/Developer+policies) 
 - **Runs external programs:** the Gemini and Claude assistants start the `gemini` and `claude` command-line tools you installed, without a shell, with the request on standard input. This is why the plugin is desktop only.
   - Your own setup for these tools is not used, so a request carries only what the preview shows and goes only where it says. Claude Code runs without its built-in tools, MCP servers, settings files (and so your hooks and plugins), `CLAUDE.md` files, auto memory or telemetry. Gemini CLI runs read-only, in a home folder made for the request, so your `~/.gemini` settings, hooks, `GEMINI.md`, extensions and MCP servers are not used; its tools, skills, context files and telemetry are off.
   - Custom endpoints are ignored: a Bedrock, Vertex or `ANTHROPIC_BASE_URL` setup for Claude Code, or a `GOOGLE_GEMINI_BASE_URL` gateway for Gemini, is not used, so requests go to Anthropic or Google as labelled. A proxy set in your environment still applies, and so do settings an administrator enforces for the whole machine.
-  - `node scripts/check-cli-isolation.mjs` proves all of this against your installed versions (checked with Gemini CLI 0.60.0 and Claude Code 2.1.310).
+  - `node scripts/check-cli-isolation.mjs` proves all of this against your installed versions (last checked on 2026-10-27 with Gemini CLI 0.60.0 and Claude Code 2.1.311).
 - **Files outside your vault:** your Gemini key stays in `~/.threadglyph/gemini/.gemini/.env` (or a folder you choose); Threadglyph only creates that `.gemini` folder in its own folder and never writes to a folder you choose. Each Gemini request runs in a new private folder in your system's temp folder, holding Threadglyph's settings and a link to the key file (a copy on Windows), deleted with Gemini's logs of the request when it ends. An image you ask about is copied to the temp folder for the request and deleted afterwards.
 - **No telemetry, no ads, no account.** Threadglyph itself sends nothing anywhere.
 

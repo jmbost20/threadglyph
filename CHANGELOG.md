@@ -4,6 +4,9 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Changed
+- The README puts installing from Obsidian's community plugin directory first, and the demo starts on the note instead of an empty tab.
+
 ### Fixed
 - The development sandbox script creates its files in one step instead of checking first, which CodeQL flagged as a file-system race, and retires an old sandbox's `Agent Comments sample.md`: its threads move to `Inline comments sample.md`, so there is only one import sample.
 - Development dependencies: `moment` is 2.31.0 everywhere, which clears the last `npm audit` advisory.
@@ -44,6 +47,7 @@ The first public release.
 - ⌘↩ posts in every comment box; Enter makes a new line. The Ask AI preview is a small keyboard tree, and Esc cancels the whole request.
 - UI code follows Obsidian's official plugin lint rules.
 - The development sandbox scripts work on any machine, and refuse to use any existing vault that isn't a sandbox.
+- The import command is now **Import inline comments from this note** (id `import-inline-comments`; it was `import-agent-comments` in the private 0.2.0). Rebind any hotkey you set on the old command. *(This line was added after the release.)*
 
 ### Removed
 - The experimental `@agent` from the private pilot, which proposed edits to a note and applied them on Accept. Threadglyph no longer writes to note files at all. Its code remains in the repository's history.

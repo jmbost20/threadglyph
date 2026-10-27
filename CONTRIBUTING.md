@@ -58,10 +58,10 @@ Before tagging, run the [acceptance script](docs/dev/pilot.md#owner-test-script)
 
 ### The demo video
 
-The README demo is recorded from the synthetic sandbox, never from a real vault, by `uat/scenarios/6-demo.uat.mjs` (`npm run uat -- 6-demo --track demo-video`, with Ollama running). The run's clip (`uat/reports/<run>/video/*.mp4`) becomes `docs/media/demo.mp4` with the sandbox banner cropped off, and the GIF the README shows is made from that:
+The README demo is recorded from the synthetic sandbox, never from a real vault, by `uat/scenarios/6-demo.uat.mjs` (`npm run uat -- 6-demo --track demo-video`, with Ollama running). The run's clip (`uat/reports/<run>/video/*.mp4`) becomes `docs/media/demo.mp4` with the sandbox banner cropped off and the opening skipped, and the GIF the README shows is made from that. Set `-ss` to the first moment the note is open and the keystroke badge has faded (4.6 s in the current clip), so GitHub's still frame shows the plugin rather than an empty tab:
 
 ```sh
-ffmpeg -i "uat/reports/<run>/video/<clip>.mp4" -vf "crop=iw:ih-28:0:28" -c:v libx264 -preset slow -crf 24 -pix_fmt yuv420p -movflags +faststart docs/media/demo.mp4
+ffmpeg -ss 4.6 -i "uat/reports/<run>/video/<clip>.mp4" -vf "crop=iw:ih-28:0:28" -c:v libx264 -preset slow -crf 24 -pix_fmt yuv420p -movflags +faststart docs/media/demo.mp4
 ffmpeg -i docs/media/demo.mp4 -vf "fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=5" -loop 0 docs/media/demo.gif
 ```
 

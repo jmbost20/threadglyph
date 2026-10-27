@@ -6,17 +6,17 @@ Threadglyph was written by AI coding agents (OpenAI Codex and Anthropic Claude C
 
 | | |
 |---|---|
-| Pull requests with Gitar findings | 11 (10 merged, 1 open) |
-| Gitar findings on merged code | **35** distinct findings, all resolved: 34 fixed, 1 made moot by a later redesign |
-| …of which bugs or security issues | 16 (15 bugs, 1 security) |
-| …edge cases | 11 |
-| …test or code quality | 7 (including tests that could not fail) |
+| Pull requests with Gitar findings | 29 (28 merged, 1 closed without merging) |
+| Gitar findings on merged code | **63** distinct findings, all resolved: 62 fixed, 1 made moot by a later redesign |
+| …of which bugs or security issues | 21 (19 bugs, 2 security) |
+| …edge cases | 23 |
+| …test, documentation or code quality | 18 (including tests that could not fail, and docs that no longer matched the code) |
 | …performance | 1 |
-| Findings on the open knowledge-workflows PR (#12) | 10, all fixed on that branch |
+| Findings on the knowledge-workflows PR (#12, closed without merging) | 10, all fixed on that branch |
 | Sonar quality-gate failures | 2: low coverage on new code (PR #1) and Reliability rating D, caused by two real bugs (PR #7) |
 | How the coverage gate was met | With tests: no files excluded and no gate conditions lowered. Line coverage went from 72.8% to 99.8%, and is about 99.8% today |
 
-**How the findings were counted:** every top-level Gitar review comment on a merged pull request, by its own category label. Two findings were posted on both #7 and #8 (#8 was stacked on #7); each is counted once. Coverage figures come from the development log and `npm run check`.
+**How the findings were counted:** every top-level Gitar review comment on a merged pull request, by its own category label. Two findings were posted on both #7 and #8 (#8 was stacked on #7); each is counted once. The counts cover every pull request merged up to release 0.3.1 (#52), last checked on October 27. Coverage figures come from the development log and `npm run check`.
 
 ## How the loop works
 
@@ -70,7 +70,7 @@ Each fix was confirmed by breaking the code on purpose and watching the test fai
 
 ## What the tools did not do
 
-- **Findings still open when a pull request merged stayed open.** Gitar reviews new commits on an open PR, but nothing stopped a merge with findings outstanding, and nothing reminded anyone afterwards. Six findings on PRs #7–#9 were in that state. An audit on October 24 found them: five were fixed then, each with a test or a config change, and one had already been made moot by a redesign ([details](#closing-the-open-findings)).
+- **Findings still open when a pull request merged stayed open.** Gitar reviews new commits on an open PR, but nothing stopped a merge with findings outstanding, and nothing reminded anyone afterwards. Six findings on PRs #7–#9 were in that state. An audit on October 24 found them: five were fixed then, each with a test or a config change, and one had already been made moot by a redesign ([details](#closing-the-open-findings)). It happened again: a check on October 27 found two findings on #29 still open (an old sandbox kept a renamed sample note, and the changelog never mentioned the import command's rename), and both were fixed then. The same day, one pull request (#47) was merged on a review that still had a suggestion; it was fixed in #48.
 - **Not every merge went through the checks.** An early Dependabot update (#2) was merged with failing CI and without a Gitar review. It broke the build on main until #9 restored the dependency pins.
 - **A green Sonar job is not a passing gate.** CI's Sonar job uploads the analysis; it does not wait for the quality gate. The gate result arrives as a separate check from SonarQube Cloud, and while the project was private that check failed to process. Read the gate check, not the upload job.
 - **Neither tool tests the plugin inside Obsidian.** The maintainer checks behavior by hand in a disposable test vault. Automated in-app tests are on the [roadmap](roadmap.md).
