@@ -70,7 +70,7 @@ function fencedBlocks(doc: string): [number, number][] {
     // A closing fence carries nothing after its marker: a ```js line inside a block is content.
     const bare = m !== null && line.slice(m[0].length).trim() === '';
     if (!open && marker) open = { marker, from: at };
-    else if (open && marker && bare && marker[0] === open.marker[0] && marker.length >= open.marker.length) {
+    else if (open && marker && bare && marker.startsWith(open.marker[0]) && marker.length >= open.marker.length) {
       blocks.push([open.from, at + line.length]);
       open = null;
     }
