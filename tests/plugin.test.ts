@@ -1198,6 +1198,8 @@ describe('Threadglyph plugin with several assistants', () => {
     await commentOn('worth a comment', '@Claude or maybe @Local?');
     expandAll();
     expect(q<HTMLInputElement>('.tg-ai-assistant input:checked')?.value).toBe('claude');
+    expect(q<HTMLInputElement>('.tg-ai-assistant.is-selected input')?.value).toBe('claude');
+    expect(panelEl().querySelectorAll('.tg-ai-assistant.is-selected')).toHaveLength(1);
   });
 
   it('honours a different preferred assistant, and falls back when it is off', async () => {

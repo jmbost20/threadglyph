@@ -141,8 +141,8 @@ body {
 
 .tg-quote-stale {
   border-left-color: var(--text-faint);
+  color: var(--text-faint);
   text-decoration: line-through;
-  text-decoration-color: var(--text-faint);
 }
 
 .tg-anchor-problem {
@@ -619,7 +619,7 @@ body {
 .tg-ai-assistant {
   display: grid;
   grid-template-columns: auto 1fr;
-  column-gap: 8px;
+  gap: 0 8px;
   align-items: baseline;
   padding: 4px 8px;
   border: 1px solid var(--background-modifier-border);
@@ -627,7 +627,7 @@ body {
   cursor: pointer;
 }
 
-.tg-ai-assistant:has(input:checked) {
+.tg-ai-assistant.is-selected {
   border-color: var(--tg-accent);
   background: var(--tg-accent-soft);
 }
