@@ -78,6 +78,28 @@ describe('inline comment import', () => {
     expect([...times].sort()).toEqual(times);
   });
 
+  it('dates an entry with a missing or unreadable date from its neighbours, not the import time', () => {
+    const at = (iso: string) => new Date(iso).toISOString();
+    const importClock = { now: () => '2026-10-27T17:00:00.000Z', newId: fakeClock().newId };
+    const dates = (doc: string) =>
+      importedThread('n.md', parseLegacyComments(doc)[0], people, importClock)!.messages.map((m) => m.createdAt);
+
+    // Undated in the middle: takes the time before it; later dated messages keep their own dates.
+    expect(dates('{==p==}{>>Ann|2026-09-16 10:00|note: one<<}{>>Bob|yesterday|note: two<<}{>>Ann|2026-09-17 10:00|note: three<<}'))
+      .toEqual([at('2026-09-16T10:00:00'), at('2026-09-16T10:00:00'), at('2026-09-17T10:00:00')]);
+    // Undated first: takes the next dated time.
+    expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|2026-09-17 10:00|note: two<<}'))
+      .toEqual([at('2026-09-17T10:00:00'), at('2026-09-17T10:00:00')]);
+    // Dates on reactions and resolves count as neighbours too (Gitar on #43).
+    expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>user|2026-09-17|resolve: <<}'))
+      .toEqual([at('2026-09-17T00:00:00')]);
+    expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|2026-09-16|react: 👍<<}{>>Ann|2026-09-20|note: two<<}'))
+      .toEqual([at('2026-09-16T00:00:00'), at('2026-09-20T00:00:00')]);
+    // No readable dates at all: the import time.
+    expect(dates('{==p==}{>>Bob|soon|note: one<<}{>>Ann|later|note: two<<}'))
+      .toEqual(['2026-10-27T17:00:00.000Z', '2026-10-27T17:00:00.000Z']);
+  });
+
   it('plans an import and recognises threads that were already imported', () => {
     const plan = planImport(NOTE, [{ quote: 'compost the leaves', firstBody: 'Shred them <<first>>.' }]);
     expect(plan.map((p) => [p.legacy.quote, p.status, p.messages])).toEqual([
