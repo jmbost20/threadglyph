@@ -4,6 +4,10 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 
 ## [Unreleased]
 
+### Fixed
+- The development sandbox script creates its files in one step instead of checking first, which CodeQL flagged as a file-system race, and renames an old sandbox's `Agent Comments sample.md` instead of adding a second import sample.
+- Development dependencies: `moment` is 2.31.0 everywhere, which clears the last `npm audit` advisory.
+
 ## [0.3.1] - 2026-10-27
 
 Fixes from a review of 0.3.0, a way back to threads whose note is gone, and the CSS warnings from the Obsidian directory review.
