@@ -53,13 +53,14 @@ Run it in the sandbox first (`npm run build && npm run sandbox`, then ⌘R in th
 
 ## Acceptance record
 
-The script is also automated: `npm run uat -- --track release-0.3.0` runs it in a sandboxed Obsidian with the maintainer's `obsidian-uat` harness and produces a review deck. Approving that deck is the row below; the steps it cannot run (cloud assistants) are listed in it as not run.
+The script is also automated: `npm run uat -- --track release-<version>` (for example `release-0.3.1`) runs it in a sandboxed Obsidian with the maintainer's `obsidian-uat` harness and produces a review deck. Approving that deck is the row below; the steps it cannot run (cloud assistants) are listed in it as not run.
 
 One row per release candidate, filled in by the maintainer after running the script above in Obsidian. A release is tagged only after its row says *pass*.
 
 | Date | Version / commit | Obsidian / OS | Steps run | Result | Notes |
 |---|---|---|---|---|---|
 | | 0.3.0 / | | 1–11 | | |
+| 2026-10-27 | 0.3.1 / a713141 | sandbox, macOS | 1–11 + the 0.3.1 fixes (`uat/scenarios/7-fixes-0.3.1.uat.mjs`) | awaiting the owner's review of the deck | track `release-0.3.1`: 15 passed, 5 for review, 2 skipped by design (cloud), 0 failed; step 10 run live, 19/19 |
 
 ## Evidence for the walkthrough
 
