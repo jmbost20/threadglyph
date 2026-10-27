@@ -81,9 +81,13 @@ const MARKS_AFTER = '*_=~]';
 
 /** Where markup in front of `at` begins (`{==` and formatting marks such as `**` or `[[`), or `at` when there is none. */
 function markupStart(text: string, at: number): number {
-  let start = at >= 3 && text.startsWith('{==', at - 3) ? at - 3 : at;
-  while (start > 0 && MARKS_BEFORE.includes(text[start - 1])) start--;
-  return start;
+  // Comment markup and formatting marks can nest in either order (`{==**`, `**{==`).
+  let start = at;
+  for (;;) {
+    if (start >= 3 && text.startsWith('{==', start - 3)) start -= 3;
+    else if (start > 0 && MARKS_BEFORE.includes(text[start - 1])) start--;
+    else return start;
+  }
 }
 
 /**
@@ -91,17 +95,19 @@ function markupStart(text: string, at: number): number {
  * there is none. A cut-off comment runs to the end.
  */
 function markupEnd(text: string, at: number): number {
+  // Comment markup and formatting marks can nest in either order (`**==}`, `==}{>>…<<}**`).
   let end = at;
-  if (text.startsWith('==}', end)) {
-    end += 3;
-    while (text.startsWith('{>>', end)) {
-      const close = text.indexOf('<<}', end);
-      if (close === -1) return text.length;
-      end = close + 3;
-    }
+  for (;;) {
+    if (text.startsWith('==}', end)) {
+      end += 3;
+      while (text.startsWith('{>>', end)) {
+        const close = text.indexOf('<<}', end);
+        if (close === -1) return text.length;
+        end = close + 3;
+      }
+    } else if (end < text.length && MARKS_AFTER.includes(text[end])) end++;
+    else return end;
   }
-  while (end < text.length && MARKS_AFTER.includes(text[end])) end++;
-  return end;
 }
 
 /**

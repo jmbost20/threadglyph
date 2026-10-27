@@ -123,6 +123,18 @@ describe('text anchors', () => {
       expect(resolveTextAnchor(later, a).status).toBe('ambiguous');
     });
 
+    it('looks past formatting inside or outside inline comment markup, in either order (Gitar on #51)', () => {
+      const note = 'Intro line.\n- {==TODO==}{>>user|2026-09-16|note: c<<} fix the parser\n';
+      const a = captureTextAnchor('thread-0001', 'a.md', note, note.indexOf('TODO'), note.indexOf('TODO') + 4);
+      for (const edited of [
+        note.replace('{==TODO==}', '{==**TODO**==}'),
+        note.replace('{==TODO==}{>>user|2026-09-16|note: c<<}', '**{==TODO==}{>>user|2026-09-16|note: c<<}**'),
+        'Intro line.\n- **TODO** fix the parser\n',
+      ]) {
+        expect(resolveTextAnchor(edited, a), edited).toMatchObject({ status: 'found', from: edited.indexOf('TODO') });
+      }
+    });
+
     it('still does not confirm another copy because it is formatted too', () => {
       const note = 'Intro line.\n- TODO fix the parser\n- write docs\n- **TODO** later\n';
       const a = captureTextAnchor('thread-0001', 'a.md', note, note.indexOf('TODO'), note.indexOf('TODO') + 4);
