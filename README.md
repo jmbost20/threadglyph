@@ -4,6 +4,7 @@
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=jmbost20_threadglyph&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jmbost20_threadglyph)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=jmbost20_threadglyph&metric=coverage)](https://sonarcloud.io/summary/new_code?id=jmbost20_threadglyph)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/jmbost20/threadglyph/badge)](https://scorecard.dev/viewer/?uri=github.com/jmbost20/threadglyph)
+[![Obsidian downloads](https://img.shields.io/badge/dynamic/json?logo=obsidian&color=%23483699&label=Obsidian%20downloads&query=%24%5B%22threadglyph%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json)](https://community.obsidian.md/plugins/threadglyph)
 [![Release](https://img.shields.io/github/v/release/jmbost20/threadglyph)](https://github.com/jmbost20/threadglyph/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -13,6 +14,8 @@ Comment threads for Obsidian, anchored to the text and images in your notes, wit
 
 *The demo (32 s, recorded in the plugin's synthetic sandbox): comment on a passage, then ask a local model with `@Local`; the request is previewed before it goes anywhere, and the answer lands in the thread. [MP4 version](docs/media/demo.mp4).*
 
+> **Now in Obsidian's [community plugin directory](https://community.obsidian.md/plugins/threadglyph).** In Obsidian, open Settings → Community plugins → Browse and search for **Threadglyph**.
+>
 > **Status: alpha (0.3.1), desktop only.** It is used daily by its author, on macOS, but expect rough edges. Bug reports are welcome.
 >
 > **Windows and Linux:** the core plugin and the Ollama assistant are covered by automated tests on all three systems. The Gemini and Claude assistants have only been used on macOS; on Windows, command-line tools installed through npm (`.cmd` launchers) are not supported yet ([#23](https://github.com/jmbost20/threadglyph/issues/23)).
