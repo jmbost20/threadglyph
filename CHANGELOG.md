@@ -5,6 +5,7 @@ All notable changes to Threadglyph. The format follows [Keep a Changelog](https:
 ## [Unreleased]
 
 ### Changed
+- The README says Threadglyph is in Obsidian's community plugin directory, with a downloads badge that links to its page there.
 - The README puts installing from Obsidian's community plugin directory first, and the demo starts on the note instead of an empty tab.
 
 ### Fixed
