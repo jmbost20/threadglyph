@@ -199,30 +199,6 @@ body {
   user-select: text;
 }
 
-.tg-icon-button {
-  margin-left: auto;
-  padding: 2px 4px;
-  height: auto;
-  background: none;
-  box-shadow: none;
-  color: var(--text-faint);
-  opacity: 0;
-}
-
-.tg-message:hover .tg-icon-button,
-.tg-icon-button:focus-visible {
-  opacity: 1;
-}
-
-.tg-icon-button:hover {
-  color: var(--text-normal);
-}
-
-.tg-icon-button svg {
-  width: 14px;
-  height: 14px;
-}
-
 /* ── Composer ───────────────────────────────────────────── */
 
 .tg-composer {
@@ -746,7 +722,6 @@ body {
 .tg-custom-filter input, .tg-custom-filter select { width: 100%; max-width: 100%; }
 
 .tg-message:focus { outline: 2px solid var(--tg-accent); outline-offset: 4px; border-radius: 4px; }
-.tg-delete-comment { font-size: var(--font-ui-smaller); margin-left: auto; }
 .tg-deleted { margin-top: 8px; }
 .tg-deleted > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .tg-message-meta { flex-wrap: wrap; }
